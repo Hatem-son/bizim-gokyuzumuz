@@ -115,7 +115,6 @@
   --env-2: #e9b6cd;
   --env-3: #fae3ee;
 
-  --kbpad: 0px;
   color-scheme: dark;
 }
 
@@ -156,24 +155,22 @@ body[data-me="beto"] {
 
 html,
 body {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: manipulation;
   background: var(--ground-bottom);
   margin: 0;
 }
 
 body {
-  position: fixed;
-  left: 0;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  overflow: hidden;
   font-family: var(--font-ui);
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
   -webkit-user-select: none;
   user-select: none;
-  overscroll-behavior: none;
 }
 
 #scene {
@@ -242,7 +239,6 @@ textarea:focus-visible {
 
 .sky-moon.day-hidden,
 body:not(.awake) .sky-moon,
-body.typing .sky-moon,
 body.sheet-open .sky-moon {
   opacity: 0;
 }
@@ -1099,12 +1095,6 @@ body:not(.awake) .act {
   height: 100%;
 }
 
-.kb-open .ob-scene,
-.typing .ob-scene {
-  transform: translateY(58%);
-  opacity: .22;
-}
-
 @media (max-height: 700px) {
   .ob-scene {
     transform: translateY(42%);
@@ -1588,7 +1578,7 @@ body:not(.awake) .act {
 .push-nudge {
   position: fixed;
   left: 50%;
-  bottom: calc(var(--ground-h) + env(safe-area-inset-bottom) + 14px);
+  bottom: calc(34% + env(safe-area-inset-bottom) + 14px);
   transform: translateX(-50%);
   z-index: 24;
   width: min(calc(100% - 32px), 340px);
@@ -1810,24 +1800,6 @@ body:not(.awake) .act {
 
 .lk-forgot[hidden] {
   display: none;
-}
-
-/* ---------- Keyboard / VisualViewport handling ---------- */
-.typing #onboard {
-  place-items: start center;
-  padding-top: calc(env(safe-area-inset-top) + 18px);
-}
-
-.kb-open .ob-sub,
-.kb-open .ob-eyebrow,
-.typing .ob-sub,
-.typing .ob-eyebrow {
-  display: none;
-}
-
-.kb-open .ob h1,
-.typing .ob h1 {
-  font-size: 42px;
 }
 
 /* Pause background DOM animations when a sheet, letter modal, or lock screen covers the view */
@@ -2412,62 +2384,86 @@ textarea:focus {
   pointer-events: none;
 }
 
-/* Keyboard open & timed mode: apply --kbpad ONLY to #compose when field focused, never #settings */
-.typing #compose.open {
-  align-items: flex-end;
-  padding: calc(env(safe-area-inset-top) + 12px) 0 var(--kbpad, 0px);
+/* Compose sheet pinned above keyboard via visualViewport (zero transitions/padding hacks) */
+#compose {
+  padding-top: env(safe-area-inset-top);
+  transition: none;
 }
 
-.kb-open #compose .sheet-card,
-.typing #compose.open .sheet-card {
+#compose:not(.open) {
+  transition: none;
+}
+
+#compose.open {
+  background: rgba(0, 0, 0, .55);
+}
+
+#compose .sheet-card {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0 auto;
   gap: 8px;
-  border-radius: 26px 26px 0 0;
-  padding: 14px 16px calc(env(safe-area-inset-bottom) + 16px);
-  max-height: calc(100dvh - env(safe-area-inset-top) - 12px - var(--kbpad, 0px));
+  padding: 10px 16px calc(env(safe-area-inset-bottom) + 14px);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .04), rgba(0, 0, 0, .28)), #11183c;
+  transition: none;
+  transform: translate3d(0, 105%, 0);
 }
 
-.typing #compose:not(.open) .sheet-card {
-  transform: translateY(105%);
+body[data-me="beto"] #compose .sheet-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, .04), rgba(0, 0, 0, .28)), #2d102c;
 }
 
-.kb-open #compose .sheet-hint,
-.typing #compose.open .sheet-hint,
-.kb-open #compose .sheet-sub,
-.typing #compose.open .sheet-sub,
-.kb-open #compose .handle,
-.typing #compose.open .handle,
-body.sched-open #chips {
+#compose.open .sheet-card {
+  transform: translate3d(0, 0, 0);
+}
+
+#compose.compact .handle,
+#compose.compact .sheet-sub,
+#compose.compact .sheet-hint {
   display: none;
 }
 
-.kb-open #compose .sheet-head .medal,
-.typing #compose.open .sheet-head .medal {
+#compose .sheet-head .medal {
   width: 34px;
   height: 34px;
   font-size: 16px;
 }
 
-.kb-open #compose .sheet-title,
-.typing #compose.open .sheet-title {
-  font-size: 30px;
+#compose .sheet-title {
+  font-size: 28px;
 }
 
-.kb-open #compose textarea,
-.typing #compose.open textarea {
-  min-height: 80px;
-  max-height: 24%;
+#compose textarea {
+  flex: none;
+  height: 96px;
+  min-height: 96px;
+  max-height: 96px;
+  padding: 9px 14px;
+  font-size: 16.5px;
+  line-height: 1.35;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+#compose .att-btn {
+  padding: 7px 12px;
+  font-size: 12px;
+}
+
+#compose .compose-row .btn-primary {
+  padding: 10px 18px;
+  font-size: 14px;
+}
+
+#compose.hide-chips .chips,
+body.sched-open #chips {
+  display: none;
 }
 
 body.sched-open #compose .sheet-card {
-  gap: 6px;
-}
-
-body.sched-open #compose textarea {
-  min-height: 52px;
-  max-height: 56px;
-  height: 54px;
-  padding: 10px 14px;
-  font-size: 18px;
+  gap: 8px;
 }
 
 body.sched-open #compose .sched-box {

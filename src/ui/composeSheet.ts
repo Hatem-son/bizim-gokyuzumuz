@@ -69,6 +69,7 @@ export interface ComposeController {
   close: () => void;
   isOpen: () => boolean;
   syncIdentity: (me: Who) => void;
+  syncViewport: () => void;
 }
 
 function toDatetimeLocalValue(ms: number): string {
@@ -205,17 +206,52 @@ export function initComposeSheet(opts: {
     updateCount();
   }
 
+  function syncViewport(): void {
+    if (!sheet.classList.contains('open')) {
+      form.style.transform = '';
+      form.style.maxHeight = '';
+      form.style.paddingBottom = '';
+      sheet.classList.remove('hide-chips', 'compact');
+      return;
+    }
+
+    const vv = window.visualViewport;
+    const vvHeight = vv ? vv.height : window.innerHeight;
+    const vvTop = vv ? vv.offsetTop : 0;
+    const bottomOffset = Math.max(0, Math.round(window.innerHeight - (vvTop + vvHeight)));
+    const safeTop = parseFloat(getComputedStyle(sheet).paddingTop) || 0;
+    const maxCardH = Math.max(200, Math.floor(vvHeight - safeTop - 10));
+
+    form.style.maxHeight = `${maxCardH}px`;
+    form.style.transform = bottomOffset > 0 ? `translate3d(0, -${bottomOffset}px, 0)` : 'translate3d(0, 0, 0)';
+    form.style.paddingBottom = bottomOffset > 0 ? '10px' : '';
+
+    // Alan daraldığında (klavye açık) önce yardımcı alt yazıları sonra çipleri gizle
+    sheet.classList.toggle('compact', bottomOffset > 0 || maxCardH < 360);
+    if (schedOn) {
+      sheet.classList.add('hide-chips');
+    } else {
+      sheet.classList.remove('hide-chips');
+      if (form.scrollHeight > maxCardH + 1) {
+        sheet.classList.add('hide-chips');
+      }
+    }
+  }
+
   function enableSchedule(preset: 'tomorrow' | 'week' | 'jan9' = 'tomorrow'): void {
     schedOn = true;
     activePreset = preset;
     schedDt.value = toDatetimeLocalValue(computePresetDate(preset).getTime());
     refreshScheduleUi(false);
+    syncViewport();
+    schedBox.scrollIntoView({ block: 'nearest' });
   }
 
   function disableSchedule(): void {
     schedOn = false;
     activePreset = null;
     refreshScheduleUi(false);
+    syncViewport();
   }
 
   function updateCount(): void {
@@ -493,8 +529,8 @@ export function initComposeSheet(opts: {
     ta.blur();
     stopRec(true);
     sheet.classList.remove('open');
-    document.body.classList.remove('sheet-open', 'sched-open', 'typing', 'kb-open');
-    document.documentElement.style.setProperty('--kbpad', '0px');
+    document.body.classList.remove('sheet-open', 'sched-open');
+    syncViewport();
     setInert(sheet, true);
   }
 
@@ -615,11 +651,12 @@ export function initComposeSheet(opts: {
     disableSchedule();
     hideErr();
     updateCount();
-    document.body.classList.add('typing');
     document.body.classList.add('sheet-open');
     sheet.classList.add('open');
     setInert(sheet, false);
+    syncViewport();
     ta.focus({ preventScroll: true });
+    syncViewport();
   }
 
   return {
@@ -627,5 +664,6 @@ export function initComposeSheet(opts: {
     close,
     isOpen: () => sheet.classList.contains('open'),
     syncIdentity,
+    syncViewport,
   };
 }
