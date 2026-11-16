@@ -687,7 +687,6 @@ body:not(.awake) .floor-light {
   width: auto;
   overflow: visible;
   transform-origin: 45% 100%;
-  will-change: transform;
   animation: lilySway 8s ease-in-out infinite;
 }
 
@@ -777,6 +776,33 @@ body.awake .stamens,
   overflow: visible;
 }
 
+.candle-flame {
+  transform-box: fill-box;
+  transform-origin: 50% 95%;
+  opacity: 0;
+}
+
+body.awake .candle-flame {
+  opacity: .94;
+  animation: flameFlicker 1.9s ease-in-out infinite;
+}
+
+body.awake .candle-flame.flare {
+  animation: flameFlare .85s var(--ease);
+}
+
+@keyframes flameFlicker {
+  0%, 100% { transform: scale(1, 1) rotate(-1.5deg); opacity: .9; }
+  35% { transform: scale(.96, 1.07) rotate(1.8deg); opacity: 1; }
+  70% { transform: scale(1.03, .97) rotate(-1.2deg); opacity: .86; }
+}
+
+@keyframes flameFlare {
+  0% { transform: scale(1, 1); opacity: .92; }
+  35% { transform: scale(1.18, 1.32) rotate(2deg); opacity: 1; }
+  100% { transform: scale(1, 1); opacity: .94; }
+}
+
 .jar-label {
   font-family: var(--font-script);
   font-size: 19px;
@@ -811,9 +837,13 @@ body.awake .stamens,
   60% { transform: scale(.9, 1.15) translateY(-3px); }
 }
 
-/* Pause background DOM animations when a sheet, letter modal, or lock screen covers the view */
+/* Pause background DOM animations when a sheet, modal, lock, or 20s deep-idle covers/quiets the view */
 body.quiet .lily,
-body.quiet .cdf {
+body.quiet .cdf,
+body.quiet .candle-flame,
+body.deep-idle .lily,
+body.deep-idle .cdf,
+body.deep-idle .candle-flame {
   animation-play-state: paused !important;
 }
 
@@ -1152,17 +1182,8 @@ body:not(.awake) .act {
   margin: 4px 0 0;
   padding: .22em .28em .3em;
   overflow: visible;
-  background: linear-gradient(100deg, var(--ink) 35%, var(--accent) 50%, var(--ink) 65%);
-  background-size: 260% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: fadeUp .9s var(--ease) .1s both, shimmer 7s linear 1.2s infinite;
-}
-
-@keyframes shimmer {
-  from { background-position: 130% 0; }
-  to { background-position: -130% 0; }
+  color: var(--ink);
+  animation: fadeUp .9s var(--ease) .1s both;
 }
 
 .ob-sub {
@@ -1802,9 +1823,13 @@ body:not(.awake) .act {
   display: none;
 }
 
-/* Pause background DOM animations when a sheet, letter modal, or lock screen covers the view */
+/* Pause background DOM animations when a sheet, modal, lock, or 20s deep-idle covers/quiets the view */
 body.quiet .lily,
-body.quiet .cdf {
+body.quiet .cdf,
+body.quiet .candle-flame,
+body.deep-idle .lily,
+body.deep-idle .cdf,
+body.deep-idle .candle-flame {
   animation-play-state: paused !important;
 }
 
@@ -2981,7 +3006,6 @@ body.sched-open #compose .sched-dt-label {
   top: 0;
   left: 0;
   pointer-events: none;
-  will-change: transform, opacity;
   opacity: 0;
 }
 

@@ -361,6 +361,7 @@ function animateStarArrival(star: StarRecord, how: 'rise' | 'streak', origin?: {
       skyEngine.markStarBorn(star.id);
       skyEngine.spawnBurst(target.x, target.y, color, true);
       skyEngine.triggerFlameFlare();
+      gardenCtrl?.triggerFlameFlare();
       if (syncSkyStars(star.id, true)) {
         window.setTimeout(
           () => showToast('Aynı saatte düşündünüz', 'İki yıldız da sarıya döndü', 'gold', '♡'),
@@ -746,6 +747,7 @@ async function bootstrap(): Promise<void> {
     gardenCtrl = new GardenController({
       onCandleTap: (candleEl) => {
         skyEngine?.triggerFlameFlare();
+        gardenCtrl?.triggerFlameFlare();
         const left = gardenCtrl?.getDaysRemaining() ?? 0;
         const r = candleEl.getBoundingClientRect();
         showFloatNote(
@@ -1016,7 +1018,7 @@ async function bootstrap(): Promise<void> {
       if (perfHud.hidden || !skyEngine) return;
       const st = skyEngine.getPerfStats();
       const modeLabel =
-        st.mode === 'active' ? '60fps' : st.mode === 'idle' ? '25fps' : st.mode === 'quiet' ? '10fps' : 'durdu';
+        st.mode === 'active' ? '60fps' : st.mode === 'idle' ? '30fps' : st.mode === 'quiet' ? '10fps' : 'durdu';
       perfHud.textContent = `Son ${st.samples} kare · Ort ${st.avgMs} ms · En kötü ${st.maxMs} ms · ${st.fps} fps (${modeLabel})`;
     };
 
@@ -1093,11 +1095,13 @@ async function bootstrap(): Promise<void> {
       });
     });
 
-    planeInterval = window.setInterval(() => {
-      if (canLaunchPlane() && Math.random() < 0.5) {
-        skyEngine?.launchPlane();
-      }
-    }, 300_000);
+    if (!document.hidden) {
+      planeInterval = window.setInterval(() => {
+        if (!document.hidden && canLaunchPlane() && Math.random() < 0.5) {
+          skyEngine?.launchPlane();
+        }
+      }, 300_000);
+    }
   };
 
   async function enterApp(who: Who): Promise<void> {
@@ -1193,13 +1197,39 @@ async function bootstrap(): Promise<void> {
     }
   });
 
+  let seenInterval = 0;
+  const startGlobalTimers = () => {
+    if (document.hidden) return;
+    if (!seenInterval) {
+      seenInterval = window.setInterval(() => {
+        if (appMounted && !document.hidden) markSeen();
+      }, 60_000);
+    }
+    if (appMounted && !planeInterval) {
+      planeInterval = window.setInterval(() => {
+        if (!document.hidden && canLaunchPlane() && Math.random() < 0.5) {
+          skyEngine?.launchPlane();
+        }
+      }, 300_000);
+    }
+  };
+  const stopGlobalTimers = () => {
+    window.clearInterval(seenInterval);
+    window.clearInterval(planeInterval);
+    seenInterval = 0;
+    planeInterval = 0;
+  };
+  startGlobalTimers();
+
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
       resetKeyboardRef?.();
+      stopGlobalTimers();
       if (appMounted) markSeen();
       return;
     }
     resetKeyboardRef?.();
+    startGlobalTimers();
     if (!appMounted) return;
     if (document.body.classList.contains('awake') && !lock.isLocked()) {
       void syncServerClock().then(() => checkAndCelebrateUnlocks(false));
@@ -1213,11 +1243,9 @@ async function bootstrap(): Promise<void> {
     }
   });
   window.addEventListener('pagehide', () => {
+    stopGlobalTimers();
     if (appMounted) markSeen();
   });
-  window.setInterval(() => {
-    if (appMounted) markSeen();
-  }, 60_000);
 
   // Startup restoration
   const keyLoaded = await loadSavedKey();

@@ -120,8 +120,7 @@ function sideLilySvg(side: 'l' | 'r'): string {
 }
 
 function candleJarSvg(): string {
-  // Note: the flame itself is rendered on the single 60fps <canvas id="sky-canvas">,
-  // keeping SVG free of per-frame animations and blur filters!
+  // Tek küçük SVG alev (yalnızca opacity/scale salınımı, blur/filtre yok)
   return `<svg class="candle" id="candle" viewBox="0 0 160 190" role="button" tabindex="0" aria-label="Mum">
     <defs>
       <linearGradient id="gJar" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity=".36"/><stop offset=".1" stop-color="#fff" stop-opacity=".1"/><stop offset=".5" stop-color="#fff" stop-opacity=".02"/><stop offset=".9" stop-color="#fff" stop-opacity=".1"/><stop offset="1" stop-color="#fff" stop-opacity=".32"/></linearGradient>
@@ -129,6 +128,7 @@ function candleJarSvg(): string {
       <radialGradient id="gWaxGlow" cx=".5" cy="0" r="1"><stop offset="0" stop-color="#ffcf86" stop-opacity=".85"/><stop offset=".45" stop-color="#ffb07a" stop-opacity=".22"/><stop offset="1" stop-color="#ffb07a" stop-opacity="0"/></radialGradient>
       <radialGradient id="gPool"><stop offset="0" stop-color="#ffe4ad"/><stop offset=".65" stop-color="#ffd08c" stop-opacity=".85"/><stop offset="1" stop-color="#fff3e2" stop-opacity="0"/></radialGradient>
       <linearGradient id="gLabel" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#efe3d6"/><stop offset=".5" stop-color="#fdf7f0"/><stop offset="1" stop-color="#e8dacb"/></linearGradient>
+      <linearGradient id="gFlame" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#6b95ff" stop-opacity=".85"/><stop offset=".22" stop-color="#ff9a3c" stop-opacity=".95"/><stop offset=".75" stop-color="#ffc15e" stop-opacity=".92"/><stop offset="1" stop-color="#ff7a2e" stop-opacity="0"/></linearGradient>
       <clipPath id="cJar"><path d="M43 86 Q43 80 49 80 L111 80 Q117 80 117 86 L117 168 Q117 178 107 178 L53 178 Q43 178 43 168Z"/></clipPath>
     </defs>
     <path d="M40 84 Q40 76 48 76 L112 76 Q120 76 120 84 L120 168 Q120 182 106 182 L54 182 Q40 182 40 168Z" fill="rgba(255,255,255,.05)"/>
@@ -145,6 +145,10 @@ function candleJarSvg(): string {
     ${raspberrySvg(48.5, 142, 0.28, '', false)}${raspberrySvg(111.5, 142, 0.28, '', false)}
     <g id="wick-pos">
       <path d="M80 104 Q78.6 98 80.8 92.6" stroke="#2a1d1a" stroke-width="2" fill="none" stroke-linecap="round"/>
+      <g class="candle-flame" id="candle-flame" aria-hidden="true">
+        <path d="M80.8 60 C89.5 71 90.2 86 80.8 94 C71.4 86 72.1 71 80.8 60Z" fill="url(#gFlame)"/>
+        <path d="M80.8 73 C84.4 79.5 84.8 87.5 80.8 91.8 C76.8 87.5 77.2 79.5 80.8 73Z" fill="#fffbe6"/>
+      </g>
       <circle id="wick-tip" cx="80.8" cy="92.8" r="1.4" fill="#ff7a2e"/>
     </g>
     <path d="M40 84 Q40 76 48 76 L112 76 Q120 76 120 84 L120 168 Q120 182 106 182 L54 182 Q40 182 40 168Z" fill="url(#gJar)" stroke="rgba(255,255,255,.5)" stroke-width="1.2"/>
@@ -163,6 +167,7 @@ export class GardenController {
   private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   private waxTimer = 0;
   private wiggleTimer = 0;
+  private flareTimer = 0;
 
   constructor(opts: {
     onCandleTap: (candleEl: Element) => void;
@@ -175,9 +180,8 @@ export class GardenController {
     holder.innerHTML = candleJarSvg();
 
     this.updateWax();
-    this.waxTimer = window.setInterval(() => {
-      if (!document.hidden) this.updateWax();
-    }, 60_000);
+    this.startTimers();
+    document.addEventListener('visibilitychange', this.onVisibilityChange);
 
     holder.addEventListener('click', (e) => {
       const rasp = (e.target as Element).closest('.rasp');
@@ -200,13 +204,34 @@ export class GardenController {
         holder.click();
       }
     });
+  }
 
-    if (!this.reducedMotion) {
+  private readonly onVisibilityChange = (): void => {
+    if (document.hidden) {
+      window.clearInterval(this.waxTimer);
+      window.clearInterval(this.wiggleTimer);
+      this.waxTimer = 0;
+      this.wiggleTimer = 0;
+    } else {
+      this.updateWax();
+      this.startTimers();
+    }
+  };
+
+  private startTimers(): void {
+    if (document.hidden) return;
+    if (!this.waxTimer) {
+      this.waxTimer = window.setInterval(() => {
+        if (!document.hidden) this.updateWax();
+      }, 60_000);
+    }
+    if (!this.reducedMotion && !this.wiggleTimer) {
       this.wiggleTimer = window.setInterval(() => {
         if (
           document.hidden ||
           !document.body.classList.contains('awake') ||
-          document.body.classList.contains('quiet')
+          document.body.classList.contains('quiet') ||
+          document.body.classList.contains('deep-idle')
         ) {
           return;
         }
@@ -218,6 +243,18 @@ export class GardenController {
         pick.classList.add('wiggle');
       }, 5600);
     }
+  }
+
+  public triggerFlameFlare(): void {
+    const flame = document.getElementById('candle-flame');
+    if (!flame) return;
+    window.clearTimeout(this.flareTimer);
+    flame.classList.remove('flare');
+    void flame.getBoundingClientRect();
+    flame.classList.add('flare');
+    this.flareTimer = window.setTimeout(() => {
+      flame.classList.remove('flare');
+    }, 900);
   }
 
   public updateWax(): void {
@@ -285,6 +322,10 @@ export class GardenController {
   public destroy(): void {
     window.clearInterval(this.waxTimer);
     window.clearInterval(this.wiggleTimer);
+    window.clearTimeout(this.flareTimer);
+    this.waxTimer = 0;
+    this.wiggleTimer = 0;
+    document.removeEventListener('visibilitychange', this.onVisibilityChange);
   }
 }
 

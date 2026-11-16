@@ -157,6 +157,7 @@ export class CandleWhiteHeartController {
     endX = Math.max(20, Math.min(vw - 20, endX));
 
     const el = createWhiteHeartEl('white-heart candle-white-heart', CANDLE_HEART_SIZE_PX, 'candle');
+    el.style.willChange = 'transform, opacity';
     document.body.appendChild(el);
     this.activeEl = el;
 
@@ -200,6 +201,7 @@ export class CandleWhiteHeartController {
     this.activeAnim = anim;
 
     const cleanup = () => {
+      el.style.willChange = 'auto';
       if (this.activeEl === el) this.activeEl = null;
       if (this.activeAnim === anim) this.activeAnim = null;
       el.remove();
@@ -282,6 +284,7 @@ export function showSyncWhiteHeart(): void {
 
   const size = Math.min(SYNC_HEART_SIZE_PX, Math.round((window.innerWidth || 390) * 0.42));
   const el = createWhiteHeartEl('white-heart sync-white-heart', size, 'sync');
+  el.style.willChange = 'transform, opacity';
   document.body.appendChild(el);
   activeSyncEl = el;
 
@@ -319,6 +322,7 @@ export function showSyncWhiteHeart(): void {
   document.addEventListener('visibilitychange', onVis);
 
   const cleanup = () => {
+    el.style.willChange = 'auto';
     if (activeSyncVisHandler === onVis) {
       document.removeEventListener('visibilitychange', onVis);
       activeSyncVisHandler = null;

@@ -136,9 +136,6 @@ export class SkyEngine {
   private readonly moonCanvas: HTMLCanvasElement;
   private readonly sunDayCanvas = document.createElement('canvas');
   private readonly sunLowCanvas = document.createElement('canvas');
-  private readonly flameHaloCanvas = document.createElement('canvas');
-  private readonly flameOutCanvas = document.createElement('canvas');
-  private readonly flameMidCanvas = document.createElement('canvas');
   private readonly dustSprite = document.createElement('canvas');
   private readonly glintSprite = document.createElement('canvas');
   private readonly starHalos: Record<SkyColorKey, HTMLCanvasElement> = {
@@ -152,8 +149,10 @@ export class SkyEngine {
     gold: document.createElement('canvas'),
   };
   private lastBakedSkyKey = '';
-  private cachedWickPos: { x: number; y: number } | null = null;
-  private cachedBloomPos: { x: number; y: number }[] = [];
+  private lastCssColsKey = '';
+  private lastMoonUp: boolean | null = null;
+  private skyElWidth = 0;
+  private moonCenter = { x: 355, y: 45 };
 
   private readonly planeCtrl = new PlaneController();
 
@@ -205,27 +204,28 @@ export class SkyEngine {
   private sparks: SparkParticle[] = [];
   private rings: BurstRing[] = [];
   private comets: FlyingComet[] = [];
-  private embers: { x: number; y: number; vx: number; vy: number; life: number; max: number; r: number }[] = [];
-  private smoke: { x: number; y: number; d: number; life: number; max: number; ph: number; r: number }[] = [];
-  private candleHearts: { x: number; y: number; s: number; life: number; max: number; sw: number; rise: number }[] = [];
-  private pollen: { x: number; y: number; vx: number; vy: number; life: number; max: number; sw: number }[] = [];
   private nextMeteorAt = 4000;
-  private nextEmberAt = 0;
-  private nextSmokeAt = 18000;
-  private nextCandleHeartAt = 0;
-  private nextPollenAt = 0;
-  private breeze = 0;
-  private breezeT = 0;
-  private breezeNext = 8000;
-  private flareAt = -1e9;
   private lastFrameT = 0;
   private mainRaf = 0;
   private idleTimer = 0;
   private loopPaused = false;
   private boostUntil = 0;
+  private lastInteractionAt = performance.now();
+  private deepIdle = false;
   private stateObserver: MutationObserver | null = null;
   private readonly perfDraws: number[] = [];
   private readonly onVisibility = () => {
+    if (document.hidden) {
+      this.stopPan();
+      if (this.timelapseRaf) {
+        cancelAnimationFrame(this.timelapseRaf);
+        this.timelapseRaf = 0;
+        this.timelapseActive = false;
+      }
+      this.pauseLoop();
+      return;
+    }
+    this.markInteraction();
     this.updateLoopState();
   };
 
@@ -275,6 +275,9 @@ export class SkyEngine {
   private fpsWindowStart = 0;
   private currentFps = 60;
   private currentMode: 'active' | 'idle' | 'quiet' | 'paused' = 'idle';
+  private readonly onAnyPointer = () => {
+    this.markInteraction();
+  };
 
   constructor(opts: SkyEngineOptions) {
     this.opts = opts;
@@ -290,7 +293,6 @@ export class SkyEngine {
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     this.bakeStarSprites();
-    this.bakeFlameSprites();
     this.bakeSunSprites();
     this.bakeMoonSprite();
     this.bindEvents();
@@ -301,15 +303,20 @@ export class SkyEngine {
   }
 
   public refreshCachedPositions(): void {
-    this.cachedWickPos = this.opts.getWickPos?.() ?? null;
-    this.cachedBloomPos = this.opts.getBloomPositions?.() ?? [];
+    // Cached geometry hook preserved for external callers
+  }
+
+  public markInteraction(): void {
+    this.lastInteractionAt = performance.now();
+    if (this.deepIdle) {
+      this.deepIdle = false;
+      document.body.classList.remove('deep-idle');
+    }
   }
 
   public triggerFlameFlare(): void {
-    const now = performance.now();
-    this.flareAt = now;
-    this.nextSmokeAt = Math.min(this.nextSmokeAt, now + 1400);
-    this.boostMotion(1900);
+    this.markInteraction();
+    this.boostMotion(950);
   }
 
   public triggerEnterReveal(): void {
@@ -487,7 +494,7 @@ export class SkyEngine {
   }
 
   public getSkyW(): number {
-    return this.skyEl.clientWidth || window.innerWidth;
+    return this.skyElWidth || this.skyEl.clientWidth || window.innerWidth;
   }
 
   public getSkyRect(): { top: number; height: number; width: number } {
@@ -656,7 +663,7 @@ export class SkyEngine {
   }
 
   public resize = (): void => {
-    this.DPR = Math.min(2, window.devicePixelRatio || 1);
+    this.DPR = Math.min(1.5, window.devicePixelRatio || 1);
     const cvRect = this.cv.getBoundingClientRect();
     this.W = Math.max(window.innerWidth, Math.ceil(cvRect.width));
     this.H = Math.max(window.innerHeight, Math.ceil(cvRect.height));
@@ -665,12 +672,19 @@ export class SkyEngine {
     this.cx.setTransform(this.DPR, 0, 0, this.DPR, 0, 0);
 
     const sr = this.skyEl.getBoundingClientRect();
+    this.skyElWidth = Math.round(sr.width) || this.W;
     this.skyTop = sr.top || 84;
     this.skyHeight = sr.height || this.H * 0.6;
-    this.worldW = (sr.width || this.W) * PANO;
+    this.worldW = this.skyElWidth * PANO;
+
+    const moonRect = this.moonCanvas.getBoundingClientRect();
+    this.moonCenter = {
+      x: moonRect.width > 0 ? moonRect.left + moonRect.width / 2 : this.W - 35,
+      y: moonRect.height > 0 ? moonRect.top + moonRect.height / 2 : 45,
+    };
 
     const rnd = mulberry32(4);
-    const dustCount = Math.min(560, Math.round((this.worldW * this.H) / 5200));
+    const dustCount = Math.min(25, Math.max(12, Math.round((this.worldW * this.H) / 90_000)));
     this.dust = Array.from({ length: dustCount }, () => {
       const f = rnd();
       const inBand = rnd() < 0.45;
@@ -683,7 +697,7 @@ export class SkyEngine {
         r: rnd() * 1.15 + 0.45,
         phase: rnd() * Math.PI * 2,
         speed: 0.45 + rnd() * 1.55,
-        alpha: 0.28 + rnd() * 0.62,
+        alpha: 0.34 + rnd() * 0.56,
       };
     });
 
@@ -1231,7 +1245,7 @@ export class SkyEngine {
   private bakeNebula(): void {
     const w = Math.max(1, this.worldW);
     const h = Math.max(1, this.H);
-    this.nebScale = Math.min(this.DPR, Math.sqrt(12e6 / Math.max(1, w * h)));
+    this.nebScale = Math.min(1, Math.sqrt(12e6 / Math.max(1, w * h)));
     this.nebCanvas.width = Math.ceil(w * this.nebScale);
     this.nebCanvas.height = Math.ceil(h * this.nebScale);
 
@@ -1298,81 +1312,20 @@ export class SkyEngine {
       const sz = 0.6 + rnd() * 0.5;
       n.fillRect(rnd() * w, rnd() * h * 0.9, sz, sz);
     }
-  }
 
-  private bakeFlameSprites(): void {
-    // Halo sprite
-    {
-      const size = 180;
-      this.flameHaloCanvas.width = size;
-      this.flameHaloCanvas.height = size;
-      const g = this.flameHaloCanvas.getContext('2d');
-      if (g) {
-        const mid = size / 2;
-        const halo = g.createRadialGradient(mid, mid, 0, mid, mid, mid);
-        halo.addColorStop(0, 'rgba(255, 217, 160, 0.72)');
-        halo.addColorStop(0.32, 'rgba(255, 182, 126, 0.25)');
-        halo.addColorStop(1, 'rgba(255, 154, 198, 0)');
-        g.fillStyle = halo;
-        g.fillRect(0, 0, size, size);
-      }
+    // Sabit arka plan yıldız tozlarını bir kez offscreen canvas'a çiz
+    const staticDustCount = Math.min(260, Math.round((w * h) / 9500));
+    for (let i = 0; i < staticDustCount; i++) {
+      const f = rnd();
+      const y =
+        rnd() < 0.48
+          ? this.skyTop + (bandY(f) + (rnd() + rnd() + rnd() - 1.5) * 0.12) * this.skyHeight
+          : rnd() * h * 0.88;
+      const sz = 2.4 + (rnd() * 1.1 + 0.4) * 2.6;
+      n.globalAlpha = 0.22 + rnd() * 0.45;
+      n.drawImage(this.dustSprite, f * w - sz * 0.5, y - sz * 0.5, sz, sz);
     }
-
-    // Outer flame teardrop sprite (anchor: bottom-center wick at (32, 86) in 64x96 canvas)
-    {
-      const w = 64;
-      const h = 96;
-      this.flameOutCanvas.width = w;
-      this.flameOutCanvas.height = h;
-      const g = this.flameOutCanvas.getContext('2d');
-      if (g) {
-        g.translate(32, 88);
-        const fOut = g.createLinearGradient(0, 2, 0, -44);
-        fOut.addColorStop(0, 'rgba(107, 149, 255, 0.85)');
-        fOut.addColorStop(0.16, 'rgba(255, 154, 60, 0.92)');
-        fOut.addColorStop(0.62, 'rgba(255, 179, 71, 0.95)');
-        fOut.addColorStop(1, 'rgba(255, 122, 46, 0)');
-        g.fillStyle = fOut;
-        g.beginPath();
-        g.moveTo(0, -40);
-        g.bezierCurveTo(11, -25, 12, -8, 0, 2);
-        g.bezierCurveTo(-12, -8, -11, -25, 0, -40);
-        g.fill();
-
-        const fMid = g.createRadialGradient(0, -8, 1, 0, -14, 18);
-        fMid.addColorStop(0, '#fffbea');
-        fMid.addColorStop(0.5, '#ffe28e');
-        fMid.addColorStop(1, 'rgba(255, 179, 71, 0)');
-        g.fillStyle = fMid;
-        g.beginPath();
-        g.moveTo(0, -31);
-        g.bezierCurveTo(8, -19, 9, -6, 0, 1);
-        g.bezierCurveTo(-9, -6, -8, -19, 0, -31);
-        g.fill();
-      }
-    }
-
-    // Inner bright core sprite
-    {
-      const w = 32;
-      const h = 48;
-      this.flameMidCanvas.width = w;
-      this.flameMidCanvas.height = h;
-      const g = this.flameMidCanvas.getContext('2d');
-      if (g) {
-        g.translate(16, 42);
-        g.fillStyle = '#fffef6';
-        g.beginPath();
-        g.moveTo(0, -19);
-        g.bezierCurveTo(3.4, -12, 3.8, -4, 0, 0);
-        g.bezierCurveTo(-3.8, -4, -3.4, -12, 0, -19);
-        g.fill();
-        g.fillStyle = 'rgba(127, 176, 255, 0.78)';
-        g.beginPath();
-        g.ellipse(0, 0.5, 2.8, 1.8, 0, 0, Math.PI * 2);
-        g.fill();
-      }
-    }
+    n.globalAlpha = 1;
   }
 
   private bakeSkyBackground(): void {
@@ -1537,8 +1490,12 @@ export class SkyEngine {
     this.currentCols = cols;
     this.currentDaylight = daylight;
 
-    const vars = ['--sky-1', '--sky-2', '--sky-3', '--horizon'];
-    vars.forEach((v, i) => document.body.style.setProperty(v, cols[i]));
+    const colsKey = cols.join(',');
+    if (colsKey !== this.lastCssColsKey) {
+      this.lastCssColsKey = colsKey;
+      const vars = ['--sky-1', '--sky-2', '--sky-3', '--horizon'];
+      vars.forEach((v, i) => document.body.style.setProperty(v, cols[i]));
+    }
 
     const orbs = getOrbPlacement(hour, this.moonInfo.phase);
     const skyW = this.getSkyW();
@@ -1553,12 +1510,14 @@ export class SkyEngine {
       r: 20,
     };
 
-    this.moonCanvas.classList.toggle('day-hidden', !orbs.moonUp);
-    const moonRect = this.moonCanvas.getBoundingClientRect();
+    if (this.lastMoonUp !== orbs.moonUp) {
+      this.lastMoonUp = orbs.moonUp;
+      this.moonCanvas.classList.toggle('day-hidden', !orbs.moonUp);
+    }
     this.moonScreen = {
       up: orbs.moonUp,
-      x: moonRect.width > 0 ? moonRect.left + moonRect.width / 2 : this.W - 35,
-      y: moonRect.height > 0 ? moonRect.top + moonRect.height / 2 : 45,
+      x: this.moonCenter.x,
+      y: this.moonCenter.y,
       r: 17,
     };
   }
@@ -1681,6 +1640,17 @@ export class SkyEngine {
     if (this.revealAt > 0 && revealElapsed > 1400) {
       this.revealAt = 0;
     }
+
+    const spriteBatch: {
+      x: number;
+      y: number;
+      scale: number;
+      scint: number;
+      dayDim: number;
+      colorKey: SkyColorKey;
+      wakeWave: number;
+      glintWave: number;
+    }[] = [];
 
     for (let idx = 0; idx < this.stars.length; idx++) {
       const s = this.stars[idx];
@@ -1848,42 +1818,47 @@ export class SkyEngine {
         ctx.stroke();
       }
 
-      // Additive starlight: breathing soft halo + crisp pinpoint core (NO permanent crossbars!)
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-
-      const haloSprite = this.starHalos[colorKey];
-      const haloSize = 44 * scale * (0.92 + 0.18 * scint);
-      ctx.globalAlpha = (0.42 + 0.34 * scint) * dayDim;
-      ctx.drawImage(haloSprite, x - haloSize / 2, y - haloSize / 2, haloSize, haloSize);
-
-      if (wakeWave > 0.02) {
-        const wSize = 58 * scale * (0.9 + 0.35 * wakeWave);
-        ctx.globalAlpha = wakeWave * 0.85 * this.withoutAlpha;
-        ctx.drawImage(this.starHalos.gold, x - wSize / 2, y - wSize / 2, wSize, wSize);
-      }
-
-      const coreSprite = this.starCores[colorKey];
-      const coreSize = 18 * scale * (0.9 + 0.14 * scint);
-      ctx.globalAlpha = (0.78 + 0.22 * scint) * dayDim;
-      ctx.drawImage(coreSprite, x - coreSize / 2, y - coreSize / 2, coreSize, coreSize);
-
-      // Brief tapered 4-point diffraction glint (only on the single unlocked glinting star)
+      let glintWave = 0;
       if (!isLocked && this.glintStarId === s.id) {
         const gk = (t - this.glintStart) / 1400;
         if (gk < 1) {
-          const gWave = Math.sin(gk * Math.PI);
-          const gSize = 48 * scale * (0.35 + 0.65 * gWave);
-          ctx.globalAlpha = gWave * 0.92 * dayDim;
-          ctx.drawImage(this.glintSprite, x - gSize / 2, y - gSize / 2, gSize, gSize);
+          glintWave = Math.sin(gk * Math.PI);
         } else {
           this.glintStarId = null;
         }
       }
-      ctx.restore();
 
-      ctx.globalAlpha = 1;
+      spriteBatch.push({ x, y, scale, scint, dayDim, colorKey, wakeWave, glintWave });
     }
+
+    // Tek bir toplu 'lighter' geçişinde tüm yıldız halelerini ve çekirdeklerini çiz
+    if (spriteBatch.length > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (const b of spriteBatch) {
+        const haloSize = 44 * b.scale * (0.92 + 0.18 * b.scint);
+        ctx.globalAlpha = (0.42 + 0.34 * b.scint) * b.dayDim;
+        ctx.drawImage(this.starHalos[b.colorKey], b.x - haloSize / 2, b.y - haloSize / 2, haloSize, haloSize);
+
+        if (b.wakeWave > 0.02) {
+          const wSize = 58 * b.scale * (0.9 + 0.35 * b.wakeWave);
+          ctx.globalAlpha = b.wakeWave * 0.85 * this.withoutAlpha;
+          ctx.drawImage(this.starHalos.gold, b.x - wSize / 2, b.y - wSize / 2, wSize, wSize);
+        }
+
+        const coreSize = 18 * b.scale * (0.9 + 0.14 * b.scint);
+        ctx.globalAlpha = (0.78 + 0.22 * b.scint) * b.dayDim;
+        ctx.drawImage(this.starCores[b.colorKey], b.x - coreSize / 2, b.y - coreSize / 2, coreSize, coreSize);
+
+        if (b.glintWave > 0) {
+          const gSize = 48 * b.scale * (0.35 + 0.65 * b.glintWave);
+          ctx.globalAlpha = b.glintWave * 0.92 * b.dayDim;
+          ctx.drawImage(this.glintSprite, b.x - gSize / 2, b.y - gSize / 2, gSize, gSize);
+        }
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
   }
 
   private drawEffects(t: number, dt: number): void {
@@ -2076,8 +2051,8 @@ export class SkyEngine {
       }
     }
 
-    // 4. Shooting stars (night/twilight only)
-    if (!this.reducedMotion && this.currentDaylight < 0.75) {
+    // 4. Shooting stars (night/twilight only, stopped after 20s deep idle)
+    if (!this.reducedMotion && !this.deepIdle && this.currentDaylight < 0.75) {
       if (t > this.nextMeteorAt) {
         this.nextMeteorAt = t + 8500 + Math.random() * 11500;
         this.meteors.push({
@@ -2090,20 +2065,22 @@ export class SkyEngine {
         });
       }
       this.meteors = this.meteors.filter((m) => (m.life += dt) < m.max);
+      ctx.lineWidth = 1.35;
       for (const m of this.meteors) {
         m.x += m.vx * dt;
         m.y += m.vy * dt;
         const al = Math.sin((m.life / m.max) * Math.PI) * 0.85 * (1 - this.currentDaylight);
         const len = 82;
-        const g = ctx.createLinearGradient(m.x, m.y, m.x - m.vx * len, m.y - m.vy * len);
-        g.addColorStop(0, `rgba(255,255,255,${al.toFixed(2)})`);
-        g.addColorStop(1, 'rgba(255,255,255,0)');
-        ctx.globalAlpha = 1;
-        ctx.strokeStyle = g;
-        ctx.lineWidth = 1.35;
+        ctx.strokeStyle = `rgba(255,255,255,${(al * 0.35).toFixed(2)})`;
+        ctx.beginPath();
+        ctx.moveTo(m.x - m.vx * len * 0.45, m.y - m.vy * len * 0.45);
+        ctx.lineTo(m.x - m.vx * len, m.y - m.vy * len);
+        ctx.stroke();
+
+        ctx.strokeStyle = `rgba(255,255,255,${al.toFixed(2)})`;
         ctx.beginPath();
         ctx.moveTo(m.x, m.y);
-        ctx.lineTo(m.x - m.vx * len, m.y - m.vy * len);
+        ctx.lineTo(m.x - m.vx * len * 0.5, m.y - m.vy * len * 0.5);
         ctx.stroke();
       }
     }
@@ -2116,8 +2093,15 @@ export class SkyEngine {
       ctx.drawImage(sprite, this.sunScreen.x - half, this.sunScreen.y - half);
     }
 
-    // 6. Airplane + rippling cloth banner (single canvas)
-    if (!this.reducedMotion && document.body.classList.contains('awake') && !this.timelapseActive && !this.trav.on && !this.withoutMode) {
+    // 6. Airplane + banner (stopped after 20s deep idle)
+    if (
+      !this.reducedMotion &&
+      !this.deepIdle &&
+      document.body.classList.contains('awake') &&
+      !this.timelapseActive &&
+      !this.trav.on &&
+      !this.withoutMode
+    ) {
       this.planeCtrl.draw(ctx, t, this.W);
     }
 
@@ -2195,12 +2179,9 @@ export class SkyEngine {
       ctx.restore();
     } else {
       this.drawStarsAndLinks(t, ts, dt);
-      this.drawEffects(t, dt);
-    }
-
-    // 8. Candle flame (noise flicker + gust + flare), embers, smoke, rising hearts & lily pollen
-    if (document.body.classList.contains('awake') && !this.trav.on) {
-      this.drawCandleAndGardenParticles(t, ts, dt);
+      if (!this.deepIdle) {
+        this.drawEffects(t, dt);
+      }
     }
 
     ctx.globalAlpha = 1;
@@ -2215,170 +2196,6 @@ export class SkyEngine {
     ctx.bezierCurveTo(x, y + s * 0.8, x + s * 0.5, y + s * 0.6, x + s * 0.5, y + s * 0.3);
     ctx.bezierCurveTo(x + s * 0.5, y - s * 0.05, x, y, x, y + s * 0.3);
     ctx.fill();
-  }
-
-  private drawCandleAndGardenParticles(t: number, ts: number, dt: number): void {
-    const ctx = this.cx;
-    const wick = this.cachedWickPos;
-    if (!wick) return;
-
-    // Giriş animasyonunda mum alevi en son (~850 ms sonra) yanar
-    let igniteAlpha = 1;
-    if (this.revealAt > 0) {
-      const rel = (t - this.revealAt - 850) / 400;
-      if (rel <= 0) return;
-      if (rel < 1) {
-        igniteAlpha = 1 - Math.pow(1 - rel, 3);
-      }
-    }
-
-    // Multi-harmonic noise + occasional wind gust
-    if (t > this.breezeNext) {
-      this.breezeNext = t + 7000 + Math.random() * 14000;
-      this.breezeT = t;
-      this.breeze = (Math.random() < 0.5 ? -1 : 1) * (0.6 + Math.random() * 0.6);
-    }
-    const bk = Math.max(0, 1 - (t - this.breezeT) / 2600);
-    const gust = this.reducedMotion
-      ? 0
-      : this.breeze * Math.sin(Math.min(1, (t - this.breezeT) / 2600) * Math.PI) * bk;
-
-    const n1 = this.reducedMotion
-      ? 0
-      : Math.sin(ts * 7.3) * 0.45 + Math.sin(ts * 13.1 + 1.3) * 0.3 + Math.sin(ts * 23.7 + 2.1) * 0.25;
-    const n2 = this.reducedMotion ? 0 : Math.sin(ts * 4.9 + 0.7) * 0.55 + Math.sin(ts * 17.3 + 0.2) * 0.45;
-    const fa = Math.max(0, 1 - (t - this.flareAt) / 1800);
-    const boost = fa * fa;
-
-    const sx = 1 + n2 * 0.03 - Math.abs(gust) * 0.05 + boost * 0.1;
-    const sy = 1 + n1 * 0.055 + Math.abs(gust) * 0.04 + boost * 0.35;
-    const skew = (n2 * 2 + gust * 9) * (Math.PI / 180);
-
-    // Pre-baked flame halo
-    const haloScale = 1 + n1 * 0.035 + boost * 0.35;
-    const haloSize = 150 * haloScale;
-    ctx.globalAlpha = Math.min(1, 0.78 + n1 * 0.1 + boost * 0.22) * igniteAlpha;
-    ctx.drawImage(this.flameHaloCanvas, wick.x - haloSize / 2, wick.y - 24 - haloSize / 2, haloSize, haloSize);
-
-    // Pre-baked flame sprites (zero gradient allocations per frame)
-    ctx.save();
-    ctx.translate(wick.x, wick.y + 1);
-    ctx.transform(1, 0, Math.tan(skew), 1, 0, 0);
-    ctx.scale(sx, sy);
-    ctx.globalAlpha = igniteAlpha;
-    ctx.drawImage(this.flameOutCanvas, -32, -88);
-    ctx.globalAlpha = Math.min(1, 0.84 + n1 * 0.1 + boost * 0.08) * igniteAlpha;
-    ctx.drawImage(this.flameMidCanvas, -16, -42);
-    ctx.restore();
-
-    if (this.reducedMotion) return;
-
-    // Rising embers
-    if (t > this.nextEmberAt) {
-      this.nextEmberAt = t + 650 + Math.random() * 900;
-      this.embers.push({
-        x: wick.x + (Math.random() - 0.5) * 4,
-        y: wick.y - 26,
-        vx: (Math.random() - 0.5) * 0.012,
-        vy: -(0.03 + Math.random() * 0.03),
-        life: 0,
-        max: 1400 + Math.random() * 1200,
-        r: 0.6 + Math.random() * 0.8,
-      });
-    }
-    this.embers = this.embers.filter((e) => (e.life += dt) < e.max);
-    for (const e of this.embers) {
-      e.x += (e.vx + gust * 0.02) * dt + Math.sin(e.life / 180) * 0.15;
-      e.y += e.vy * dt;
-      const k = e.life / e.max;
-      ctx.globalAlpha = (1 - k) * 0.9;
-      ctx.fillStyle = k < 0.4 ? '#ffd27a' : '#ff8a3c';
-      ctx.beginPath();
-      ctx.arc(e.x, e.y, e.r * (1 - k * 0.5), 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Occasional smoke wisp
-    if (t > this.nextSmokeAt) {
-      this.nextSmokeAt = t + 22000 + Math.random() * 20000;
-      for (let i = 0; i < 24; i++) {
-        this.smoke.push({
-          x: wick.x,
-          y: wick.y - 34,
-          d: i * 70,
-          life: 0,
-          max: 3600,
-          ph: Math.random() * 6.3,
-          r: 1.2 + Math.random(),
-        });
-      }
-    }
-    this.smoke = this.smoke.filter((p) => {
-      if (p.d > 0) {
-        p.d -= dt;
-        return true;
-      }
-      return (p.life += dt) < p.max;
-    });
-    ctx.fillStyle = '#e8e4f2';
-    for (const p of this.smoke) {
-      if (p.d > 0) continue;
-      const k = p.life / p.max;
-      const y = p.y - p.life * 0.028;
-      const x = p.x + Math.sin(p.life / 420 + p.ph) * (4 + k * 14) + gust * k * 30;
-      ctx.globalAlpha = Math.sin(k * Math.PI) * 0.12;
-      ctx.beginPath();
-      ctx.arc(x, y, p.r + k * 5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Floating mini hearts rising from the flame
-    if (t > this.nextCandleHeartAt && this.candleHearts.length < 6) {
-      this.nextCandleHeartAt = t + 2400 + Math.random() * 1800;
-      this.candleHearts.push({
-        x: wick.x,
-        y: wick.y - 34,
-        s: 5 + Math.random() * 4,
-        life: 0,
-        max: 4800 + Math.random() * 1500,
-        sw: Math.random() * 6.3,
-        rise: 0.02 + Math.random() * 0.012,
-      });
-    }
-    this.candleHearts = this.candleHearts.filter((h) => (h.life += dt) < h.max);
-    ctx.fillStyle = this.me === 'hamham' ? '#5b9dff' : '#ff6fb0';
-    for (const h of this.candleHearts) {
-      const k = h.life / h.max;
-      ctx.globalAlpha = Math.min(1, k * 5) * (1 - k) * 0.55;
-      this.drawHeartPath(h.x + Math.sin(h.life / 650 + h.sw) * 9, h.y - h.life * h.rise - 6, h.s);
-    }
-
-    // Golden pollen flecks drifting from the lilies
-    if (t > this.nextPollenAt && this.pollen.length < 12) {
-      this.nextPollenAt = t + 950 + Math.random() * 900;
-      const blooms = this.cachedBloomPos;
-      const b = blooms[Math.floor(Math.random() * blooms.length)];
-      if (b) {
-        this.pollen.push({
-          x: b.x,
-          y: b.y,
-          life: 0,
-          max: 5000 + Math.random() * 3000,
-          vx: (Math.random() - 0.5) * 0.012,
-          vy: -(0.008 + Math.random() * 0.012),
-          sw: Math.random() * 6.3,
-        });
-      }
-    }
-    this.pollen = this.pollen.filter((p) => (p.life += dt) < p.max);
-    ctx.fillStyle = '#ffe6a6';
-    for (const p of this.pollen) {
-      const k = p.life / p.max;
-      ctx.globalAlpha = Math.min(1, k * 6) * (1 - k) * 0.75;
-      ctx.beginPath();
-      ctx.arc(p.x + p.life * p.vx + Math.sin(p.life / 700 + p.sw) * 6, p.y + p.life * p.vy, 1.1, 0, Math.PI * 2);
-      ctx.fill();
-    }
   }
 
   private hasActiveMotion(now: number): boolean {
@@ -2413,13 +2230,11 @@ export class SkyEngine {
   }
 
   private isQuietSheetOpen(): boolean {
-    return (
-      document.body.classList.contains('typing') ||
-      Boolean(document.querySelector('.sheet.open'))
-    );
+    return Boolean(document.querySelector('.sheet.open'));
   }
 
   private boostMotion(ms: number): void {
+    this.markInteraction();
     const until = performance.now() + ms;
     if (until > this.boostUntil) this.boostUntil = until;
     if (this.reducedMotion || this.loopPaused || this.isCompletelyBlocked()) return;
@@ -2447,6 +2262,13 @@ export class SkyEngine {
     }
 
     const tStart = performance.now();
+    const active = this.hasActiveMotion(tStart);
+    const shouldDeepIdle = !active && !quiet && tStart - this.lastInteractionAt >= 20_000;
+    if (this.deepIdle !== shouldDeepIdle) {
+      this.deepIdle = shouldDeepIdle;
+      document.body.classList.toggle('deep-idle', shouldDeepIdle);
+    }
+
     this.drawFrame(t);
     const drawDur = performance.now() - tStart;
 
@@ -2461,11 +2283,10 @@ export class SkyEngine {
       this.fpsWindowStart = t;
     }
 
-    const active = this.hasActiveMotion(tStart);
     this.currentMode = quiet ? 'quiet' : active ? 'active' : 'idle';
 
-    // Aktif dokunuş/animasyonda tam hız (0 ms), yazarken/pencere açıkken 10 fps (100 ms), boşta ~25 fps (40 ms)
-    const delay = quiet ? 100 : active ? 0 : 40;
+    // Aktif kaydırma/yıldız animasyonunda 60 fps, boşta 30 fps (33 ms), 20 sn dokunulmazsa twinkle odaklı düşük döngü
+    const delay = quiet ? 100 : active ? 0 : this.deepIdle ? 66 : 33;
     if (delay === 0) {
       this.mainRaf = requestAnimationFrame(this.loopStep);
     } else {
@@ -2516,7 +2337,10 @@ export class SkyEngine {
 
   private startLoop(): void {
     this.fpsWindowStart = performance.now();
+    this.lastInteractionAt = performance.now();
     document.addEventListener('visibilitychange', this.onVisibility);
+    document.addEventListener('pointerdown', this.onAnyPointer, { capture: true, passive: true });
+    document.addEventListener('touchstart', this.onAnyPointer, { capture: true, passive: true });
 
     this.stateObserver = new MutationObserver(() => {
       this.updateLoopState();
@@ -2540,6 +2364,9 @@ export class SkyEngine {
     cancelAnimationFrame(this.panRaf);
     cancelAnimationFrame(this.timelapseRaf);
     document.removeEventListener('visibilitychange', this.onVisibility);
+    document.removeEventListener('pointerdown', this.onAnyPointer, { capture: true });
+    document.removeEventListener('touchstart', this.onAnyPointer, { capture: true });
+    document.body.classList.remove('deep-idle');
     this.stateObserver?.disconnect();
     this.stateObserver = null;
     window.removeEventListener('resize', this.resize);

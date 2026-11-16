@@ -37,6 +37,22 @@ export class CountdownController {
     })();
 
     this.tick();
+    this.startTimer();
+    document.addEventListener('visibilitychange', this.onVisibilityChange);
+  }
+
+  private readonly onVisibilityChange = (): void => {
+    if (document.hidden) {
+      window.clearInterval(this.timerId);
+      this.timerId = 0;
+    } else {
+      this.tick();
+      this.startTimer();
+    }
+  };
+
+  private startTimer(): void {
+    if (this.timerId || document.hidden) return;
     this.timerId = window.setInterval(() => {
       if (!document.hidden) this.tick();
     }, 1000);
@@ -46,10 +62,27 @@ export class CountdownController {
     if (el.dataset.v === val) return;
     const prev = el.dataset.v;
     el.dataset.v = val;
-    el.innerHTML =
-      prev !== undefined && !this.reducedMotion
-        ? `<span class="o-old">${prev}</span><span class="o-new">${val}</span>`
-        : `<span>${val}</span>`;
+    if (prev === undefined || this.reducedMotion) {
+      el.textContent = val;
+      return;
+    }
+    let oldSpan = el.firstElementChild as HTMLElement | null;
+    let newSpan = el.lastElementChild as HTMLElement | null;
+    if (!oldSpan || !newSpan || oldSpan === newSpan) {
+      el.innerHTML = '<span></span><span></span>';
+      oldSpan = el.firstElementChild as HTMLElement;
+      newSpan = el.lastElementChild as HTMLElement;
+    }
+    const sOld = oldSpan;
+    const sNew = newSpan;
+    sOld.textContent = prev;
+    sNew.textContent = val;
+    sOld.className = '';
+    sNew.className = '';
+    requestAnimationFrame(() => {
+      sOld.className = 'o-old';
+      sNew.className = 'o-new';
+    });
   }
 
   private renderWreath(p: number): void {
@@ -151,6 +184,8 @@ export class CountdownController {
 
   public destroy(): void {
     window.clearInterval(this.timerId);
+    this.timerId = 0;
+    document.removeEventListener('visibilitychange', this.onVisibilityChange);
   }
 }
 
