@@ -40,6 +40,7 @@ import { currentDecimalHour, formatHour, getSolarTimes } from './sky/solar';
 import type { StarKind, StarRecord, Who } from './types';
 import { initComposeSheet, type ComposeController } from './ui/composeSheet';
 import { CountdownController } from './ui/countdown';
+import { DiagOverlay } from './ui/diag';
 import { $, setInert } from './ui/dom';
 import { showFloatNote } from './ui/floatNote';
 import { GardenController } from './ui/garden';
@@ -63,6 +64,7 @@ let composeCtrl: ComposeController | null = null;
 let letterCtrl: LetterController | null = null;
 let gardenCtrl: GardenController | null = null;
 let candleHeartCtrl: CandleWhiteHeartController | null = null;
+let diagOverlay: DiagOverlay | null = null;
 let captionTimer = 0;
 let greetPending = false;
 let planeInterval = 0;
@@ -685,6 +687,8 @@ async function bootstrap(): Promise<void> {
     unsubRealtime = null;
     candleHeartCtrl?.destroy();
     candleHeartCtrl = null;
+    diagOverlay?.close();
+    diagOverlay = null;
     clearActiveSyncWhiteHeart();
     skyEngine?.destroy();
     skyEngine = null;
@@ -998,6 +1002,12 @@ async function bootstrap(): Promise<void> {
     const pushYesBtn = $('#push-yes') as HTMLButtonElement;
     const pushLaterBtn = $('#push-later') as HTMLButtonElement;
 
+    $('#s-diag').addEventListener('click', () => {
+      closeSettingsFn?.();
+      if (!diagOverlay) diagOverlay = new DiagOverlay();
+      window.setTimeout(() => diagOverlay?.open(), 120);
+    });
+
     $('#s-out').addEventListener('click', async () => {
       closeSettingsFn?.();
       pushNudgeEl.hidden = true;
@@ -1114,11 +1124,7 @@ async function bootstrap(): Promise<void> {
     onboard.hide();
     refreshUiStatus();
     skyEngine?.resize();
-    updateOlcBox?.();
-    window.setTimeout(() => {
-      skyEngine?.refreshCachedPositions();
-      updateOlcBox?.();
-    }, 150);
+    window.setTimeout(() => skyEngine?.refreshCachedPositions(), 100);
 
     stars = await fetchAllStars(who);
     syncSkyStars();
@@ -1250,44 +1256,6 @@ async function bootstrap(): Promise<void> {
     stopGlobalTimers();
     if (appMounted) markSeen();
   });
-
-  // ?olc=1 geçici ekran/kapsayıcı teşhisi (parametre yoksa DOM'a asla eklenmez)
-  let updateOlcBox: (() => void) | null = null;
-  if (new URLSearchParams(window.location.search).get('olc') === '1') {
-    const probe = document.createElement('div');
-    probe.style.cssText =
-      'position:fixed;inset:0;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);';
-    document.body.appendChild(probe);
-
-    const box = document.createElement('pre');
-    box.id = 'olc-box';
-    box.style.cssText =
-      'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:9999;max-width:90vw;margin:0;padding:12px 14px;border-radius:14px;background:rgba(4,10,18,.92);border:1px solid rgba(255,255,255,.28);color:#eaf6ff;font:600 11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;pointer-events:none;';
-    document.body.appendChild(box);
-
-    const btm = (sel: string) => {
-      const el = document.querySelector(sel);
-      return el ? el.getBoundingClientRect().bottom.toFixed(1) : 'yok';
-    };
-
-    updateOlcBox = () => {
-      const cs = getComputedStyle(probe);
-      const navExt = navigator as Navigator & { standalone?: boolean };
-      box.textContent = [
-        `screen.height: ${window.screen.height}`,
-        `innerHeight: ${window.innerHeight}`,
-        `clientHeight: ${document.documentElement.clientHeight}`,
-        `vv.height: ${window.visualViewport ? window.visualViewport.height.toFixed(1) : 'yok'}`,
-        `safe-top: ${cs.paddingTop} | safe-bottom: ${cs.paddingBottom}`,
-        `bottom html:${btm('html')} body:${btm('body')}`,
-        `bottom #scene:${btm('#scene')} #ground:${btm('#ground')}`,
-        `navigator.standalone: ${String(navExt.standalone ?? false)}`,
-      ].join('\n');
-    };
-    window.addEventListener('resize', updateOlcBox);
-    window.addEventListener('orientationchange', () => window.setTimeout(() => updateOlcBox?.(), 80));
-    updateOlcBox();
-  }
 
   // Startup restoration
   const keyLoaded = await loadSavedKey();
