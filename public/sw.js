@@ -51,8 +51,8 @@ self.addEventListener('fetch', (event) => {
   // Never cache Supabase API, Realtime, Storage, or external font/API requests aggressively as shell
   if (url.origin !== self.location.origin) return;
 
-  // Navigation requests: network first bypassing HTTP cache with offline shell fallback
-  if (request.mode === 'navigate') {
+  // HTML shell requests: ALWAYS network-first bypassing HTTP cache, offline fallback only
+  if (request.mode === 'navigate' || url.pathname === '/' || url.pathname === '/index.html') {
     event.respondWith(
       fetch(new Request(request, { cache: 'no-store' }))
         .then((res) => {
@@ -62,7 +62,7 @@ self.addEventListener('fetch', (event) => {
           }
           return res;
         })
-        .catch(() => caches.match('/index.html'))
+        .catch(() => caches.match('/index.html').then((r) => r || caches.match('/')))
     );
     return;
   }
