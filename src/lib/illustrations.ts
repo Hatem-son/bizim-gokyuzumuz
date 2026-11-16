@@ -2,20 +2,22 @@ export const HEART_PATH =
   'M12 21s-7.6-4.7-9.7-9.3C.9 8.4 3 5 6.5 5c2 0 3.6 1.1 4.6 2.6C12 6.1 13.6 5 15.6 5 19 5 21.1 8.4 19.7 11.7 17.6 16.3 12 21 12 21z';
 
 const PETAL_PATH =
-  'M0 0 C 9 -6, 15 -22, 8 -38 C 5 -44, 2 -48, 0 -50 C -2 -48, -5 -44, -8 -38 C -15 -22, -9 -6, 0 0Z';
+  'M0 0 C 9.5 -7, 16 -22, 8.5 -39 C 5 -46, 2 -50, 0 -53 C -2 -50, -5 -46, -8.5 -39 C -16 -22, -9.5 -7, 0 0Z';
 
 const LILY_SPOTS = [
-  [2.6, -12, 0.6, 1.4, 10],
-  [-2.4, -15, 0.55, 1.3, -8],
-  [1.6, -20, 0.5, 1.1, 6],
-  [-1.2, -9, 0.5, 1.1, -4],
-  [3.6, -17, 0.45, 1, 14],
-  [-3.2, -21, 0.4, 0.9, -12],
-  [0.4, -25, 0.4, 0.8, 0],
+  [2.6, -12, 0.65, 1.5, 10],
+  [-2.4, -15, 0.6, 1.4, -8],
+  [1.8, -20, 0.55, 1.2, 6],
+  [-1.3, -9, 0.52, 1.1, -4],
+  [3.7, -18, 0.48, 1.05, 14],
+  [-3.3, -22, 0.44, 0.95, -12],
+  [0.4, -26, 0.44, 0.85, 0],
+  [4.4, -13, 0.4, 0.8, 18],
+  [-4.1, -14, 0.4, 0.8, -16],
 ]
   .map(
     ([x, y, rx, ry, r]) =>
-      `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" transform="rotate(${r} ${x} ${y})" fill="var(--spot)" opacity=".85"/>`
+      `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" transform="rotate(${r} ${x} ${y})" fill="var(--spot)" opacity=".88"/>`
   )
   .join('');
 
@@ -23,10 +25,10 @@ export function sharedSvgDefs(): string {
   return `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
     <linearGradient id="gPetal" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--petal-base)"/><stop offset=".42" style="stop-color:var(--petal-mid)"/><stop offset="1" style="stop-color:var(--petal-tip)"/></linearGradient>
     <linearGradient id="gPetalB" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--petal-base)"/><stop offset=".45" style="stop-color:var(--petal-mid2)"/><stop offset="1" style="stop-color:var(--petal-tip2)"/></linearGradient>
-    <linearGradient id="gZambak" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#d8e6b4"/><stop offset=".32" stop-color="#f7f5ea"/><stop offset="1" stop-color="#ffffff"/></linearGradient>
-    <linearGradient id="gZambakB" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#c3d4a2"/><stop offset=".38" stop-color="#eae7da"/><stop offset="1" stop-color="#f7f6ef"/></linearGradient>
-    <radialGradient id="gThroat"><stop offset="0" stop-color="#eef7b8"/><stop offset="1" stop-color="#eef7b8" stop-opacity="0"/></radialGradient>
-    <radialGradient id="gZambakThroat"><stop offset="0" stop-color="#e8f3a0" stop-opacity=".95"/><stop offset=".55" stop-color="#f6f9d6" stop-opacity=".45"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+    <linearGradient id="gZambak" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#d2e4ab"/><stop offset=".26" stop-color="#f6f4e8"/><stop offset=".7" stop-color="#ffffff"/><stop offset="1" stop-color="#fffef9"/></linearGradient>
+    <linearGradient id="gZambakB" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#bdd29a"/><stop offset=".34" stop-color="#e8e5d6"/><stop offset="1" stop-color="#f8f7f0"/></linearGradient>
+    <radialGradient id="gThroat"><stop offset="0" stop-color="#f1f8be"/><stop offset="1" stop-color="#eef7b8" stop-opacity="0"/></radialGradient>
+    <radialGradient id="gZambakThroat"><stop offset="0" stop-color="#e2f18e" stop-opacity=".95"/><stop offset=".55" stop-color="#f7fadc" stop-opacity=".55"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
     <linearGradient id="gLeaf" x1="0" y1="1" x2="1" y2="0"><stop offset="0" style="stop-color:var(--leaf-1)"/><stop offset="1" style="stop-color:var(--leaf-2)"/></linearGradient>
     <linearGradient id="gBud" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--leaf-2)"/><stop offset=".55" style="stop-color:var(--petal-mid)"/><stop offset="1" style="stop-color:var(--petal-tip)"/></linearGradient>
     <radialGradient id="gDrupe" cx=".36" cy=".32" r=".75"><stop offset="0" stop-color="#ff9ab4"/><stop offset=".35" stop-color="#ef3a6c"/><stop offset=".8" stop-color="#b01248"/><stop offset="1" stop-color="#6e0628"/></radialGradient>
@@ -107,9 +109,9 @@ export function lilyBloomSvg(
   order.forEach((i, k) => {
     const back = i % 2 === 1;
     petals += `<g transform="rotate(${angles[i] + 90})"><g class="${petalCls}" style="--i:${k};--r0:${k % 2 ? 22 : -22}deg">
-      <path d="${PETAL_PATH}" fill="url(#${back ? 'gPetalB' : 'gPetal'})"/>
-      <path d="M1 -3 C 8 -9, 12 -22, 7 -36" fill="none" stroke="#fff" stroke-opacity=".38" stroke-width=".8"/>
-      <path d="M0 -5 Q 1 -26 0 -46" fill="none" stroke="var(--rib)" stroke-opacity=".4" stroke-width=".7"/>${LILY_SPOTS}</g></g>`;
+      <path d="${PETAL_PATH}" fill="url(#${back ? 'gPetalB' : 'gPetal'})" stroke="rgba(255,255,255,.28)" stroke-width=".45"/>
+      <path d="M1.4 -3 C 8.5 -9.5, 13 -23, 7.5 -38" fill="none" stroke="#fff" stroke-opacity=".46" stroke-width=".85"/>
+      <path d="M0 -5 Q .8 -27 0 -48" fill="none" stroke="var(--rib)" stroke-opacity=".48" stroke-width=".75"/>${LILY_SPOTS}</g></g>`;
   });
 
   let stamens = '';
@@ -119,10 +121,57 @@ export function lilyBloomSvg(
     const len = k % 2 ? 19 : 23;
     const x = +(Math.cos(rad) * len).toFixed(1);
     const y = +(Math.sin(rad) * len).toFixed(1);
-    stamens += `<path d="M0 0 Q ${(x * 0.5).toFixed(1)} ${(y * 0.5 - 5).toFixed(1)} ${x} ${y}" fill="none" stroke="#eaf3c8" stroke-width=".9"/>
-      <ellipse cx="${x}" cy="${y}" rx="2.7" ry="1.1" fill="#a9481f" transform="rotate(${deg} ${x} ${y})"/>`;
+    stamens += `<path d="M0 0 Q ${(x * 0.5).toFixed(1)} ${(y * 0.5 - 5).toFixed(1)} ${x} ${y}" fill="none" stroke="#eef7cc" stroke-width=".95"/>
+      <ellipse cx="${x}" cy="${y}" rx="2.9" ry="1.15" fill="#b44b1e" transform="rotate(${deg} ${x} ${y})"/>
+      <circle cx="${(x - Math.cos(rad) * 0.6).toFixed(1)}" cy="${(y - Math.sin(rad) * 0.6).toFixed(1)}" r=".7" fill="#ffd98a"/>`;
   }
 
-  return `<g transform="translate(${cx} ${cy}) scale(${scale})" ${extra}><g transform="scale(1 .9)">${petals}<circle r="10" fill="url(#gThroat)"/></g><g class="${stamenCls}">${stamens}<circle r="2.3" fill="#d8eca4"/></g></g>`;
+  return `<g transform="translate(${cx} ${cy}) scale(${scale})" ${extra}><g transform="scale(1 .9)">${petals}<circle r="11" fill="url(#gThroat)"/></g><g class="${stamenCls}">${stamens}<circle r="2.5" fill="#d8eca4"/><circle cx="-.6" cy="-.6" r=".85" fill="#f5fce0"/></g></g>`;
+}
+
+const ZAMBAK_SPECKS = [
+  [1.8, -11, 0.45, 1.0, 8],
+  [-1.7, -14, 0.4, 0.95, -7],
+  [1.2, -18, 0.35, 0.85, 5],
+  [-1.0, -8, 0.4, 0.8, -4],
+]
+  .map(
+    ([x, y, rx, ry, r]) =>
+      `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" transform="rotate(${r} ${x} ${y})" fill="#c9d58f" opacity=".62"/>`
+  )
+  .join('');
+
+export function whiteZambakSvg(
+  cx: number,
+  cy: number,
+  scale: number,
+  petalCls = 'sp',
+  stamenCls = 'sp-st',
+  extra = ''
+): string {
+  const angles = [-90, -30, 30, 90, 150, 210];
+  const order = [1, 3, 5, 0, 2, 4];
+  let petals = '';
+  order.forEach((i, k) => {
+    const back = i % 2 === 1;
+    petals += `<g transform="rotate(${angles[i] + 90})"><g class="${petalCls}" style="--i:${k};--r0:${k % 2 ? 20 : -20}deg">
+      <path d="${PETAL_PATH}" fill="url(#${back ? 'gZambakB' : 'gZambak'})" stroke="rgba(226,232,210,.55)" stroke-width=".55"/>
+      <path d="M1.4 -3 C 8.5 -10, 13 -24, 7.4 -39" fill="none" stroke="#ffffff" stroke-opacity=".7" stroke-width=".9"/>
+      <path d="M0 -5 Q .7 -27 0 -48" fill="none" stroke="#d5e2a6" stroke-opacity=".65" stroke-width=".8"/>${ZAMBAK_SPECKS}</g></g>`;
+  });
+
+  let stamens = '';
+  for (let k = 0; k < 6; k++) {
+    const deg = k * 60 + 20;
+    const rad = (deg * Math.PI) / 180;
+    const len = k % 2 ? 18 : 22.5;
+    const x = +(Math.cos(rad) * len).toFixed(1);
+    const y = +(Math.sin(rad) * len).toFixed(1);
+    stamens += `<path d="M0 0 Q ${(x * 0.5).toFixed(1)} ${(y * 0.5 - 5).toFixed(1)} ${x} ${y}" fill="none" stroke="#d8e7a5" stroke-width="1"/>
+      <ellipse cx="${x}" cy="${y}" rx="3.0" ry="1.25" fill="#dc9b1d" transform="rotate(${deg} ${x} ${y})"/>
+      <circle cx="${(x - Math.cos(rad) * 0.65).toFixed(1)}" cy="${(y - Math.sin(rad) * 0.65).toFixed(1)}" r=".9" fill="#fff7cc"/>`;
+  }
+
+  return `<g transform="translate(${cx} ${cy}) scale(${scale})" ${extra}><g transform="scale(1 .9)">${petals}<circle r="11.5" fill="url(#gZambakThroat)"/></g><g class="${stamenCls}">${stamens}<circle r="2.6" fill="#c7de8a"/><circle cx="-.6" cy="-.6" r=".9" fill="#f7fce2"/></g></g>`;
 }
 

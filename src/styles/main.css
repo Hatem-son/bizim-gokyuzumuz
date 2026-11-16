@@ -197,6 +197,8 @@ body {
 body.dive-prep #scene {
   transform: scale3d(1.13, 1.13, 1);
   opacity: 0;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
 }
 
 body.dive-prep #scene.dive-ready,
@@ -209,6 +211,8 @@ body.dive-prep.dive-go #scene {
 body.dive-prep .ground {
   transform: translate3d(0, 18px, 0);
   opacity: 0;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
 }
 
 body.dive-prep.dive-go .ground {
@@ -217,7 +221,7 @@ body.dive-prep.dive-go .ground {
   transition: transform 1.05s cubic-bezier(.16, 1, .3, 1), opacity .75s var(--ease);
 }
 
-/* PWA kurulu açılış sahne kapısı (yalnızca transform/opacity, blur yok) */
+/* PWA kurulu açılış sahne kapısı (saate göre gökyüzü tonu, yalnızca transform/opacity, blur yok) */
 .launch-splash {
   position: absolute;
   inset: 0;
@@ -227,11 +231,37 @@ body.dive-prep.dive-go .ground {
   place-items: center;
   padding: env(safe-area-inset-top) 24px env(safe-area-inset-bottom);
   background:
-    radial-gradient(110% 45% at 50% 105%, rgba(62, 84, 128, .34) 0%, transparent 62%),
-    linear-gradient(180deg, var(--sky-1) 0%, var(--sky-2) 56%, var(--ground-bottom) 100%);
+    radial-gradient(112% 46% at 50% 102%, rgba(62, 84, 128, .36) 0%, transparent 64%),
+    linear-gradient(180deg, var(--ls-sky-1, var(--sky-1)) 0%, var(--ls-sky-2, var(--sky-2)) 48%, var(--ls-sky-3, var(--sky-3)) 82%, var(--ground-bottom) 100%);
   pointer-events: none;
   opacity: 1;
+  will-change: opacity;
+  backface-visibility: hidden;
   transition: opacity .72s var(--ease) .12s;
+}
+
+.launch-splash[data-sky-phase="night"] {
+  background:
+    radial-gradient(112% 48% at 50% 100%, rgba(62, 84, 128, .38) 0%, transparent 64%),
+    linear-gradient(180deg, var(--ls-sky-1, var(--sky-1)) 0%, var(--ls-sky-2, var(--sky-2)) 50%, var(--ls-sky-3, var(--sky-3)) 84%, var(--ground-bottom) 100%);
+}
+
+.launch-splash[data-sky-phase="dawn"] {
+  background:
+    radial-gradient(122% 52% at 50% 96%, rgba(255, 198, 174, .42) 0%, rgba(186, 136, 206, .18) 46%, transparent 74%),
+    linear-gradient(180deg, var(--ls-sky-1, var(--sky-1)) 0%, var(--ls-sky-2, var(--sky-2)) 42%, var(--ls-sky-3, var(--sky-3)) 76%, var(--ls-horizon, var(--horizon)) 100%);
+}
+
+.launch-splash[data-sky-phase="day"] {
+  background:
+    radial-gradient(115% 48% at 50% 18%, rgba(255, 250, 224, .22) 0%, transparent 62%),
+    linear-gradient(180deg, var(--ls-sky-1, var(--sky-1)) 0%, var(--ls-sky-2, var(--sky-2)) 40%, var(--ls-sky-3, var(--sky-3)) 78%, #163a5c 100%);
+}
+
+.launch-splash[data-sky-phase="dusk"] {
+  background:
+    radial-gradient(120% 52% at 50% 98%, rgba(255, 138, 108, .44) 0%, rgba(132, 68, 142, .24) 48%, transparent 74%),
+    linear-gradient(180deg, var(--ls-sky-1, var(--sky-1)) 0%, var(--ls-sky-2, var(--sky-2)) 44%, var(--ls-sky-3, var(--sky-3)) 78%, var(--ls-horizon, var(--horizon)) 100%);
 }
 
 .launch-splash[hidden] {
@@ -244,6 +274,8 @@ body.dive-prep.dive-go .ground {
   align-items: center;
   text-align: center;
   transform: scale3d(1, 1, 1);
+  will-change: transform, opacity;
+  backface-visibility: hidden;
   transition: transform .88s cubic-bezier(.16, 1, .3, 1), opacity .65s var(--ease);
 }
 
@@ -257,14 +289,32 @@ body.dive-prep.dive-go .ground {
 }
 
 .ls-orb {
-  width: 68px;
-  height: 68px;
+  width: 72px;
+  height: 72px;
   border-radius: 50%;
   display: grid;
   place-items: center;
   margin-bottom: 14px;
-  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, .20), rgba(168, 212, 255, .06) 56%, transparent 72%);
+  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, .22), rgba(168, 212, 255, .07) 56%, transparent 74%);
+  box-shadow: 0 0 0 1px rgba(214, 232, 255, .14);
+  will-change: transform, opacity;
+  backface-visibility: hidden;
   animation: lsPulse 2.2s ease-in-out infinite;
+}
+
+.launch-splash[data-sky-phase="dawn"] .ls-orb {
+  background: radial-gradient(circle at 50% 50%, rgba(255, 236, 224, .34), rgba(255, 174, 186, .14) 58%, transparent 76%);
+  box-shadow: 0 0 0 1px rgba(255, 214, 206, .24);
+}
+
+.launch-splash[data-sky-phase="day"] .ls-orb {
+  background: radial-gradient(circle at 50% 50%, rgba(255, 248, 214, .44), rgba(255, 224, 152, .18) 58%, transparent 78%);
+  box-shadow: 0 0 0 1px rgba(255, 244, 198, .28);
+}
+
+.launch-splash[data-sky-phase="dusk"] .ls-orb {
+  background: radial-gradient(circle at 50% 50%, rgba(255, 214, 168, .38), rgba(255, 138, 148, .15) 56%, transparent 76%);
+  box-shadow: 0 0 0 1px rgba(255, 188, 164, .22);
 }
 
 .ls-orb svg {
@@ -275,6 +325,18 @@ body.dive-prep.dive-go .ground {
 
 .ls-star {
   fill: rgba(255, 255, 255, .28);
+}
+
+.launch-splash[data-sky-phase="dawn"] .ls-star {
+  fill: rgba(255, 228, 216, .42);
+}
+
+.launch-splash[data-sky-phase="day"] .ls-star {
+  fill: rgba(255, 244, 192, .48);
+}
+
+.launch-splash[data-sky-phase="dusk"] .ls-star {
+  fill: rgba(255, 206, 172, .42);
 }
 
 .ls-heart {
@@ -296,6 +358,37 @@ body.dive-prep.dive-go .ground {
   font-size: clamp(44px, 12vw, 56px);
   line-height: 1.3;
   color: var(--ink);
+}
+
+.ls-sub {
+  margin: 10px 0 0;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .26em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  opacity: .92;
+}
+
+.launch-splash[data-sky-phase="dawn"] .ls-inner,
+.launch-splash[data-sky-phase="dusk"] .ls-inner {
+  text-shadow: 0 2px 14px rgba(18, 8, 28, .34);
+}
+
+.launch-splash[data-sky-phase="day"] .ls-eyebrow {
+  color: rgba(255, 255, 255, .92);
+}
+
+.launch-splash[data-sky-phase="day"] .ls-title {
+  color: #ffffff;
+}
+
+.launch-splash[data-sky-phase="day"] .ls-sub {
+  color: rgba(255, 255, 255, .82);
+}
+
+.launch-splash[data-sky-phase="day"] .ls-inner {
+  text-shadow: 0 2px 14px rgba(8, 30, 62, .32);
 }
 
 @keyframes lsPulse {
@@ -609,7 +702,7 @@ body:not(.awake) .compass {
   display: flex;
   align-items: center;
   gap: 11px;
-  padding: 5px 18px 5px 5px;
+  padding: 6px 22px 6px 6px;
   border-radius: 999px;
   cursor: pointer;
   text-align: left;
@@ -663,22 +756,49 @@ body:not(.awake) .compass {
 
 .cd-sprig {
   position: absolute;
-  right: -16px;
-  top: -18px;
+  right: -17px;
+  top: -16px;
   width: 54px;
   height: 54px;
   overflow: visible;
   pointer-events: none;
+  transform-origin: 24% 78%;
+  will-change: transform;
+  backface-visibility: hidden;
+  animation: cdSprigSway 8.2s ease-in-out infinite;
 }
 
 .cd-sprig2 {
   position: absolute;
-  right: 20px;
+  right: 16px;
   bottom: -14px;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   overflow: visible;
   pointer-events: none;
+  transform-origin: 35% 20%;
+  will-change: transform;
+  backface-visibility: hidden;
+  animation: cdSprigSway 7.4s ease-in-out -2.6s infinite;
+}
+
+.cd-sprig3 {
+  position: absolute;
+  left: -13px;
+  bottom: -11px;
+  width: 34px;
+  height: 34px;
+  overflow: visible;
+  pointer-events: none;
+  transform-origin: 72% 24%;
+  will-change: transform;
+  backface-visibility: hidden;
+  animation: cdSprigSway 8.8s ease-in-out -4.1s infinite;
+}
+
+@keyframes cdSprigSway {
+  0%, 100% { transform: rotate3d(0, 0, 1, -1.6deg); }
+  50% { transform: rotate3d(0, 0, 1, 1.8deg); }
 }
 
 .cd-days {
@@ -722,12 +842,12 @@ body:not(.awake) .compass {
 .cd-time {
   display: flex;
   align-items: center;
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   color: var(--ink-soft);
   margin-top: 3px;
-  letter-spacing: .02em;
+  letter-spacing: .04em;
 }
 
 .cd-time .dgt {
@@ -766,14 +886,6 @@ body:not(.awake) .compass {
   font-style: normal;
   margin: 0 3px;
   opacity: .45;
-}
-
-.cd-time .unit {
-  font-size: 9px;
-  font-weight: 900;
-  letter-spacing: .12em;
-  color: var(--ink-faint);
-  margin-left: 6px;
 }
 
 /* ---------- Ground Lilies, Garden & Jar Candle ---------- */
@@ -923,6 +1035,8 @@ body.awake .stamens,
 .candle-flame {
   transform-box: fill-box;
   transform-origin: 50% 95%;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
   opacity: 0;
 }
 
@@ -936,15 +1050,15 @@ body.awake .candle-flame.flare {
 }
 
 @keyframes flameFlicker {
-  0%, 100% { transform: scale(1, 1) rotate(-1.5deg); opacity: .9; }
-  35% { transform: scale(.96, 1.07) rotate(1.8deg); opacity: 1; }
-  70% { transform: scale(1.03, .97) rotate(-1.2deg); opacity: .86; }
+  0%, 100% { transform: scale3d(1, 1, 1) rotate3d(0, 0, 1, -1.5deg); opacity: .9; }
+  35% { transform: scale3d(.96, 1.07, 1) rotate3d(0, 0, 1, 1.8deg); opacity: 1; }
+  70% { transform: scale3d(1.03, .97, 1) rotate3d(0, 0, 1, -1.2deg); opacity: .86; }
 }
 
 @keyframes flameFlare {
-  0% { transform: scale(1, 1); opacity: .92; }
-  35% { transform: scale(1.18, 1.32) rotate(2deg); opacity: 1; }
-  100% { transform: scale(1, 1); opacity: .94; }
+  0% { transform: scale3d(1, 1, 1); opacity: .92; }
+  35% { transform: scale3d(1.18, 1.32, 1) rotate3d(0, 0, 1, 2deg); opacity: 1; }
+  100% { transform: scale3d(1, 1, 1); opacity: .94; }
 }
 
 .jar-label {
@@ -2044,10 +2158,16 @@ body.kb-active #onboard .link-btn {
 /* Pause background DOM animations when a sheet, modal, lock, or 20s deep-idle covers/quiets the view */
 body.quiet .lily,
 body.quiet .flower-stem,
+body.quiet .cd-sprig,
+body.quiet .cd-sprig2,
+body.quiet .cd-sprig3,
 body.quiet .cdf,
 body.quiet .candle-flame,
 body.deep-idle .lily,
 body.deep-idle .flower-stem,
+body.deep-idle .cd-sprig,
+body.deep-idle .cd-sprig2,
+body.deep-idle .cd-sprig3,
 body.deep-idle .cdf,
 body.deep-idle .candle-flame {
   animation-play-state: paused !important;
@@ -2056,6 +2176,10 @@ body.deep-idle .candle-flame {
 @media (prefers-reduced-motion: reduce) {
   .lily,
   .flower-stem,
+  .cd-sprig,
+  .cd-sprig2,
+  .cd-sprig3,
+  .candle-flame,
   .ls-orb,
   .ob h1,
   .ob > *,

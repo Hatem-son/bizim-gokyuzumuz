@@ -40,8 +40,9 @@
         <span class="cd-label" id="cd-label">9 Ocak'a</span>
         <span class="cd-time" id="cd-time"></span>
       </span>
-      <svg class="cd-sprig" id="cd-sprig" viewBox="-30 -30 60 60" aria-hidden="true"></svg>
-      <svg class="cd-sprig2" id="cd-sprig2" viewBox="-14 -14 28 28" aria-hidden="true"></svg>
+      <svg class="cd-sprig" id="cd-sprig" viewBox="-34 -34 68 68" aria-hidden="true"></svg>
+      <svg class="cd-sprig2" id="cd-sprig2" viewBox="-18 -18 36 36" aria-hidden="true"></svg>
+      <svg class="cd-sprig3" id="cd-sprig3" viewBox="-18 -18 36 36" aria-hidden="true"></svg>
     </button>
     <button class="icon-btn solid-glass" id="menu" type="button" aria-label="Ayarlar">
       <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg>
@@ -230,12 +231,12 @@
           <small>Hesaptan ve gizli kelimeden çıkar, giriş ekranına döner</small>
         </button>
       </div>
-      <button class="set-ver" id="s-ver" type="button">Bizim Gökyüzümüz · v1.1.6</button>
+      <button class="set-ver" id="s-ver" type="button">Bizim Gökyüzümüz · v1.1.7</button>
     </div>
   </div>
   </template>
 
-  <!-- Kurulum sonrası açılış "dive-in" sahne kapısı (yalnızca kurulu açılışta görünür, GPU transform/opacity) -->
+  <!-- Kurulum sonrası açılış "dive-in" sahne kapısı (günün saatine göre gökyüzü uyumlu, GPU transform/opacity) -->
   <div class="launch-splash" id="launch-splash" hidden aria-hidden="true">
     <div class="ls-inner">
       <div class="ls-orb" aria-hidden="true">
@@ -246,6 +247,7 @@
       </div>
       <p class="ls-eyebrow">HAM HAM &amp; BETO</p>
       <p class="ls-title">Bizim Gökyüzümüz</p>
+      <p class="ls-sub" id="ls-sub"></p>
     </div>
   </div>
 
@@ -300,7 +302,7 @@
         <button class="link-btn" id="ob-wipe" type="button" hidden>Yerel doğrulamayı sıfırla ve yeniden kur</button>
         <button class="link-btn" id="back" type="button">Geri dön</button>
       </form>
-      <p class="ob-ver" id="ob-ver">v1.1.6</p>
+      <p class="ob-ver" id="ob-ver">v1.1.7</p>
     </div>
   </section>
 

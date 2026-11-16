@@ -1,4 +1,4 @@
-import { HEART_PATH, lilyBloomSvg } from '../lib/illustrations';
+import { HEART_PATH, lilyBloomSvg, whiteZambakSvg } from '../lib/illustrations';
 import { $ } from './dom';
 
 export const TARGET_DATE = new Date(2027, 0, 9, 0, 0, 0);
@@ -24,17 +24,24 @@ export class CountdownController {
 
   constructor() {
     $('#cd-sprig').innerHTML =
-      `<path d="M-6 22 C -12 10, -20 4, -28 2 C -18 10, -12 16, -8 24Z" fill="url(#gLeaf)"/>` +
-      `<path d="M-4 24 C 2 12, 10 8, 20 8 C 10 14, 4 18, -2 26Z" fill="url(#gLeaf)" opacity=".9"/>` +
-      lilyBloomSvg(0, 0, 0.5, 'sp', 'sp-st');
+      `<path d="M-8 24 C -16 11, -24 5, -33 3 C -22 12, -16 18, -10 26Z" fill="url(#gLeaf)"/>` +
+      `<path d="M-4 24 C 3 11, 12 7, 23 7 C 12 14, 5 19, -2 27Z" fill="url(#gLeaf)" opacity=".92"/>` +
+      `<path d="M12 -4 C 18 -11, 23 -15, 25 -22 C 18 -16, 14 -10, 10 -4Z" fill="url(#gLeaf)" opacity=".85"/>` +
+      lilyBloomSvg(-1, -1, 0.54, 'sp', 'sp-st') +
+      whiteZambakSvg(18, 12, 0.32, 'sp', 'sp-st');
 
-    $('#cd-sprig2').innerHTML = (() => {
-      let petals = '';
-      for (let k = 0; k < 6; k++) {
-        petals += `<ellipse cx="0" cy="-5.6" rx="2.6" ry="6" transform="rotate(${k * 60 + 30})" fill="#fffdf6" stroke="rgba(200,180,120,.5)" stroke-width=".4"/>`;
-      }
-      return `<path d="M-2 4 C -8 8, -12 12, -14 16 C -8 14, -4 10, 0 6Z" fill="#5fae6e"/>${petals}<circle r="2" fill="#efc24a"/><circle r=".8" cx="1" cy="-.6" fill="#fff6c8"/>`;
-    })();
+    $('#cd-sprig2').innerHTML =
+      `<path d="M-2 5 C -10 9, -15 14, -17 19 C -10 16, -4 12, 1 7Z" fill="url(#gLeaf)"/>` +
+      `<path d="M3 4 C 10 8, 15 12, 17 17 C 11 14, 6 10, 1 6Z" fill="url(#gLeaf)" opacity=".86"/>` +
+      whiteZambakSvg(0, 0, 0.36, 'sp', 'sp-st');
+
+    const sprig3 = document.getElementById('cd-sprig3');
+    if (sprig3) {
+      sprig3.innerHTML =
+        `<path d="M2 5 C 9 10, 13 14, 15 18 C 8 15, 4 11, -1 7Z" fill="url(#gLeaf)"/>` +
+        `<path d="M-3 4 C -9 8, -13 12, -14 16 C -8 13, -4 9, 0 5Z" fill="url(#gLeaf)" opacity=".85"/>` +
+        whiteZambakSvg(0, 0, 0.32, 'sp', 'sp-st');
+    }
 
     this.tick();
     this.startTimer();
@@ -172,7 +179,7 @@ export class CountdownController {
       this.timeEl.innerHTML =
         '<span class="dgt"></span><span class="dgt"></span><i class="sep">:</i>' +
         '<span class="dgt"></span><span class="dgt"></span><i class="sep">:</i>' +
-        '<span class="dgt"></span><span class="dgt"></span><span class="unit">SA · DK · SN</span>';
+        '<span class="dgt"></span><span class="dgt"></span>';
       this.builtDigits = true;
     }
 

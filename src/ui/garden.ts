@@ -1,4 +1,4 @@
-import { HEART_PATH, lilyBloomSvg, raspberrySvg } from '../lib/illustrations';
+import { HEART_PATH, lilyBloomSvg, raspberrySvg, whiteZambakSvg } from '../lib/illustrations';
 import { journeyProgress, TARGET_DATE } from './countdown';
 import { $, $$ } from './dom';
 
@@ -8,33 +8,7 @@ export const LILY_MILESTONES: { n: number; side: 'l' | 'r' }[] = [
 ];
 
 function zambakBloomSvg(cx: number, cy: number, scale: number, extra = ''): string {
-  const petalPath =
-    'M0 0 C 9 -6, 15 -22, 8 -38 C 4.5 -45, 1.8 -49, 0 -52 C -1.8 -49, -4.5 -45, -8 -38 C -15 -22, -9 -6, 0 0Z';
-  const angles = [-90, -30, 30, 90, 150, 210];
-  const order = [1, 3, 5, 0, 2, 4];
-  let petals = '';
-  order.forEach((i, k) => {
-    const back = i % 2 === 1;
-    petals += `<g transform="rotate(${angles[i] + 90})"><g class="petal" style="--i:${k};--r0:${k % 2 ? 20 : -20}deg">
-      <path d="${petalPath}" fill="url(#${back ? 'gZambakB' : 'gZambak'})" stroke="rgba(220,226,204,.45)" stroke-width=".5"/>
-      <path d="M1.2 -3 C 8 -10, 12 -23, 7 -37" fill="none" stroke="#ffffff" stroke-opacity=".55" stroke-width=".8"/>
-      <path d="M0 -5 Q .6 -26 0 -47" fill="none" stroke="#d5dfad" stroke-opacity=".58" stroke-width=".75"/>
-    </g></g>`;
-  });
-
-  let stamens = '';
-  for (let k = 0; k < 6; k++) {
-    const deg = k * 60 + 20;
-    const rad = (deg * Math.PI) / 180;
-    const len = k % 2 ? 18 : 22;
-    const x = +(Math.cos(rad) * len).toFixed(1);
-    const y = +(Math.sin(rad) * len).toFixed(1);
-    stamens += `<path d="M0 0 Q ${(x * 0.5).toFixed(1)} ${(y * 0.5 - 5).toFixed(1)} ${x} ${y}" fill="none" stroke="#dbe9aa" stroke-width=".95"/>
-      <ellipse cx="${x}" cy="${y}" rx="2.9" ry="1.2" fill="#d99a1e" transform="rotate(${deg} ${x} ${y})"/>
-      <circle cx="${(x - Math.cos(rad) * 0.7).toFixed(1)}" cy="${(y - Math.sin(rad) * 0.7).toFixed(1)}" r=".85" fill="#fff5c4"/>`;
-  }
-
-  return `<g transform="translate(${cx} ${cy}) scale(${scale})" ${extra}><g transform="scale(1 .9)">${petals}<circle r="11" fill="url(#gZambakThroat)"/></g><g class="stamens">${stamens}<circle r="2.4" fill="#c7de8a"/><circle cx="-.6" cy="-.6" r=".8" fill="#f3fad4"/></g></g>`;
+  return whiteZambakSvg(cx, cy, scale, 'petal', 'stamens', extra);
 }
 
 function meadowBackdropSvg(): string {
@@ -88,7 +62,7 @@ function gardenFlowersHtml(): string {
           ? zambakBloomSvg(0, -stemH, sc, 'class="main-bloom"')
           : lilyBloomSvg(0, -stemH, sc, 'petal', 'stamens', 'class="main-bloom"');
         const leafY = -(stemH * 0.48);
-        return `<svg class="flower-stem" style="left:${leftPct}%;height:${vbH}px;--sd:${(-i * 1.25).toFixed(
+        return `<svg class="flower-stem" style="left:${leftPct}%;height:${vbH}px;--sd:${(-(x / 180) * 1.4).toFixed(
           2
         )}s;--dur:${dur}s" viewBox="-52 ${-(stemH + topPad)} 104 ${vbH}" aria-hidden="true">
           <path d="M${d * 4} 0 C 0 -48, ${-d * 6} ${-stemH + 38}, 0 ${-stemH}" stroke="var(--leaf-1)" stroke-width="2" fill="none"/>
@@ -152,27 +126,73 @@ function sideLilySvg(side: 'l' | 'r'): string {
 }
 
 function candleJarSvg(): string {
-  // Tek küçük SVG alev (yalnızca opacity/scale salınımı, blur/filtre yok)
+  // Özenli kristal kavanoz mum: kalın cam taban yansıması, çok katmanlı alev parıltısı ve altın çerçeveli etiket
   return `<svg class="candle" id="candle" viewBox="0 0 160 190" aria-hidden="true">
     <defs>
-      <linearGradient id="gJar" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity=".36"/><stop offset=".1" stop-color="#fff" stop-opacity=".1"/><stop offset=".5" stop-color="#fff" stop-opacity=".02"/><stop offset=".9" stop-color="#fff" stop-opacity=".1"/><stop offset="1" stop-color="#fff" stop-opacity=".32"/></linearGradient>
-      <linearGradient id="gWax2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff7ee"/><stop offset=".3" stop-color="#ffe9dd"/><stop offset="1" style="stop-color:var(--petal-mid)"/></linearGradient>
-      <radialGradient id="gWaxGlow" cx=".5" cy="0" r="1"><stop offset="0" stop-color="#ffcf86" stop-opacity=".85"/><stop offset=".45" stop-color="#ffb07a" stop-opacity=".22"/><stop offset="1" stop-color="#ffb07a" stop-opacity="0"/></radialGradient>
-      <radialGradient id="gPool"><stop offset="0" stop-color="#ffe4ad"/><stop offset=".65" stop-color="#ffd08c" stop-opacity=".85"/><stop offset="1" stop-color="#fff3e2" stop-opacity="0"/></radialGradient>
-      <linearGradient id="gLabel" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#efe3d6"/><stop offset=".5" stop-color="#fdf7f0"/><stop offset="1" stop-color="#e8dacb"/></linearGradient>
-      <linearGradient id="gFlame" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#6b95ff" stop-opacity=".85"/><stop offset=".22" stop-color="#ff9a3c" stop-opacity=".95"/><stop offset=".75" stop-color="#ffc15e" stop-opacity=".92"/><stop offset="1" stop-color="#ff7a2e" stop-opacity="0"/></linearGradient>
-      <clipPath id="cJar"><path d="M43 86 Q43 80 49 80 L111 80 Q117 80 117 86 L117 168 Q117 178 107 178 L53 178 Q43 178 43 168Z"/></clipPath>
+      <linearGradient id="gJar" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#fff" stop-opacity=".42"/>
+        <stop offset=".08" stop-color="#fff" stop-opacity=".14"/>
+        <stop offset=".48" stop-color="#fff" stop-opacity=".02"/>
+        <stop offset=".9" stop-color="#fff" stop-opacity=".13"/>
+        <stop offset="1" stop-color="#fff" stop-opacity=".36"/>
+      </linearGradient>
+      <linearGradient id="gJarRim" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#fff" stop-opacity=".72"/>
+        <stop offset=".5" stop-color="#fff" stop-opacity=".28"/>
+        <stop offset="1" stop-color="#fff" stop-opacity=".68"/>
+      </linearGradient>
+      <linearGradient id="gWax2" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#fffaf3"/>
+        <stop offset=".26" stop-color="#ffeadd"/>
+        <stop offset=".75" style="stop-color:var(--petal-mid)"/>
+        <stop offset="1" style="stop-color:var(--petal-base)" stop-opacity=".55"/>
+      </linearGradient>
+      <radialGradient id="gWaxGlow" cx=".5" cy="0" r="1">
+        <stop offset="0" stop-color="#ffd58f" stop-opacity=".95"/>
+        <stop offset=".42" stop-color="#ffb276" stop-opacity=".30"/>
+        <stop offset="1" stop-color="#ffb07a" stop-opacity="0"/>
+      </radialGradient>
+      <radialGradient id="gFlameHalo">
+        <stop offset="0" stop-color="#ffd885" stop-opacity=".36"/>
+        <stop offset=".45" stop-color="#ffaa5c" stop-opacity=".12"/>
+        <stop offset="1" stop-color="#ff9944" stop-opacity="0"/>
+      </radialGradient>
+      <radialGradient id="gPool">
+        <stop offset="0" stop-color="#fff0c8"/>
+        <stop offset=".6" stop-color="#ffd490" stop-opacity=".88"/>
+        <stop offset="1" stop-color="#fff3e2" stop-opacity="0"/>
+      </radialGradient>
+      <linearGradient id="gLabel" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#e9dccb"/>
+        <stop offset=".18" stop-color="#faf3ea"/>
+        <stop offset=".5" stop-color="#fffaf4"/>
+        <stop offset=".82" stop-color="#f8efe5"/>
+        <stop offset="1" stop-color="#e4d5c4"/>
+      </linearGradient>
+      <linearGradient id="gFlame" x1="0" y1="1" x2="0" y2="0">
+        <stop offset="0" stop-color="#6b95ff" stop-opacity=".9"/>
+        <stop offset=".2" stop-color="#ff9533" stop-opacity=".98"/>
+        <stop offset=".72" stop-color="#ffca66" stop-opacity=".95"/>
+        <stop offset="1" stop-color="#ff7a2e" stop-opacity="0"/>
+      </linearGradient>
+      <clipPath id="cJar"><path d="M43 86 Q43 80 49 80 L111 80 Q117 80 117 86 L117 167 Q117 176 107 176 L53 176 Q43 176 43 167Z"/></clipPath>
     </defs>
-    <path d="M40 84 Q40 76 48 76 L112 76 Q120 76 120 84 L120 168 Q120 182 106 182 L54 182 Q40 182 40 168Z" fill="rgba(255,255,255,.05)"/>
+    <!-- Hafif taban gölgesi ve sıcak mum ışıltısı -->
+    <ellipse cx="80" cy="183" rx="44" ry="4.5" fill="#040d11" opacity=".48"/>
+    <path d="M39 85 Q39 75 49 75 L111 75 Q121 75 121 85 L121 168 Q121 183 106 183 L54 183 Q39 183 39 168Z" fill="rgba(255,255,255,.06)"/>
     <g clip-path="url(#cJar)">
-      <path id="wax" fill="url(#gWax2)" d="M45 104 L115 104 L115 164 Q115 175 104 175 L56 175 Q45 175 45 164Z"/>
-      <rect id="waxglow" class="waxglow" x="43" y="100" width="74" height="46" fill="url(#gWaxGlow)"/>
+      <path id="wax" fill="url(#gWax2)" d="M45 104 L115 104 L115 163 Q115 174 104 174 L56 174 Q45 174 45 163Z"/>
+      <rect id="waxglow" class="waxglow" x="43" y="100" width="74" height="50" fill="url(#gWaxGlow)"/>
     </g>
-    <ellipse id="wax-top" cx="80" cy="104" rx="35" ry="5.4" fill="#fff4e8"/>
-    <ellipse id="pool" class="pool" cx="80" cy="104" rx="16" ry="2.9" fill="url(#gPool)"/>
-    <ellipse id="pool-hi" cx="74" cy="103.5" rx="5" ry=".7" fill="#fff" opacity=".4"/>
-    <path d="M43 126 Q80 131 117 126 L117 153 Q80 158 43 153Z" fill="url(#gLabel)"/>
-    <path d="M43 129 Q80 134 117 129 M43 150 Q80 155 117 150" stroke="var(--paper-accent)" stroke-opacity=".45" stroke-width=".7" fill="none"/>
+    <!-- Kalın kristal cam taban kırılması -->
+    <path d="M45 170 Q80 176 115 170 L113 176 Q80 182 47 176Z" fill="rgba(255,255,255,.16)"/>
+    <ellipse id="wax-top" cx="80" cy="104" rx="35" ry="5.5" fill="#fff6eb"/>
+    <ellipse id="pool" class="pool" cx="80" cy="104" rx="17" ry="3.1" fill="url(#gPool)"/>
+    <ellipse id="pool-hi" cx="73.5" cy="103.5" rx="5.5" ry=".75" fill="#fff" opacity=".48"/>
+    <!-- İnce kenarlı krem kağıt etiket -->
+    <path d="M42.5 125.5 Q80 130.8 117.5 125.5 L117.5 153.5 Q80 158.8 42.5 153.5Z" fill="url(#gLabel)"/>
+    <path d="M42.5 127.8 Q80 133.1 117.5 127.8 M42.5 151.2 Q80 156.5 117.5 151.2" stroke="var(--paper-accent)" stroke-opacity=".55" stroke-width=".75" fill="none"/>
+    <path d="M42.5 129.2 Q80 134.5 117.5 129.2 M42.5 149.8 Q80 155.1 117.5 149.8" stroke="#d9b26f" stroke-opacity=".42" stroke-width=".45" fill="none"/>
     <text x="64" y="147" text-anchor="middle" class="jar-label">B</text>
     <g transform="translate(74.4 135.2) scale(0.46)"><path class="jar-heart" d="${HEART_PATH}"/></g>
     <text x="96" y="147" text-anchor="middle" class="jar-label">H</text>
@@ -180,19 +200,22 @@ function candleJarSvg(): string {
     <g id="wick-pos">
       <path d="M80 104 Q78.6 98 80.8 92.6" stroke="#2a1d1a" stroke-width="2" fill="none" stroke-linecap="round"/>
       <g class="candle-flame" id="candle-flame" aria-hidden="true">
-        <path d="M80.8 60 C89.5 71 90.2 86 80.8 94 C71.4 86 72.1 71 80.8 60Z" fill="url(#gFlame)"/>
-        <path d="M80.8 73 C84.4 79.5 84.8 87.5 80.8 91.8 C76.8 87.5 77.2 79.5 80.8 73Z" fill="#fffbe6"/>
+        <circle cx="80.8" cy="80" r="24" fill="url(#gFlameHalo)"/>
+        <path d="M80.8 59 C90.2 70.5 90.8 86 80.8 94.2 C70.8 86 71.4 70.5 80.8 59Z" fill="url(#gFlame)"/>
+        <path d="M80.8 72.5 C84.8 79.5 85.2 87.5 80.8 92 C76.4 87.5 76.8 79.5 80.8 72.5Z" fill="#fffce8"/>
       </g>
-      <circle id="wick-tip" cx="80.8" cy="92.8" r="1.4" fill="#ff7a2e"/>
+      <circle id="wick-tip" cx="80.8" cy="92.8" r="1.45" fill="#ff7a2e"/>
     </g>
-    <path d="M40 84 Q40 76 48 76 L112 76 Q120 76 120 84 L120 168 Q120 182 106 182 L54 182 Q40 182 40 168Z" fill="url(#gJar)" stroke="rgba(255,255,255,.5)" stroke-width="1.2"/>
-    <ellipse cx="80" cy="77" rx="40" ry="5" fill="none" stroke="rgba(255,255,255,.6)" stroke-width="1.5"/>
-    <ellipse cx="80" cy="78.2" rx="36.5" ry="3.6" fill="none" stroke="rgba(255,255,255,.18)" stroke-width="1"/>
-    <path d="M44 173 Q80 180 116 173" stroke="rgba(255,255,255,.32)" stroke-width="3.2" fill="none" stroke-linecap="round"/>
-    <path d="M47 90 Q44.6 130 48.6 168" stroke="rgba(255,255,255,.55)" stroke-width="3" stroke-linecap="round" fill="none"/>
-    <path d="M113 94 Q115.4 118 113.4 140" stroke="rgba(255,255,255,.22)" stroke-width="2" stroke-linecap="round" fill="none"/>
-    <ellipse class="refl" cx="51.5" cy="98" rx="2.2" ry="7.5" fill="#ffd9a0" opacity=".45"/>
-    <ellipse class="refl" cx="109" cy="101" rx="1.6" ry="5.5" fill="#ffd9a0" opacity=".32"/>
+    <!-- Kavanoz cam dış gövde + kenar parlamaları + çift ağız dudak -->
+    <path d="M39 85 Q39 75 49 75 L111 75 Q121 75 121 85 L121 168 Q121 183 106 183 L54 183 Q39 183 39 168Z" fill="url(#gJar)" stroke="rgba(255,255,255,.55)" stroke-width="1.25"/>
+    <ellipse cx="80" cy="76.5" rx="41" ry="5.4" fill="none" stroke="url(#gJarRim)" stroke-width="1.7"/>
+    <ellipse cx="80" cy="78.2" rx="37.2" ry="3.8" fill="none" stroke="rgba(255,255,255,.22)" stroke-width="1"/>
+    <path d="M44 174 Q80 181.5 116 174" stroke="rgba(255,255,255,.42)" stroke-width="3.2" fill="none" stroke-linecap="round"/>
+    <path d="M46.5 89 Q44 130 48 168" stroke="rgba(255,255,255,.62)" stroke-width="2.8" stroke-linecap="round" fill="none"/>
+    <path d="M51.5 91 Q49.8 110 51 122" stroke="rgba(255,255,255,.26)" stroke-width="1.2" stroke-linecap="round" fill="none"/>
+    <path d="M113.5 93 Q115.8 118 113.8 142" stroke="rgba(255,255,255,.26)" stroke-width="2" stroke-linecap="round" fill="none"/>
+    <ellipse class="refl" cx="51.5" cy="98" rx="2.3" ry="7.8" fill="#ffd9a0" opacity=".5"/>
+    <ellipse class="refl" cx="109" cy="101" rx="1.7" ry="5.6" fill="#ffd9a0" opacity=".36"/>
     ${raspberrySvg(13, 170, 1.05, 'class="rasp"')}${raspberrySvg(32, 176, 0.86, 'class="rasp"')}${raspberrySvg(128, 176, 0.86, 'class="rasp"')}${raspberrySvg(147, 169, 1.05, 'class="rasp"')}
   </svg>`;
 }

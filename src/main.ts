@@ -36,7 +36,7 @@ import { STORAGE_KEYS, store } from './lib/storage';
 import { getSessionAndProfile, getSessionFast, inferWhoFromEmail, isSupabaseConfigured, signOutSupabase } from './lib/supabase';
 import { formatDayLine, pickGreeting } from './sky/greetings';
 import { PANO, SkyEngine } from './sky/skyRenderer';
-import { currentDecimalHour, formatHour, getSolarTimes } from './sky/solar';
+import { currentDecimalHour, formatHour, getSolarTimes, skyAtHour, type SkyPhaseName } from './sky/solar';
 import type { StarKind, StarRecord, Who } from './types';
 import { initComposeSheet, type ComposeController } from './ui/composeSheet';
 import { CountdownController } from './ui/countdown';
@@ -527,8 +527,45 @@ function setAppHeight(): void {
 
 let resetKeyboardRef: (() => void) | null = null;
 
+const SKY_PHASE_LABELS: Record<SkyPhaseName, string> = {
+  night: 'GECE GÖKYÜZÜMÜZ',
+  dawn: 'ŞAFAK GÖKYÜZÜ',
+  day: 'GÜNÜN GÖKYÜZÜ',
+  dusk: 'GÜN BATIMI',
+};
+
+function applyInitialSkyMood(): SkyPhaseName {
+  const hour = currentDecimalHour();
+  const sky = skyAtHour(hour);
+  const vars = ['--sky-1', '--sky-2', '--sky-3', '--horizon'];
+  const lsVars = ['--ls-sky-1', '--ls-sky-2', '--ls-sky-3', '--ls-horizon'];
+  const splashEl = document.getElementById('launch-splash');
+  vars.forEach((v, i) => {
+    const col = sky.cols[i];
+    if (!col) return;
+    document.documentElement.style.setProperty(v, col);
+    document.body.style.setProperty(v, col);
+    splashEl?.style.setProperty(lsVars[i], col);
+  });
+
+  const phase: SkyPhaseName =
+    sky.phase ??
+    (sky.daylight > 0.65 ? 'day' : sky.daylight > 0.25 ? (hour < 12 ? 'dawn' : 'dusk') : 'night');
+
+  document.body.dataset.skyPhase = phase;
+  if (splashEl) {
+    splashEl.dataset.skyPhase = phase;
+  }
+  const subEl = document.getElementById('ls-sub');
+  if (subEl) {
+    subEl.textContent = SKY_PHASE_LABELS[phase];
+  }
+  return phase;
+}
+
 function setupKeyboardViewport(): void {
   setAppHeight();
+  applyInitialSkyMood();
   window.addEventListener('resize', setAppHeight);
   window.addEventListener('orientationchange', () => window.setTimeout(setAppHeight, 300));
   window.addEventListener('pageshow', setAppHeight);
@@ -1269,6 +1306,8 @@ async function bootstrap(): Promise<void> {
       return;
     }
 
+    applyTheme(who);
+    applyInitialSkyMood();
     splashEl.hidden = false;
     splashEl.classList.remove('leaving');
     document.body.classList.add('dive-prep');

@@ -9,9 +9,12 @@ export interface MoonPhaseInfo {
   illum: number; // 0..100
 }
 
+export type SkyPhaseName = 'night' | 'dawn' | 'day' | 'dusk';
+
 export interface SkySample {
   cols: [string, string, string, string]; // sky1, sky2, sky3, horizon
   daylight: number; // 0..1
+  phase?: SkyPhaseName;
 }
 
 export interface OrbPlacement {
@@ -121,6 +124,7 @@ export function skyAtHour(hour: number, now = new Date()): SkySample {
 
   const palA = SKY_PALETTE[stateA];
   const palB = SKY_PALETTE[stateB];
+  const phase: SkyPhaseName = t < 0.5 ? stateA : stateB;
   return {
     cols: [
       mixHex(palA[0], palB[0], t),
@@ -129,6 +133,7 @@ export function skyAtHour(hour: number, now = new Date()): SkySample {
       mixHex(palA[3], palB[3], t),
     ],
     daylight: DAYLIGHT_LEVEL[stateA] + (DAYLIGHT_LEVEL[stateB] - DAYLIGHT_LEVEL[stateA]) * t,
+    phase,
   };
 }
 
