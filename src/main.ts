@@ -47,6 +47,12 @@ import { initLetterModal, type LetterController } from './ui/letterModal';
 import { initLockScreen } from './ui/lockScreen';
 import { initOnboard } from './ui/onboard';
 import { showToast } from './ui/toast';
+import {
+  CandleWhiteHeartController,
+  claimUnseenSyncPair,
+  clearActiveSyncWhiteHeart,
+  showSyncWhiteHeart,
+} from './ui/whiteHeart';
 
 let currentMe: Who | null = store.get<Who | null>(STORAGE_KEYS.me, null);
 let bioSupported = false;
@@ -56,11 +62,15 @@ let countdownCtrl: CountdownController | null = null;
 let composeCtrl: ComposeController | null = null;
 let letterCtrl: LetterController | null = null;
 let gardenCtrl: GardenController | null = null;
+let candleHeartCtrl: CandleWhiteHeartController | null = null;
 let captionTimer = 0;
 let greetPending = false;
 let planeInterval = 0;
 let perfTimer = 0;
 let enterTimers: number[] = [];
+let syncHeartCheckPending = false;
+let pendingSyncHoldCount: number | null = null;
+let syncStatDelayTimer = 0;
 
 let stars: StarRecord[] = [];
 let viewMonthK = monthIdx(new Date());
@@ -133,6 +143,9 @@ async function checkAndCelebrateUnlocks(isStartup: boolean): Promise<void> {
       }
       syncSkyStars(st.id, !isStartup);
     }
+    if (!isStartup) {
+      checkSyncHeartMoment();
+    }
 
     const latest = newlyUnlocked[newlyUnlocked.length - 1];
     const showUnlockToast = () => {
@@ -169,6 +182,53 @@ const fmtShort = (iso: string): string => {
   const d = new Date(iso);
   return `${shortDateFmt.format(d)}, ${timeFmt.format(d)}`;
 };
+
+function computeTotalSyncCount(list: StarRecord[] = stars): number {
+  const nowMs = getServerNowMs();
+  const allMonthKeys = new Set(list.map(starMonthIdx));
+  let total = 0;
+  allMonthKeys.forEach((mk) => {
+    total += computeLinks(list.filter((s) => starMonthIdx(s) === mk), nowMs).length;
+  });
+  return total;
+}
+
+let checkSyncHeartLockFn: () => boolean = () => false;
+
+function checkSyncHeartMoment(): boolean {
+  if (!appMounted || !currentMe || document.hidden || !document.body.classList.contains('awake') || checkSyncHeartLockFn()) {
+    syncHeartCheckPending = true;
+    return false;
+  }
+  const totalSync = computeTotalSyncCount();
+  const stSyncEl = document.getElementById('st-sync');
+  const prevSync = stSyncEl ? Number(stSyncEl.textContent || '0') : Math.max(0, totalSync - 1);
+
+  if (!claimUnseenSyncPair(currentMe, stars, getServerNowMs())) {
+    syncHeartCheckPending = false;
+    return false;
+  }
+
+  syncHeartCheckPending = false;
+  pendingSyncHoldCount = Math.min(prevSync, Math.max(0, totalSync - 1));
+  if (stSyncEl) stSyncEl.textContent = String(pendingSyncHoldCount);
+
+  showSyncWhiteHeart();
+  window.clearTimeout(syncStatDelayTimer);
+  syncStatDelayTimer = window.setTimeout(() => {
+    syncStatDelayTimer = 0;
+    pendingSyncHoldCount = null;
+    const latest = computeTotalSyncCount();
+    const el = document.getElementById('st-sync');
+    if (el) {
+      el.textContent = String(latest);
+      el.classList.remove('sync-bump');
+      void el.offsetWidth;
+      el.classList.add('sync-bump');
+    }
+  }, 600);
+  return true;
+}
 
 function viewStars(): StarRecord[] {
   return stars.filter((s) => starMonthIdx(s) === viewMonthK);
@@ -288,6 +348,7 @@ function animateStarArrival(star: StarRecord, how: 'rise' | 'streak', origin?: {
   }
   skyEngine.hideStarTemporarily(star.id, true);
   syncSkyStars(undefined, false);
+  checkSyncHeartMoment();
 
   skyEngine.revealStarThen(star, () => {
     if (!skyEngine) return;
@@ -550,17 +611,12 @@ function refreshUiStatus(): void {
 
   const hamCount = stars.filter((s) => s.from === 'hamham').length;
   const betoCount = stars.filter((s) => s.from === 'beto').length;
-  const nowMs = getServerNowMs();
-  const allMonthKeys = new Set(stars.map(starMonthIdx));
-  let totalSync = 0;
-  allMonthKeys.forEach((mk) => {
-    totalSync += computeLinks(stars.filter((s) => starMonthIdx(s) === mk), nowMs).length;
-  });
+  const totalSync = computeTotalSyncCount();
   const firstAt = stars.length > 0 ? Math.min(...stars.map((s) => Date.parse(s.createdAt))) : null;
   const daysSince = firstAt ? Math.max(1, Math.ceil((Date.now() - firstAt) / 86_400_000)) : 0;
 
   $('#st-total').textContent = String(stars.length);
-  $('#st-sync').textContent = String(totalSync);
+  $('#st-sync').textContent = String(pendingSyncHoldCount ?? totalSync);
   $('#st-days').textContent = String(daysSince);
   $('#st-who-split').textContent = `Ham ham: ${hamCount} ${PEOPLE.hamham.sign} · Beto: ${betoCount} ${PEOPLE.beto.sign}`;
 
@@ -658,12 +714,19 @@ async function bootstrap(): Promise<void> {
     clearEnterTimers();
     window.clearTimeout(pushNudgeTimer);
     window.clearTimeout(unlockCheckTimer);
+    window.clearTimeout(syncStatDelayTimer);
     window.clearInterval(perfTimer);
     window.clearInterval(planeInterval);
     perfTimer = 0;
     planeInterval = 0;
+    syncStatDelayTimer = 0;
+    pendingSyncHoldCount = null;
+    syncHeartCheckPending = false;
     unsubRealtime?.();
     unsubRealtime = null;
+    candleHeartCtrl?.destroy();
+    candleHeartCtrl = null;
+    clearActiveSyncWhiteHeart();
     skyEngine?.destroy();
     skyEngine = null;
     gardenCtrl?.destroy();
@@ -688,6 +751,9 @@ async function bootstrap(): Promise<void> {
       if (greetPending) {
         greetPending = false;
         window.setTimeout(() => showGreeting(false), 450);
+      }
+      if (syncHeartCheckPending) {
+        window.setTimeout(() => checkSyncHeartMoment(), 550);
       }
     },
     onForgotReset: async () => {
@@ -805,6 +871,10 @@ async function bootstrap(): Promise<void> {
           );
         }
       },
+    });
+
+    candleHeartCtrl = new CandleWhiteHeartController({
+      getWickPos: () => gardenCtrl?.getWickScreenPos() ?? null,
     });
 
     composeCtrl = initComposeSheet({
@@ -1116,6 +1186,12 @@ async function bootstrap(): Promise<void> {
 
     skyEngine?.triggerEnterReveal();
     requestAnimationFrame(() => document.body.classList.add('awake'));
+    checkSyncHeartLockFn = () => lock.isLocked();
+    if (lock.isLocked()) {
+      syncHeartCheckPending = true;
+    } else {
+      enterTimers.push(window.setTimeout(() => checkSyncHeartMoment(), 850));
+    }
 
     const compassEl = $('#compass');
     if (!maybeTimelapse(1400)) {

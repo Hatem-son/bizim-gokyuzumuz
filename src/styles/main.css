@@ -2953,3 +2953,43 @@ body.sched-open #compose .sched-dt-label {
   overflow: visible;
 }
 
+/* ---------- White Hearts (Candle & "AYNI AN" Sync) ---------- */
+.white-heart {
+  position: fixed;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+  opacity: 0;
+}
+
+.white-heart svg {
+  display: block;
+}
+
+.candle-white-heart {
+  z-index: 3;
+}
+
+.sync-white-heart {
+  top: 50%;
+  left: 50%;
+  z-index: 21;
+}
+
+#st-sync.sync-bump {
+  animation: syncStatBump .5s var(--spring);
+}
+
+@keyframes syncStatBump {
+  0% { transform: scale(.86); opacity: .5; }
+  50% { transform: scale(1.18); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #st-sync.sync-bump {
+    animation: none;
+  }
+}
+
