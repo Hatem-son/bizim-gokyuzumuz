@@ -1110,6 +1110,15 @@ body:not(.awake) .act {
   transform: translateY(-10px);
 }
 
+.ob-ver {
+  margin: 14px 0 0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  color: var(--ink-faint);
+  opacity: .55;
+}
+
 .ob > * {
   animation: fadeUp .9s var(--ease) both;
 }
@@ -2389,18 +2398,18 @@ textarea:focus {
 .kb-open .sheet-card,
 .typing .sheet-card {
   gap: 8px;
-  max-height: calc(100dvh - env(safe-area-inset-top) - 26px - var(--kbpad, 0px));
+  max-height: calc(100dvh - env(safe-area-inset-top) - 16px - var(--kbpad, 0px));
 }
 
 .typing .sheet {
   align-items: flex-end;
-  padding: calc(env(safe-area-inset-top) + 16px) 0 max(env(safe-area-inset-bottom), var(--kbpad, 0px));
+  padding: calc(env(safe-area-inset-top) + 16px) 0 max(calc(env(safe-area-inset-bottom) + 10px), calc(var(--kbpad, 0px) + 10px));
 }
 
 .typing .sheet-card {
   border-radius: 26px;
   border: 1px solid var(--line);
-  margin: 0 10px 10px;
+  margin: 0 10px;
   width: calc(100% - 20px);
   padding: 14px 16px 14px;
 }
