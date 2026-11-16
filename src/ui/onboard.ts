@@ -1,3 +1,4 @@
+import { USER_EMAILS } from '../config';
 import { unlockWithSecret } from '../lib/crypto';
 import { PEOPLE, renderConstellationCardSvg } from '../lib/people';
 import { STORAGE_KEYS, store } from '../lib/storage';
@@ -6,7 +7,6 @@ import {
   getSessionAndProfile,
   isSupabaseConfigured,
   saveVerifyBlob,
-  sendMagicLink,
   signInWithPassword,
 } from '../lib/supabase';
 import type { Who } from '../types';
@@ -27,13 +27,10 @@ export function initOnboard(opts: {
   const stepAuth = $('#step-auth') as HTMLFormElement;
   const stepKey = $('#step-key') as HTMLFormElement;
 
-  const authEmail = $('#auth-email') as HTMLInputElement;
   const authPass = $('#auth-pass') as HTMLInputElement;
   const authSubmit = $('#auth-submit') as HTMLButtonElement;
-  const authMagic = $('#auth-magic') as HTMLButtonElement;
   const authBack = $('#auth-back') as HTMLButtonElement;
   const authErr = $('#auth-err');
-  const authInfo = $('#auth-info');
 
   const keyInput = $('#key') as HTMLInputElement;
   const enterBtn = $('#enter') as HTMLButtonElement;
@@ -64,7 +61,7 @@ export function initOnboard(opts: {
     whoBox.classList.remove('chosen');
     $$('.who-card').forEach((c) => c.classList.remove('sel'));
     authErr.hidden = true;
-    authInfo.hidden = true;
+    authPass.value = '';
     keyErr.hidden = true;
     wipeBtn.hidden = true;
     keyInput.value = '';
@@ -90,7 +87,7 @@ export function initOnboard(opts: {
       return;
     }
 
-    // Check if already signed into Supabase as this user
+    // Telefonda geçerli kalıcı oturum varsa şifre adımını atla
     const { session, profile } = await getSessionAndProfile();
     if (session && profile && profile.who === who) {
       $('#ob-hello').textContent = `Hoş geldin ${PEOPLE[who].name}`;
@@ -101,11 +98,10 @@ export function initOnboard(opts: {
 
     $('#auth-hello').textContent = `Hoş geldin ${PEOPLE[who].name}`;
     authErr.hidden = true;
-    authInfo.hidden = true;
     authPass.value = '';
-    authSubmit.disabled = !authEmail.value.trim() || !authPass.value;
+    authSubmit.disabled = true;
     showStep('auth');
-    authEmail.focus({ preventScroll: true });
+    authPass.focus({ preventScroll: true });
   }
 
   $$('.who-card').forEach((card) => {
@@ -123,9 +119,8 @@ export function initOnboard(opts: {
   });
 
   const syncAuthBtn = (): void => {
-    authSubmit.disabled = !authEmail.value.trim() || !authPass.value;
+    authSubmit.disabled = !authPass.value;
   };
-  authEmail.addEventListener('input', syncAuthBtn);
   authPass.addEventListener('input', syncAuthBtn);
 
   authBack.addEventListener('click', resetToWho);
@@ -134,14 +129,13 @@ export function initOnboard(opts: {
   stepAuth.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!chosen) return;
-    const email = authEmail.value.trim();
+    const email = USER_EMAILS[chosen];
     const pass = authPass.value;
-    if (!email || !pass) return;
+    if (!pass) return;
 
     authSubmit.disabled = true;
     authSubmit.textContent = 'Giriş yapılıyor…';
     authErr.hidden = true;
-    authInfo.hidden = true;
 
     const res = await signInWithPassword(email, pass, chosen);
     authSubmit.textContent = 'Giriş yap';
@@ -150,6 +144,7 @@ export function initOnboard(opts: {
     if (!res.ok) {
       authErr.textContent = res.error;
       authErr.hidden = false;
+      authPass.focus({ preventScroll: true });
       return;
     }
 
@@ -157,29 +152,6 @@ export function initOnboard(opts: {
     $('#ob-hello').textContent = `Hoş geldin ${PEOPLE[chosen].name}`;
     showStep('key');
     keyInput.focus({ preventScroll: true });
-  });
-
-  authMagic.addEventListener('click', async () => {
-    const email = authEmail.value.trim();
-    if (!email) {
-      authErr.textContent = 'Önce e-posta adresini yaz.';
-      authErr.hidden = false;
-      authEmail.focus();
-      return;
-    }
-    authMagic.disabled = true;
-    authErr.hidden = true;
-    authInfo.hidden = true;
-
-    const res = await sendMagicLink(email);
-    authMagic.disabled = false;
-    if (!res.ok) {
-      authErr.textContent = res.error;
-      authErr.hidden = false;
-      return;
-    }
-    authInfo.textContent = 'Giriş bağlantısı e-postana gönderildi. Bağlantıya dokunup geri dön.';
-    authInfo.hidden = false;
   });
 
   keyInput.addEventListener('input', () => {
@@ -232,4 +204,3 @@ export function initOnboard(opts: {
 
   return { show, hide };
 }
-

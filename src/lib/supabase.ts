@@ -20,7 +20,7 @@ export function getSupabase(): SupabaseClient | null {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
-        detectSessionInUrl: true,
+        detectSessionInUrl: false,
       },
     });
   }
@@ -29,7 +29,7 @@ export function getSupabase(): SupabaseClient | null {
 
 export function translateAuthError(message: string): string {
   const lower = message.toLowerCase();
-  if (lower.includes('invalid login credentials')) return 'E-posta veya şifre hatalı.';
+  if (lower.includes('invalid login credentials')) return 'Şifre doğru değil, tekrar dene';
   if (lower.includes('email not confirmed')) return 'E-posta adresi henüz doğrulanmamış.';
   if (lower.includes('signups not allowed') || lower.includes('signup')) {
     return 'Bu gökyüzü sadece Ham ham ve Beto için açık. Yeni kayıt kapalı.';
@@ -111,23 +111,6 @@ export async function signInWithPassword(
   }
 
   return { ok: true, profile: typed };
-}
-
-export async function sendMagicLink(email: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  const sb = getSupabase();
-  if (!sb) return { ok: false, error: 'Supabase bağlantısı ayarlanmamış.' };
-
-  const { error } = await sb.auth.signInWithOtp({
-    email,
-    options: {
-      shouldCreateUser: false,
-      emailRedirectTo: window.location.origin,
-    },
-  });
-  if (error) {
-    return { ok: false, error: translateAuthError(error.message) };
-  }
-  return { ok: true };
 }
 
 export async function signOutSupabase(): Promise<void> {
