@@ -145,17 +145,16 @@ export function getOrbPlacement(hour: number, moonPhase: number, now = new Date(
   const sunLow = sunUp && (fs < 0.14 || fs > 0.86);
   const sunPos = arc(fs);
 
-  // Gerçek astronomik Ay yayı: meridyen geçişi ≈ yerel 12:00 + (yaş / 29.53) * 24 sa;
-  // doğuş ≈ geçiş - 6 sa, batış ≈ geçiş + 6 sa. Ufuk altındaysa yayın ucunda %30 opaklıkla bekler.
+  // Gerçek astronomik Ay konumu: güneş kadar sade ve belirgin (rota çizgisi yok)
   const transit = (12 + moonPhase * 24) % 24;
   const moonRise = transit - 6;
   const fm = ((((h - moonRise) % 24) + 24) % 24) / 12;
   const moonUp = fm >= 0 && fm <= 1;
-  const moonFrac = moonUp ? fm : fm < 1.5 ? 1 : 0;
-  const moonOpacity = moonUp ? (sunUp ? 0.45 : 1) : 0.3;
+  const moonFrac = moonUp ? fm : fm < 1.5 ? 0.86 : 0.14;
+  const moonOpacity = moonUp ? (sunUp ? 0.42 : 0.96) : sunUp ? 0.34 : 0.78;
   const moonPos = {
-    x: 12 + moonFrac * 76,
-    y: 34 - Math.sin(Math.PI * moonFrac) * 20,
+    x: 16 + moonFrac * 68,
+    y: 26 - Math.sin(Math.PI * moonFrac) * 12,
   };
 
   return {

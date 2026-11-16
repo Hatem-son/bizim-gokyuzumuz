@@ -40,7 +40,6 @@ import { currentDecimalHour, formatHour, getSolarTimes } from './sky/solar';
 import type { StarKind, StarRecord, Who } from './types';
 import { initComposeSheet, type ComposeController } from './ui/composeSheet';
 import { CountdownController } from './ui/countdown';
-import { DiagOverlay } from './ui/diag';
 import { $, setInert } from './ui/dom';
 import { showFloatNote } from './ui/floatNote';
 import { GardenController } from './ui/garden';
@@ -64,7 +63,6 @@ let composeCtrl: ComposeController | null = null;
 let letterCtrl: LetterController | null = null;
 let gardenCtrl: GardenController | null = null;
 let candleHeartCtrl: CandleWhiteHeartController | null = null;
-let diagOverlay: DiagOverlay | null = null;
 let captionTimer = 0;
 let greetPending = false;
 let planeInterval = 0;
@@ -733,8 +731,6 @@ async function bootstrap(): Promise<void> {
     unsubRealtime = null;
     candleHeartCtrl?.destroy();
     candleHeartCtrl = null;
-    diagOverlay?.close();
-    diagOverlay = null;
     clearActiveSyncWhiteHeart();
     skyEngine?.destroy();
     skyEngine = null;
@@ -804,18 +800,6 @@ async function bootstrap(): Promise<void> {
     });
 
     gardenCtrl = new GardenController({
-      onCandleTap: (candleEl) => {
-        skyEngine?.triggerFlameFlare();
-        gardenCtrl?.triggerFlameFlare();
-        const left = gardenCtrl?.getDaysRemaining() ?? 0;
-        const r = candleEl.getBoundingClientRect();
-        showFloatNote(
-          { x: r.left + r.width / 2, y: r.top, height: r.height },
-          left > 0
-            ? `Bu mum 9 Ocak'a kadar yanacak<small>Her gün biraz eriyor · ${left} gün kaldı</small>`
-            : 'Bu mum ikimiz için yandı'
-        );
-      },
       onRaspberryTap: (raspEl) => {
         const r = raspEl.getBoundingClientRect();
         const cx = r.left + r.width / 2;
@@ -1055,12 +1039,6 @@ async function bootstrap(): Promise<void> {
     const pushNudgeEl = $('#push-nudge');
     const pushYesBtn = $('#push-yes') as HTMLButtonElement;
     const pushLaterBtn = $('#push-later') as HTMLButtonElement;
-
-    $('#s-diag').addEventListener('click', () => {
-      closeSettingsFn?.();
-      if (!diagOverlay) diagOverlay = new DiagOverlay();
-      window.setTimeout(() => diagOverlay?.open(), 120);
-    });
 
     $('#s-out').addEventListener('click', async () => {
       closeSettingsFn?.();

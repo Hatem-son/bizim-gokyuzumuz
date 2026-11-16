@@ -1428,8 +1428,8 @@ export class SkyEngine {
     this.moonInfo = getMoonPhaseInfo();
     this.lastMoonBake = Date.now();
 
-    const size = 96;
-    const displayDiam = 48;
+    // Güneşle uyumlu sade ve belirgin Ay (240x240 tuval → 112px mantıksal alan, ~30px kompakt disk)
+    const size = 240;
     this.moonCanvas.width = size;
     this.moonCanvas.height = size;
     const g = this.moonCanvas.getContext('2d');
@@ -1437,13 +1437,22 @@ export class SkyEngine {
     g.clearRect(0, 0, size, size);
 
     const c = size / 2;
-    const r = displayDiam - 2; // 46 -> 92px = crisp 46-48pt @2x
+    const r = 32; // ≈ 30px görüntü çapı (kompakt, gökyüzünde güneş gibi net)
     const p = this.moonInfo.phase;
 
-    // Karanlık yarıda çok hafif "dünya ışığı" (Earthshine), sıfır parlama/filtre
-    g.fillStyle = 'rgba(155, 178, 225, 0.16)';
-    g.strokeStyle = 'rgba(215, 228, 255, 0.14)';
-    g.lineWidth = 1.5;
+    // Yumuşak gümüş haleyle karanlık gökyüzünden ayrılır (blur/shadow filtre yok)
+    const halo = g.createRadialGradient(c, c, r * 0.4, c, c, 112);
+    halo.addColorStop(0, 'rgba(226, 239, 255, 0.30)');
+    halo.addColorStop(0.32, 'rgba(190, 214, 255, 0.11)');
+    halo.addColorStop(0.68, 'rgba(168, 196, 248, 0.03)');
+    halo.addColorStop(1, 'rgba(168, 196, 248, 0)');
+    g.fillStyle = halo;
+    g.fillRect(0, 0, size, size);
+
+    // Karanlık yarı: yumuşak gümüş-mavi dolgu ve ince kenar
+    g.fillStyle = 'rgba(170, 195, 238, 0.24)';
+    g.strokeStyle = 'rgba(225, 238, 255, 0.42)';
+    g.lineWidth = 2;
     g.beginPath();
     g.arc(c, c, r, 0, Math.PI * 2);
     g.fill();
@@ -1466,21 +1475,20 @@ export class SkyEngine {
     g.save();
     g.clip(litPath);
 
-    const moonGrad = g.createRadialGradient(c - 10, c - 10, 4, c, c, r * 1.35);
-    moonGrad.addColorStop(0, '#fffef6');
-    moonGrad.addColorStop(0.7, '#f6ebd0');
-    moonGrad.addColorStop(1, '#e3d2ae');
+    const moonGrad = g.createRadialGradient(c - 7, c - 7, 2, c, c, r * 1.3);
+    moonGrad.addColorStop(0, '#ffffff');
+    moonGrad.addColorStop(0.62, '#eef4ff');
+    moonGrad.addColorStop(1, '#d4e0f5');
     g.fillStyle = moonGrad;
     g.fillRect(c - r - 2, c - r - 2, r * 2 + 4, r * 2 + 4);
 
-    g.fillStyle = 'rgba(182, 162, 122, 0.30)';
+    g.fillStyle = 'rgba(145, 168, 205, 0.24)';
     const craters: [number, number, number][] = [
-      [c - 10, c - 10, 8],
-      [c + 13, c + 5, 9],
-      [c - 9, c + 14, 5],
-      [c + 16, c - 18, 3.6],
-      [c - 22, c + 4, 3.2],
-      [c + 3, c + 25, 2.8],
+      [c - 7, c - 7, 5.5],
+      [c + 9, c + 3, 6],
+      [c - 6, c + 9, 3.6],
+      [c + 11, c - 12, 2.6],
+      [c - 14, c + 3, 2.3],
     ];
     for (const [cx0, cy0, cr] of craters) {
       g.beginPath();
@@ -1488,13 +1496,26 @@ export class SkyEngine {
       g.fill();
     }
     g.restore();
+
+    // Aydınlık kenarda ince parlak dudak (ince hilal ve yeni ayda bile seçilir)
+    g.save();
+    g.strokeStyle = 'rgba(255, 255, 255, 0.72)';
+    g.lineWidth = 1.6;
+    g.beginPath();
+    if (p < 0.5) {
+      g.arc(c, c, r - 0.5, -Math.PI / 2, Math.PI / 2, false);
+    } else {
+      g.arc(c, c, r - 0.5, -Math.PI / 2, Math.PI / 2, true);
+    }
+    g.stroke();
+    g.restore();
   }
 
   private getMoonArcPoint(frac: number, skyW: number, panShift: number): { x: number; y: number } {
-    const startX = skyW * 0.14 + panShift;
-    const spanW = skyW * 0.72;
-    const baseY = this.skyTop + this.skyHeight * 0.26;
-    const archH = Math.min(72, this.skyHeight * 0.17);
+    const startX = skyW * 0.16 + panShift;
+    const spanW = skyW * 0.68;
+    const baseY = this.skyTop + this.skyHeight * 0.22;
+    const archH = Math.min(54, this.skyHeight * 0.12);
     return {
       x: startX + frac * spanW,
       y: baseY - Math.sin(Math.PI * frac) * archH,
@@ -2007,7 +2028,7 @@ export class SkyEngine {
     }
 
     this.tapHearts = this.tapHearts.filter((h) => (h.life += dt) < h.max);
-    ctx.fillStyle = this.me === 'hamham' ? '#5b9dff' : '#ff6fb0';
+    ctx.fillStyle = '#ffffff';
     for (const h of this.tapHearts) {
       if (h.life < 0) continue;
       const k = h.life / h.max;
@@ -2127,25 +2148,11 @@ export class SkyEngine {
     this.moonUiAlpha += (moonTarget - this.moonUiAlpha) * Math.min(1, dt / 180);
 
     if (this.moonUiAlpha > 0.01 && !this.trav.on) {
-      const skyW = this.getSkyW();
-      const moonPan = -(this.ox - this.getMaxOx() * 0.5) * 0.35;
+      const box = 112;
+      const half = box / 2;
       ctx.save();
-      ctx.globalAlpha = this.moonUiAlpha * 0.1;
-      ctx.strokeStyle = '#dbe8ff';
-      ctx.lineWidth = 1;
-      ctx.setLineDash([2, 6]);
-      ctx.beginPath();
-      for (let i = 0; i <= 32; i++) {
-        const pt = this.getMoonArcPoint(i / 32, skyW, moonPan);
-        if (i === 0) ctx.moveTo(pt.x, pt.y);
-        else ctx.lineTo(pt.x, pt.y);
-      }
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      const diam = 48;
       ctx.globalAlpha = this.moonUiAlpha * this.moonScreen.opacity;
-      ctx.drawImage(this.moonCanvas, this.moonScreen.x - diam / 2, this.moonScreen.y - diam / 2, diam, diam);
+      ctx.drawImage(this.moonCanvas, this.moonScreen.x - half, this.moonScreen.y - half, box, box);
       ctx.restore();
     }
 

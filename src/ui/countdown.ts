@@ -1,4 +1,4 @@
-import { lilyBloomSvg } from '../lib/illustrations';
+import { HEART_PATH, lilyBloomSvg } from '../lib/illustrations';
 import { $ } from './dom';
 
 export const TARGET_DATE = new Date(2027, 0, 9, 0, 0, 0);
@@ -141,7 +141,7 @@ export class CountdownController {
     const special = (lbl: string, txt: string) => {
       this.labelEl.textContent = lbl;
       delete this.daysEl.dataset.v;
-      this.daysEl.innerHTML = '<span>♡</span>';
+      this.daysEl.innerHTML = `<span><svg class="cd-heart" viewBox="0 0 24 24" aria-hidden="true"><path d="${HEART_PATH}"/></svg></span>`;
       this.timeEl.textContent = txt;
       this.builtDigits = false;
     };

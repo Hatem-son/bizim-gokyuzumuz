@@ -788,7 +788,8 @@ body.awake .stamens,
   display: block;
   width: 126px;
   height: auto;
-  cursor: pointer;
+  cursor: default;
+  pointer-events: none;
   overflow: visible;
 }
 
@@ -825,8 +826,15 @@ body.awake .candle-flame.flare {
   fill: var(--paper-accent);
 }
 
+.jar-heart {
+  fill: #ffffff;
+  stroke: var(--paper-accent);
+  stroke-width: 1.5;
+}
+
 .rasp {
   cursor: pointer;
+  pointer-events: auto;
 }
 
 .rasp-in {
@@ -1007,8 +1015,16 @@ body:not(.awake) .act {
 .act-ic svg {
   width: 24px;
   height: 24px;
-  fill: var(--accent);
+  fill: #ffffff;
   position: relative;
+}
+
+.medal-heart,
+.cd-heart {
+  width: 14px;
+  height: 14px;
+  fill: #ffffff;
+  display: block;
 }
 
 .act.primary .act-ic {
@@ -2443,6 +2459,9 @@ textarea:focus {
 #compose {
   padding-top: env(safe-area-inset-top);
   transition: none;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
 }
 
 #compose:not(.open) {
@@ -2465,6 +2484,9 @@ textarea:focus {
   background: linear-gradient(180deg, rgba(255, 255, 255, .04), rgba(0, 0, 0, .28)), #11183c;
   transition: none;
   transform: translate3d(0, 105%, 0);
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
 }
 
 body[data-me="beto"] #compose .sheet-card {
@@ -2499,6 +2521,7 @@ body.kb-active #compose .sheet-card {
   line-height: 1.38;
   overflow-y: auto;
   overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 
 #compose .att-btn {
@@ -2772,10 +2795,10 @@ body.sched-open #compose .sched-dt-label {
 }
 
 .l-heart path {
-  fill: var(--paper-accent);
+  fill: #ffffff;
   fill-opacity: 0;
   stroke: var(--paper-accent);
-  stroke-width: 1.1;
+  stroke-width: 1.3;
   stroke-dasharray: 1;
   stroke-dashoffset: 1;
 }
@@ -2789,7 +2812,7 @@ body.sched-open #compose .sched-dt-label {
 }
 
 @keyframes heartFill {
-  to { fill-opacity: .9; }
+  to { fill-opacity: 1; }
 }
 
 .longing {
@@ -2802,11 +2825,15 @@ body.sched-open #compose .sched-dt-label {
 .longing svg {
   width: 19px;
   height: 19px;
-  fill: var(--paper-line);
+  fill: none;
+  stroke: var(--paper-line);
+  stroke-width: 1.8;
 }
 
 .longing svg.on {
-  fill: var(--paper-accent);
+  fill: #ffffff;
+  stroke: var(--paper-accent);
+  stroke-width: 1.8;
   animation: hPop .6s var(--spring) var(--d) both;
 }
 

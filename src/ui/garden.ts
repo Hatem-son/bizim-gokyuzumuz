@@ -1,4 +1,4 @@
-import { lilyBloomSvg, raspberrySvg } from '../lib/illustrations';
+import { HEART_PATH, lilyBloomSvg, raspberrySvg } from '../lib/illustrations';
 import { journeyProgress, TARGET_DATE } from './countdown';
 import { $, $$ } from './dom';
 
@@ -128,7 +128,7 @@ function sideLilySvg(side: 'l' | 'r'): string {
 
 function candleJarSvg(): string {
   // Tek küçük SVG alev (yalnızca opacity/scale salınımı, blur/filtre yok)
-  return `<svg class="candle" id="candle" viewBox="0 0 160 190" role="button" tabindex="0" aria-label="Mum">
+  return `<svg class="candle" id="candle" viewBox="0 0 160 190" aria-hidden="true">
     <defs>
       <linearGradient id="gJar" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity=".36"/><stop offset=".1" stop-color="#fff" stop-opacity=".1"/><stop offset=".5" stop-color="#fff" stop-opacity=".02"/><stop offset=".9" stop-color="#fff" stop-opacity=".1"/><stop offset="1" stop-color="#fff" stop-opacity=".32"/></linearGradient>
       <linearGradient id="gWax2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff7ee"/><stop offset=".3" stop-color="#ffe9dd"/><stop offset="1" style="stop-color:var(--petal-mid)"/></linearGradient>
@@ -148,7 +148,9 @@ function candleJarSvg(): string {
     <ellipse id="pool-hi" cx="74" cy="103.5" rx="5" ry=".7" fill="#fff" opacity=".4"/>
     <path d="M43 126 Q80 131 117 126 L117 153 Q80 158 43 153Z" fill="url(#gLabel)"/>
     <path d="M43 129 Q80 134 117 129 M43 150 Q80 155 117 150" stroke="var(--paper-accent)" stroke-opacity=".45" stroke-width=".7" fill="none"/>
-    <text x="80" y="147" text-anchor="middle" class="jar-label">B ♡ H</text>
+    <text x="64" y="147" text-anchor="middle" class="jar-label">B</text>
+    <g transform="translate(74.4 135.2) scale(0.46)"><path class="jar-heart" d="${HEART_PATH}"/></g>
+    <text x="96" y="147" text-anchor="middle" class="jar-label">H</text>
     ${raspberrySvg(48.5, 142, 0.28, '', false)}${raspberrySvg(111.5, 142, 0.28, '', false)}
     <g id="wick-pos">
       <path d="M80 104 Q78.6 98 80.8 92.6" stroke="#2a1d1a" stroke-width="2" fill="none" stroke-linecap="round"/>
@@ -177,7 +179,6 @@ export class GardenController {
   private flareTimer = 0;
 
   constructor(opts: {
-    onCandleTap: (candleEl: Element) => void;
     onRaspberryTap: (raspEl: Element) => void;
   }) {
     $('#lilies').innerHTML = gardenSvg() + sideLilySvg('l') + sideLilySvg('r');
@@ -192,24 +193,14 @@ export class GardenController {
 
     holder.addEventListener('click', (e) => {
       const rasp = (e.target as Element).closest('.rasp');
-      if (rasp) {
-        const inner = rasp.querySelector('.rasp-in');
-        if (inner) {
-          inner.classList.remove('boing');
-          void (inner as unknown as HTMLElement).getBoundingClientRect();
-          inner.classList.add('boing');
-        }
-        opts.onRaspberryTap(rasp);
-        return;
+      if (!rasp) return;
+      const inner = rasp.querySelector('.rasp-in');
+      if (inner) {
+        inner.classList.remove('boing');
+        void (inner as unknown as HTMLElement).getBoundingClientRect();
+        inner.classList.add('boing');
       }
-      opts.onCandleTap($('#candle'));
-    });
-
-    holder.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        holder.click();
-      }
+      opts.onRaspberryTap(rasp);
     });
   }
 

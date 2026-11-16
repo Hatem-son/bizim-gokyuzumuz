@@ -39,7 +39,8 @@ function pickPlaneText(who: Who): string {
 export class PlaneController {
   private readonly planeSprite = document.createElement('canvas');
   private readonly bannerCanvas = document.createElement('canvas');
-  private readonly bannerTexScale = 2;
+  private readonly planeTexScale = 4;
+  private readonly bannerTexScale = 4;
 
   private active = false;
   private rev = false;
@@ -63,12 +64,13 @@ export class PlaneController {
   }
 
   private bakePlaneSprite(): void {
-    const s = 2;
+    const s = this.planeTexScale;
     this.planeSprite.width = this.planeW * s;
     this.planeSprite.height = this.planeH * s;
     const g = this.planeSprite.getContext('2d');
     if (!g) return;
     g.scale(s, s);
+    g.clearRect(0, 0, this.planeW, this.planeH);
 
     // Tail fin (pink)
     g.fillStyle = '#ec7a98';
@@ -193,29 +195,36 @@ export class PlaneController {
     g.closePath();
     g.clip();
 
-    // Cloth background gradient
+    // Cloth background gradient (yeterli kontrast ile saf beyaz kalp net görünür)
     const bg = g.createLinearGradient(0, 0, 0, this.bannerH);
-    bg.addColorStop(0, '#fffaf6');
-    bg.addColorStop(0.6, '#ffeef4');
-    bg.addColorStop(1, '#fbd9e6');
+    bg.addColorStop(0, '#f7d2e2');
+    bg.addColorStop(0.55, '#efbad0');
+    bg.addColorStop(1, '#e49fbe');
     g.fillStyle = bg;
     g.fillRect(0, 0, this.bannerW, this.bannerH);
 
     // Top & bottom pink cloth trim
-    g.fillStyle = '#f2a9c2';
+    g.fillStyle = '#cf7ba0';
     g.fillRect(0, 0, this.bannerW, 2);
     g.fillRect(0, this.bannerH - 2, this.bannerW, 2);
 
-    // Heart + Great Vibes message
+    // Crisp vector white heart + Great Vibes message (asla sistem emojisine düşmez)
     const heartX = this.rev ? 14 : notchW + 16;
-    g.fillStyle = '#e8708f';
-    g.font = '13px sans-serif';
-    g.textBaseline = 'middle';
-    g.fillText('♥', heartX, this.bannerH / 2 + 1);
+    const heartY = this.bannerH / 2 - 4.5;
+    const hs = 11;
+    g.fillStyle = '#ffffff';
+    g.beginPath();
+    g.moveTo(heartX, heartY + hs * 0.3);
+    g.bezierCurveTo(heartX, heartY, heartX - hs * 0.5, heartY - hs * 0.05, heartX - hs * 0.5, heartY + hs * 0.3);
+    g.bezierCurveTo(heartX - hs * 0.5, heartY + hs * 0.6, heartX, heartY + hs * 0.8, heartX, heartY + hs);
+    g.bezierCurveTo(heartX, heartY + hs * 0.8, heartX + hs * 0.5, heartY + hs * 0.6, heartX + hs * 0.5, heartY + hs * 0.3);
+    g.bezierCurveTo(heartX + hs * 0.5, heartY - hs * 0.05, heartX, heartY, heartX, heartY + hs * 0.3);
+    g.fill();
 
-    g.fillStyle = '#7c3b6e';
+    g.fillStyle = '#5a214f';
+    g.textBaseline = 'middle';
     g.font = '400 22px "Great Vibes", "Snell Roundhand", cursive';
-    g.fillText(text, heartX + 16, this.bannerH / 2 + 1);
+    g.fillText(text, heartX + 14, this.bannerH / 2 + 1);
 
     g.restore();
   }
@@ -288,8 +297,8 @@ export class PlaneController {
     ctx.quadraticCurveTo((tailX + ropeEndX) / 2, planeCy + 6, ropeEndX, y + this.bannerH - 2 + flagSwing);
     ctx.stroke();
 
-    // 2. Single-canvas cloth banner bent by traveling sine wave (2px strips)
-    const sliceW = 2;
+    // 2. Single-canvas cloth banner bent by traveling sine wave (1px HiDPI strips)
+    const sliceW = 1;
     const s = this.bannerTexScale;
     const numSlices = Math.ceil(this.bannerW / sliceW);
 

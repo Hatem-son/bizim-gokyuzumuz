@@ -1,3 +1,4 @@
+import { HEART_PATH } from '../lib/illustrations';
 import { $ } from './dom';
 
 let toastTimer: number | undefined;
@@ -13,7 +14,11 @@ export function showToast(
 
   const medal = $('#toast-medal');
   medal.className = `medal sm ${color}`;
-  medal.textContent = sign;
+  if (sign === '♡' || sign === '♥') {
+    medal.innerHTML = `<svg class="medal-heart" viewBox="0 0 24 24" aria-hidden="true"><path d="${HEART_PATH}"/></svg>`;
+  } else {
+    medal.textContent = sign;
+  }
 
   const toast = $('#toast');
   toast.classList.remove('show');

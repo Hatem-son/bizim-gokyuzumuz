@@ -618,6 +618,21 @@ export function initComposeSheet(opts: {
     );
   });
 
+  sheet.addEventListener(
+    'touchmove',
+    (e) => {
+      const target = e.target as Element | null;
+      if (target && ta.contains(target) && ta.scrollHeight > ta.clientHeight) {
+        return;
+      }
+      if (target?.closest('#chips')) {
+        return;
+      }
+      e.preventDefault();
+    },
+    { passive: false }
+  );
+
   function syncIdentity(me: Who): void {
     const other = PEOPLE[otherWho(me)];
     const cm = $('#c-medal');
