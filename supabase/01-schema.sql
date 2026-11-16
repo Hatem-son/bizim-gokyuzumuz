@@ -300,3 +300,4 @@ exception
   when others then
     raise notice 'pg_cron / pg_net uzantisi kurulumu atlandi (%): Dashboard -> Database -> Extensions uzerinden acin.', sqlerrm;
 end $$;
+

@@ -31,3 +31,4 @@ begin
     set id = excluded.id,
         updated_at = now();
 end $$;
+

@@ -8,3 +8,4 @@ export const USER_EMAILS: Record<Who, string> = {
   hamham: 'humam@gokyuzu.app',
   beto: 'beto@gokyuzu.app',
 };
+
