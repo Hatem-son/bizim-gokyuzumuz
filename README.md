@@ -61,15 +61,9 @@ Dışarıdan hiç kimse hesap açamasın diye kaydı kapatıp yalnızca ikinizin
 ## 4. Veritabanı ve Zamanlı Yıldız SQL'ini Çalıştırma
 
 1. Supabase sol menüden **SQL Editor → New query** aç.
-2. Bu projedeki [`supabase/schema.sql`](supabase/schema.sql) dosyasının tamamını kopyalayıp editöre yapıştır ve **Run** butonuna bas.
+2. Önce [`supabase/01-schema.sql`](supabase/01-schema.sql) dosyasının tamamını yapıştırıp **Run**'a bas.
    - Bu işlem `profiles`, `stars`, `star_secrets` (zamanlı kilit tablosu), `settings`, `server_now()`, tüm **RLS kurallarını**, `media` özel Storage bucket'ını ve Realtime yayınını kurar.
-3. Şimdi iki kullanıcıyı `profiles` tablosuna ekle (kendi kopyaladığın UID'lerle değiştirip SQL Editor'de çalıştır):
-   ```sql
-   insert into public.profiles (id, who) values
-     ('HAM_HAM_USER_UID_BURAYA', 'hamham'),
-     ('BETO_USER_UID_BURAYA', 'beto')
-   on conflict (id) do update set who = excluded.who;
-   ```
+3. Ardından kullanıcıların e-postaları `humam@gokyuzu.app` / `beto@gokyuzu.app`'den farklıysa [`src/config.ts`](src/config.ts) ve [`supabase/02-profiles.sql`](supabase/02-profiles.sql) içindeki e-postaları kendi oluşturduklarınla eşitleyip `02-profiles.sql`'i **SQL Editor → New query → Run** ile çalıştır.
 
 ---
 
@@ -186,7 +180,7 @@ Bu iş her dakika çalışıp açılma zamanı gelmiş (`unlock_at <= now()`) ve
 1. iPhone'da **Safari**'yi açıp Vercel adresine gir.
 2. Alt ortadaki **Paylaş** (kare + yukarı ok) simgesine dokun → **Ana Ekrana Ekle**'yi seç → **Ekle**.
 3. Tarayıcı sekmesini kapatıp **Ana Ekrandaki iki yıldızlı simgeden** uygulamayı aç.
-4. **"Ben kimim?"** seçimini yap, e-posta + şifrenle giriş yap ve ikinizin belirlediği **ortak gizli kelimeyi** yaz.
+4. **"Ben kimim?"** seçimini yap, sadece şifrenle giriş yap (`src/config.ts` içindeki e-posta eşleşmesi kullanılır) ve ikinizin belirlediği **ortak gizli kelimeyi** yaz.
 5. Gökyüzü açıldıktan ~12 saniye sonra çıkan kartta **"Evet, haber ver"** diyerek (veya sağ üst `...` → **Ayarlar → Bildirimleri aç** üzerinden) iOS bildirim iznini onayla.
 6. İstersen Ayarlar'dan 4 haneli **Uygulama kilidi** ve **Face ID** açabilirsin.
 

@@ -56,9 +56,7 @@ function buildCorsHeaders(req: Request): Record<string, string> {
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     Vary: 'Origin',
   };
-  if (ALLOWED_ORIGINS.length === 1) {
-    headers['Access-Control-Allow-Origin'] = ALLOWED_ORIGINS[0];
-  } else if (origin && ALLOWED_ORIGINS.includes(origin)) {
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
     headers['Access-Control-Allow-Origin'] = origin;
   }
   return headers;
