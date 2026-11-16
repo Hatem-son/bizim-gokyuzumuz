@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Gökyüzümüz">
+  <meta name="theme-color" content="#03050e">
+  <title>Bizim Gökyüzümüz</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/png" href="/icons/favicon-64.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png">
+</head>
+<body>
+  <canvas id="sky-canvas" aria-hidden="true"></canvas>
+  <div id="defs"></div>
+
+  <header class="top">
+    <button class="countdown solid-glass" id="countdown" type="button" aria-label="9 Ocak'a geri sayım">
+      <span class="cd-dial">
+        <svg class="cd-ring" viewBox="0 0 56 56" aria-hidden="true">
+          <circle class="track" cx="28" cy="28" r="22"/>
+          <g id="cd-flowers"></g>
+        </svg>
+        <span class="cd-days"><b id="cd-days"></b><small>GÜN</small></span>
+      </span>
+      <span class="cd-text">
+        <span class="cd-label" id="cd-label">9 Ocak'a</span>
+        <span class="cd-time" id="cd-time"></span>
+      </span>
+      <svg class="cd-sprig" id="cd-sprig" viewBox="-30 -30 60 60" aria-hidden="true"></svg>
+      <svg class="cd-sprig2" id="cd-sprig2" viewBox="-14 -14 28 28" aria-hidden="true"></svg>
+    </button>
+    <button class="icon-btn solid-glass" id="menu" type="button" aria-label="Ayarlar">
+      <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg>
+    </button>
+  </header>
+
+  <main id="sky" aria-label="Gökyüzü, sağa sola kaydırılabilir">
+    <p class="empty-hint" id="empty-hint">Gökyüzümüz ilk yıldızı bekliyor</p>
+    <p class="sky-cap" id="sky-cap" aria-live="polite"><b id="sky-cap-t"></b><small id="sky-cap-s"></small></p>
+    <div class="compass" id="compass" aria-hidden="true">
+      <span>DOĞU</span>
+      <span class="cp-track"><i id="cp-thumb"></i></span>
+      <span>BATI</span>
+    </div>
+  </main>
+
+  <div id="tlabel" aria-hidden="true">
+    <span class="tl-in"><b></b><small></small></span>
+    <em>KAYDIR · BIRAKINCA İÇİNE DAL</em>
+  </div>
+
+  <div class="ground" id="ground">
+    <div class="floor-light"></div>
+    <div id="lilies"></div>
+    <div class="center-row">
+      <button class="act" id="btn-miss" type="button" aria-label="Düşündüm, basılı tutarsan yıldız büyür">
+        <span class="act-ic solid-glass">
+          <span class="charge"></span>
+          <svg viewBox="0 0 24 24"><path d="M12 21s-7.6-4.7-9.7-9.3C.9 8.4 3 5 6.5 5c2 0 3.6 1.1 4.6 2.6C12 6.1 13.6 5 15.6 5 19 5 21.1 8.4 19.7 11.7 17.6 16.3 12 21 12 21z"/></svg>
+        </span>
+        <span class="act-lb">DÜŞÜNDÜM</span>
+      </button>
+      <div id="candle-holder"></div>
+      <button class="act primary" id="btn-write" type="button">
+        <span class="act-ic solid-glass">
+          <svg viewBox="0 0 24 24"><path d="M12 1.5l2.3 7.2 7.7 2.3-7.7 2.3L12 20.5l-2.3-7.2L2 11l7.7-2.3z"/></svg>
+        </span>
+        <span class="act-lb">YAZ</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite">
+    <span class="medal sm" id="toast-medal"></span>
+    <div>
+      <strong id="toast-title"></strong>
+      <span id="toast-sub"></span>
+    </div>
+  </div>
+  <div class="perf-hud" id="perf-hud" hidden role="status" aria-live="off"></div>
+  <div class="push-nudge" id="push-nudge" hidden role="dialog" aria-label="Bildirim izni">
+    <p>Birbirinizi düşündüğünüzde haber vermemi ister misin?</p>
+    <div class="push-nudge-actions">
+      <button class="push-yes" id="push-yes" type="button">Evet, haber ver</button>
+      <button class="push-later" id="push-later" type="button">Şimdi değil</button>
+    </div>
+  </div>
+
+  <!-- Compose Sheet -->
+  <div class="sheet" id="compose" aria-hidden="true">
+    <form class="sheet-card" id="compose-form" role="dialog" aria-modal="true" aria-labelledby="c-title">
+      <div class="handle"></div>
+      <div class="sheet-head">
+        <span class="medal" id="c-medal"></span>
+        <div>
+          <h2 class="sheet-title" id="c-title">Beto'ya</h2>
+          <p class="sheet-sub">BİR YILDIZ BIRAK</p>
+        </div>
+      </div>
+      <div class="chips" id="chips"></div>
+      <textarea id="msg" maxlength="600" placeholder="Aklından ne geçiyor?" aria-labelledby="c-title"></textarea>
+      <div class="attach" id="attach">
+        <button class="att-btn" id="att-photo" type="button">
+          <svg viewBox="0 0 24 24"><path d="M4 7h3l1.6-2h6.8L17 7h3a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zm8 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg>
+          Fotoğraf
+        </button>
+        <button class="att-btn" id="att-voice" type="button">
+          <svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3zm-7 9h2a5 5 0 0 0 10 0h2a7 7 0 0 1-6 6.9V21h-2v-3.1A7 7 0 0 1 5 11z"/></svg>
+          Ses kaydı
+        </button>
+        <button class="att-btn" id="att-time" type="button" aria-expanded="false">
+          <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 10.4 3.2 1.9-1 1.7L11 13.5V7h2z"/></svg>
+          Zamanlı
+        </button>
+        <input type="file" id="photo-in" accept="image/*" hidden>
+        <div class="att-card" id="att-card" hidden></div>
+        <div class="sched-box" id="sched-box" hidden>
+          <div class="sched-head">
+            <span class="sched-title">
+              <svg viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3h1a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V11a1 1 0 0 1 1-1zm2 0h6V7a3 3 0 0 0-6 0z"/></svg>
+              KİLİTLİ BIRAKILACAK
+            </span>
+            <button class="sched-cancel" id="sched-cancel" type="button">Vazgeç</button>
+          </div>
+          <input class="sched-dt" id="sched-dt" type="datetime-local" aria-label="Açılma tarihi ve saati">
+          <div class="sched-presets" id="sched-presets">
+            <button class="sched-preset" data-preset="tomorrow" type="button">Yarın sabah</button>
+            <button class="sched-preset" data-preset="week" type="button">Bir hafta sonra</button>
+            <button class="sched-preset" data-preset="jan9" type="button">9 Ocak, gece yarısı</button>
+          </div>
+          <p class="sched-note" id="sched-note"></p>
+        </div>
+        <p class="att-err" id="att-err" hidden></p>
+      </div>
+      <div class="compose-row">
+        <span class="count" id="count">0 / 600</span>
+        <button class="btn-primary" id="send" type="submit" disabled>
+          <svg viewBox="0 0 24 24"><path d="M12 1.5l2.3 7.2 7.7 2.3-7.7 2.3L12 20.5l-2.3-7.2L2 11l7.7-2.3z"/></svg>
+          <span id="send-lbl">Gökyüzüne bırak</span>
+        </button>
+      </div>
+      <p class="sheet-hint">
+        <svg viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3h1a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V11a1 1 0 0 1 1-1zm2 0h6V7a3 3 0 0 0-6 0z"/></svg>
+        <span id="c-hint"></span>
+      </p>
+    </form>
+  </div>
+
+  <!-- Letter & Envelope Modal -->
+  <div class="modal" id="letter-modal" aria-hidden="true">
+    <div class="env" id="env" aria-hidden="true">
+      <div class="env-back"></div>
+      <div class="env-flap">
+        <svg viewBox="0 0 300 120" preserveAspectRatio="none"><path d="M0 12 Q0 0 12 0 L288 0 Q300 0 300 12 L157 115 Q150 120 143 115Z"/></svg>
+      </div>
+      <div class="env-paper"></div>
+      <svg class="env-front" viewBox="0 0 300 190" preserveAspectRatio="none">
+        <path class="pocket" d="M0 16 L150 110 L300 16 L300 178 Q300 190 288 190 L12 190 Q0 190 0 178Z"/>
+        <path class="crease" d="M2 188 L132 100 M298 188 L168 100"/>
+      </svg>
+      <svg class="env-seal" id="env-seal" viewBox="-14 -17 28 31"></svg>
+    </div>
+    <article class="letter" id="letter" role="dialog" aria-modal="true" aria-labelledby="l-from">
+      <svg class="seal" id="seal" viewBox="-14 -17 28 31" aria-hidden="true"></svg>
+      <header class="l-head">
+        <span class="medal" id="l-medal"></span>
+        <span class="l-no" id="l-no"></span>
+      </header>
+      <p class="from" id="l-from"></p>
+      <div class="l-heart" id="l-heart">
+        <svg viewBox="0 0 24 24"><path pathLength="1" d="M12 21s-7.6-4.7-9.7-9.3C.9 8.4 3 5 6.5 5c2 0 3.6 1.1 4.6 2.6C12 6.1 13.6 5 15.6 5 19 5 21.1 8.4 19.7 11.7 17.6 16.3 12 21 12 21z"/></svg>
+      </div>
+      <div class="l-media" id="l-media"></div>
+      <p class="ltext" id="l-text"></p>
+      <p class="l-foot" id="l-date"></p>
+      <button class="lclose" id="l-close" type="button">Kapat</button>
+      <svg class="sprig" id="sprig" viewBox="-60 -60 120 120" aria-hidden="true"></svg>
+    </article>
+  </div>
+
+  <!-- Settings Sheet -->
+  <div class="sheet" id="settings" aria-hidden="true">
+    <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="s-title">
+      <div class="handle"></div>
+      <div class="sheet-head">
+        <span class="medal" id="s-medal"></span>
+        <div>
+          <h2 class="sheet-title" id="s-title">Gökyüzümüz</h2>
+          <p class="sheet-sub" id="s-who"></p>
+        </div>
+      </div>
+      <div class="stats">
+        <div><b id="st-total">0</b><span>YILDIZ</span></div>
+        <div><b id="st-sync">0</b><span>AYNI AN</span></div>
+        <div><b id="st-days">0</b><span>GÜN</span></div>
+      </div>
+      <p class="stats-split" id="st-who-split">Ham ham: 0 · Beto: 0</p>
+      <p class="sheet-hint">
+        <svg viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3h1a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V11a1 1 0 0 1 1-1zm2 0h6V7a3 3 0 0 0-6 0z"/></svg>
+        <span>Yazılar, fotoğraflar ve sesler telefonda gizli kelimemizle şifreleniyor. Kelimeyi bilmeyen kimse, sunucuyu açan biri bile, içlerini okuyamaz.</span>
+      </p>
+      <div class="set-list">
+        <button class="set-item" id="s-push" type="button">
+          <span id="s-push-t">Bildirimleri aç</span>
+          <small id="s-push-s">Karşı taraf yıldız bıraktığında haber verir</small>
+        </button>
+        <button class="set-item" id="s-lock" type="button">
+          <span id="s-lock-t">Uygulama kilidi kur</span>
+          <small id="s-lock-s">Açılışta ve 2 dk arka planda kalınca 4 haneli şifre sorsun</small>
+        </button>
+        <button class="set-item" id="s-faceid" type="button" hidden>
+          <span id="s-faceid-t">Face ID ile açılışı aç</span>
+          <small id="s-faceid-s">PIN yanında Face ID / Touch ID kullan</small>
+        </button>
+        <button class="set-item warn" id="s-out" type="button">
+          <span>Çıkış yap</span>
+          <small>Hesaptan ve gizli kelimeden çıkar, giriş ekranına döner</small>
+        </button>
+      </div>
+      <button class="set-ver" id="s-ver" type="button">Bizim Gökyüzümüz · v1.0.0</button>
+    </div>
+  </div>
+
+  <!-- Onboarding -->
+  <section id="onboard" aria-label="Giriş">
+    <div class="ob">
+      <p class="ob-eyebrow">HAM HAM &amp; BETO</p>
+      <h1>Bizim Gökyüzümüz</h1>
+      <p class="ob-sub">Birbirimizi her düşündüğümüzde gökyüzümüze bir yıldız bırakacağız.</p>
+
+      <!-- Step 1: Ben kimim? -->
+      <div class="step" id="step-who">
+        <p class="ob-q">SEN KİMSİN?</p>
+        <div class="who" id="who">
+          <button class="who-card glass-pop blue" data-who="hamham" type="button">
+            <svg class="art" id="art-hamham" viewBox="0 0 100 80"></svg>
+            <span class="nm">Ham ham</span>
+            <span class="zd"><b>&#x264B;&#xFE0E;</b> YENGEÇ</span>
+          </button>
+          <button class="who-card glass-pop pink" data-who="beto" type="button">
+            <svg class="art" id="art-beto" viewBox="0 0 100 80"></svg>
+            <span class="nm">Beto</span>
+            <span class="zd"><b>&#x2651;&#xFE0E;</b> OĞLAK</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 2: Supabase Login (only when Supabase is configured and no active session) -->
+      <form class="step" id="step-auth" hidden>
+        <p class="hello" id="auth-hello">Hoş geldin</p>
+        <div class="field">
+          <label for="auth-email">E-POSTA ADRESİN</label>
+          <input id="auth-email" type="email" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="ornek@mail.com">
+        </div>
+        <div class="field">
+          <label for="auth-pass">HESAP ŞİFREN</label>
+          <input id="auth-pass" type="password" autocomplete="current-password" placeholder="Şifren">
+          <small>Sadece ikinizin hesabı tanımlı. Yeni kayıt dışarıya kapalı.</small>
+        </div>
+        <p class="ob-err" id="auth-err" hidden></p>
+        <p class="ob-info" id="auth-info" hidden></p>
+        <button class="btn-primary" id="auth-submit" type="submit" disabled>Giriş yap</button>
+        <button class="link-btn" id="auth-magic" type="button">Şifresiz e-posta bağlantısı gönder</button>
+        <button class="link-btn" id="auth-back" type="button">Geri dön</button>
+      </form>
+
+      <!-- Step 3: Ortak Gizli Kelime -->
+      <form class="step" id="step-key" hidden>
+        <p class="hello" id="ob-hello">Hoş geldin</p>
+        <div class="field">
+          <label for="key">GİZLİ KELİMEMİZ</label>
+          <input id="key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="İkimizin bildiği kelime">
+          <small>İkimiz de aynı kelimeyi yazıyoruz. Bütün yıldızlarımız bu kelimeyle cihazda şifreleniyor, sunucu göremez.</small>
+        </div>
+        <p class="ob-err" id="ob-err" hidden></p>
+        <button class="btn-primary" id="enter" type="submit" disabled>Gökyüzüne gir</button>
+        <button class="link-btn" id="ob-wipe" type="button" hidden>Yerel doğrulamayı sıfırla ve yeniden kur</button>
+        <button class="link-btn" id="back" type="button">Geri dön</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- Lock Screen -->
+  <section id="lock" class="gone" aria-label="Kilit" aria-hidden="true">
+    <div class="lk-in">
+      <span class="medal" id="lk-medal"></span>
+      <p class="lk-title" id="lk-title">Hoş geldin</p>
+      <p class="lk-sub" id="lk-sub">ŞİFRENİ GİR</p>
+      <div class="dots" id="lk-dots"><i></i><i></i><i></i><i></i></div>
+      <div class="pad" id="pad">
+        <button type="button" data-k="1">1</button>
+        <button type="button" data-k="2">2</button>
+        <button type="button" data-k="3">3</button>
+        <button type="button" data-k="4">4</button>
+        <button type="button" data-k="5">5</button>
+        <button type="button" data-k="6">6</button>
+        <button type="button" data-k="7">7</button>
+        <button type="button" data-k="8">8</button>
+        <button type="button" data-k="9">9</button>
+        <button type="button" class="ghostbtn" id="lk-cancel" data-k="cancel">Vazgeç</button>
+        <button type="button" data-k="0">0</button>
+        <button type="button" class="ghostbtn" data-k="del" aria-label="Sil">
+          <svg viewBox="0 0 24 24"><path d="M9 5h11a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H9l-6-7zm3.4 4L11 10.4l1.6 1.6-1.6 1.6 1.4 1.4 1.6-1.6 1.6 1.6 1.4-1.4-1.6-1.6 1.6-1.6L16.6 9 15 10.6z"/></svg>
+        </button>
+      </div>
+      <button class="lk-faceid" id="lk-faceid" type="button" hidden>
+        <svg viewBox="0 0 24 24"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M4 16v2a2 2 0 0 0 2 2h2M16 20h2a2 2 0 0 0 2-2v-2M9 9v2M15 9v2M12 9v4h-1M9 15c.9 1 2 1.4 3 1.4s2.1-.4 3-1.4"/></svg>
+        <span>Face ID ile aç</span>
+      </button>
+      <button class="lk-forgot" id="lk-forgot" type="button">Şifremi unuttum · gizli kelimeyle yeniden gir</button>
+    </div>
+  </section>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
+
