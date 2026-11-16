@@ -23,7 +23,10 @@ export function sharedSvgDefs(): string {
   return `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
     <linearGradient id="gPetal" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--petal-base)"/><stop offset=".42" style="stop-color:var(--petal-mid)"/><stop offset="1" style="stop-color:var(--petal-tip)"/></linearGradient>
     <linearGradient id="gPetalB" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--petal-base)"/><stop offset=".45" style="stop-color:var(--petal-mid2)"/><stop offset="1" style="stop-color:var(--petal-tip2)"/></linearGradient>
+    <linearGradient id="gZambak" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#d8e6b4"/><stop offset=".32" stop-color="#f7f5ea"/><stop offset="1" stop-color="#ffffff"/></linearGradient>
+    <linearGradient id="gZambakB" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#c3d4a2"/><stop offset=".38" stop-color="#eae7da"/><stop offset="1" stop-color="#f7f6ef"/></linearGradient>
     <radialGradient id="gThroat"><stop offset="0" stop-color="#eef7b8"/><stop offset="1" stop-color="#eef7b8" stop-opacity="0"/></radialGradient>
+    <radialGradient id="gZambakThroat"><stop offset="0" stop-color="#e8f3a0" stop-opacity=".95"/><stop offset=".55" stop-color="#f6f9d6" stop-opacity=".45"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
     <linearGradient id="gLeaf" x1="0" y1="1" x2="1" y2="0"><stop offset="0" style="stop-color:var(--leaf-1)"/><stop offset="1" style="stop-color:var(--leaf-2)"/></linearGradient>
     <linearGradient id="gBud" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--leaf-2)"/><stop offset=".55" style="stop-color:var(--petal-mid)"/><stop offset="1" style="stop-color:var(--petal-tip)"/></linearGradient>
     <radialGradient id="gDrupe" cx=".36" cy=".32" r=".75"><stop offset="0" stop-color="#ff9ab4"/><stop offset=".35" stop-color="#ef3a6c"/><stop offset=".8" stop-color="#b01248"/><stop offset="1" stop-color="#6e0628"/></radialGradient>

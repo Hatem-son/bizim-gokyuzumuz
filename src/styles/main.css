@@ -703,17 +703,32 @@ body:not(.awake) .floor-light {
   width: auto;
   overflow: visible;
   transform-origin: 45% 100%;
-  animation: lilySway 8s ease-in-out infinite;
+  animation: lilySway 7.2s ease-in-out infinite;
 }
 
 @keyframes lilySway {
-  0%, 100% { transform: rotate(-1.3deg); }
-  50% { transform: rotate(1.3deg); }
+  0%, 100% { transform: rotate(-1.9deg); }
+  50% { transform: rotate(2.1deg); }
 }
 
 @keyframes lilySwayR {
-  0%, 100% { transform: scaleX(-1) rotate(-1.3deg); }
-  50% { transform: scaleX(-1) rotate(1.3deg); }
+  0%, 100% { transform: scaleX(-1) rotate(-1.9deg); }
+  50% { transform: scaleX(-1) rotate(2.1deg); }
+}
+
+@keyframes flowerSway {
+  0%, 100% { transform: rotate(-2.2deg); }
+  50% { transform: rotate(2.4deg); }
+}
+
+@keyframes bladeSway {
+  0%, 100% { transform: rotate(-1.6deg); }
+  50% { transform: rotate(1.7deg); }
+}
+
+@keyframes bloomBreathe {
+  0%, 100% { transform: rotate(-1.4deg) scale(1); }
+  50% { transform: rotate(1.6deg) scale(1.032); }
 }
 
 .lily.l { left: -14px; }
@@ -727,6 +742,22 @@ body:not(.awake) .floor-light {
 .sway {
   transform-box: view-box;
   transform-origin: 60px 240px;
+}
+
+.garden .sway {
+  animation: flowerSway 7.8s ease-in-out var(--sd, 0s) infinite;
+}
+
+.garden .blade-layer {
+  transform-box: view-box;
+  transform-origin: 195px 264px;
+  animation: bladeSway 6.6s ease-in-out var(--bd, 0s) infinite;
+}
+
+.bloom-breathe {
+  transform-box: fill-box;
+  transform-origin: 50% 60%;
+  animation: bloomBreathe 5.4s ease-in-out var(--bd, 0s) infinite;
 }
 
 .garden,
@@ -1871,15 +1902,25 @@ body:not(.awake) .act {
 
 /* Pause background DOM animations when a sheet, modal, lock, or 20s deep-idle covers/quiets the view */
 body.quiet .lily,
+body.quiet .garden .sway,
+body.quiet .garden .blade-layer,
+body.quiet .bloom-breathe,
 body.quiet .cdf,
 body.quiet .candle-flame,
 body.deep-idle .lily,
+body.deep-idle .garden .sway,
+body.deep-idle .garden .blade-layer,
+body.deep-idle .bloom-breathe,
 body.deep-idle .cdf,
 body.deep-idle .candle-flame {
   animation-play-state: paused !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .lily,
+  .garden .sway,
+  .garden .blade-layer,
+  .bloom-breathe,
   .ob h1,
   .ob > *,
   .step.in,

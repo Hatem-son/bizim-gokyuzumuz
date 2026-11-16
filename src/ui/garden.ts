@@ -8,14 +8,35 @@ export const LILY_MILESTONES: { n: number; side: 'l' | 'r' }[] = [
 ];
 
 function zambakBloomSvg(cx: number, cy: number, scale: number, extra = ''): string {
+  const petalPath =
+    'M0 0 C 9 -6, 15 -22, 8 -38 C 4.5 -45, 1.8 -49, 0 -52 C -1.8 -49, -4.5 -45, -8 -38 C -15 -22, -9 -6, 0 0Z';
+  const angles = [-90, -30, 30, 90, 150, 210];
+  const order = [1, 3, 5, 0, 2, 4];
   let petals = '';
-  for (let k = 0; k < 6; k++) {
-    petals += `<g transform="rotate(${k * 60 + 30})"><g class="petal" style="--i:${k};--r0:${k % 2 ? 18 : -18}deg">
-      <ellipse cx="0" cy="-24" rx="8.5" ry="22" fill="#fffdf6" stroke="rgba(215,195,140,.4)" stroke-width=".6"/>
-      <path d="M0 -4 L0 -42" stroke="#f0e4bd" stroke-width=".6" opacity=".6"/>
+  order.forEach((i, k) => {
+    const back = i % 2 === 1;
+    petals += `<g transform="rotate(${angles[i] + 90})"><g class="petal" style="--i:${k};--r0:${k % 2 ? 20 : -20}deg">
+      <path d="${petalPath}" fill="url(#${back ? 'gZambakB' : 'gZambak'})" stroke="rgba(220,226,204,.45)" stroke-width=".5"/>
+      <path d="M1.2 -3 C 8 -10, 12 -23, 7 -37" fill="none" stroke="#ffffff" stroke-opacity=".55" stroke-width=".8"/>
+      <path d="M0 -5 Q .6 -26 0 -47" fill="none" stroke="#d5dfad" stroke-opacity=".58" stroke-width=".75"/>
     </g></g>`;
+  });
+
+  let stamens = '';
+  for (let k = 0; k < 6; k++) {
+    const deg = k * 60 + 20;
+    const rad = (deg * Math.PI) / 180;
+    const len = k % 2 ? 18 : 22;
+    const x = +(Math.cos(rad) * len).toFixed(1);
+    const y = +(Math.sin(rad) * len).toFixed(1);
+    stamens += `<path d="M0 0 Q ${(x * 0.5).toFixed(1)} ${(y * 0.5 - 5).toFixed(1)} ${x} ${y}" fill="none" stroke="#dbe9aa" stroke-width=".95"/>
+      <ellipse cx="${x}" cy="${y}" rx="2.9" ry="1.2" fill="#d99a1e" transform="rotate(${deg} ${x} ${y})"/>
+      <circle cx="${(x - Math.cos(rad) * 0.7).toFixed(1)}" cy="${(y - Math.sin(rad) * 0.7).toFixed(1)}" r=".85" fill="#fff5c4"/>`;
   }
-  return `<g transform="translate(${cx} ${cy}) scale(${scale})" ${extra}><g transform="scale(1 .9)">${petals}<circle r="7" fill="#eef7b8" opacity=".65"/></g><g class="stamens"><circle r="3.2" fill="#efc24a"/><circle cx="1.2" cy="-.8" r="1.1" fill="#fff6c8"/></g></g>`;
+
+  return `<g transform="translate(${cx} ${cy}) scale(${scale})" ${extra}><g class="bloom-breathe" style="--bd:${(
+    (cx % 7) * -0.45
+  ).toFixed(2)}s"><g transform="scale(1 .9)">${petals}<circle r="11" fill="url(#gZambakThroat)"/></g><g class="stamens">${stamens}<circle r="2.4" fill="#c7de8a"/><circle cx="-.6" cy="-.6" r=".8" fill="#f3fad4"/></g></g></g>`;
 }
 
 function gardenSvg(): string {
@@ -37,7 +58,8 @@ function gardenSvg(): string {
     '<stop offset="1" stop-color="#08171c" stop-opacity="1"/></linearGradient></defs>' +
     '<path d="M-10 210 Q95 196 195 204 Q295 212 400 198 L400 265 L-10 265 Z" fill="url(#gMeadowShade)"/>';
 
-  // Arka uzun çayır yaprakları (ekran altının 20px altına kadar uzanır)
+  // Arka uzun çayır yaprakları — 3 hafif esinti katmanı halinde animasyonlu
+  const bladeLayers = ['', '', ''];
   for (let i = 0; i < 48; i++) {
     const x = -6 + i * 8.5 + (i % 3) * 1.4;
     const h = 48 + ((i * 37) % 58);
@@ -46,11 +68,13 @@ function gardenSvg(): string {
     const w = (1.6 + (i % 3) * 0.45).toFixed(1);
     const color = i % 4 === 0 ? '#123d30' : i % 3 === 0 ? '#1a523b' : 'var(--leaf-1)';
     const op = (0.58 + (i % 4) * 0.1).toFixed(2);
-    g += `<path class="blade" style="--bd:${(-i * 0.24).toFixed(2)}s;transform-origin:${x}px 264px" d="M${x} 264 Q ${(
-      x +
-      lean * 0.45
-    ).toFixed(1)} ${(264 - h * 0.55).toFixed(1)} ${(x + lean).toFixed(1)} ${264 - h}" stroke="${color}" stroke-width="${w}" fill="none" stroke-linecap="round" opacity="${op}"/>`;
+    bladeLayers[i % 3] += `<path d="M${x} 264 Q ${(x + lean * 0.45).toFixed(1)} ${(264 - h * 0.55).toFixed(
+      1
+    )} ${(x + lean).toFixed(1)} ${264 - h}" stroke="${color}" stroke-width="${w}" fill="none" stroke-linecap="round" opacity="${op}"/>`;
   }
+  bladeLayers.forEach((paths, idx) => {
+    g += `<g class="blade-layer" style="--bd:${(-idx * 2.1).toFixed(1)}s">${paths}</g>`;
+  });
 
   back.forEach(([x, y, sc, isWhite], i) => {
     const d = i % 2 ? 1 : -1;
@@ -121,8 +145,15 @@ function sideLilySvg(side: 'l' | 'r'): string {
     <path d="M64 198 C 86 184, 102 162, 112 136 C 94 152, 78 168, 64 186Z" fill="url(#gLeaf)"/>
     <path d="M52 172 C 36 164, 26 150, 18 130 C 34 144, 45 154, 54 162Z" fill="url(#gLeaf)" opacity=".85"/>
     <g transform="translate(36 122) rotate(-12)"><g class="bud"><path d="M0 0 C 7 -8, 8 -26, 0 -40 C -8 -26, -7 -8, 0 0Z" fill="url(#gBud)"/><path d="M0 -3 L0 -36" stroke="rgba(255,255,255,.35)" stroke-width=".8"/></g></g>
-    ${lilyBloomSvg(34, 114, 0.74, 'lpetal', 'stamens-late')}
-    ${lilyBloomSvg(78, 80, big ? 1.08 : 0.96, 'petal', 'stamens', 'class="main-bloom"')}
+    <g class="bloom-breathe" style="--bd:-1.4s">${lilyBloomSvg(34, 114, 0.74, 'lpetal', 'stamens-late')}</g>
+    <g class="bloom-breathe" style="--bd:${big ? '-0.6s' : '-2.8s'}">${lilyBloomSvg(
+      78,
+      80,
+      big ? 1.08 : 0.96,
+      'petal',
+      'stamens',
+      'class="main-bloom"'
+    )}</g>
   </g></svg>`;
 }
 
