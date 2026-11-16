@@ -666,9 +666,10 @@ export class SkyEngine {
     this.DPR = Math.min(1.5, window.devicePixelRatio || 1);
     const cvRect = this.cv.getBoundingClientRect();
     this.W = Math.max(window.innerWidth, Math.ceil(cvRect.width));
-    this.H = Math.max(window.innerHeight, Math.ceil(cvRect.height));
+    this.H = Math.max(window.innerHeight, window.screen?.height || 0, Math.ceil(cvRect.height));
     this.cv.width = Math.floor(this.W * this.DPR);
     this.cv.height = Math.floor(this.H * this.DPR);
+    this.cv.style.height = `${this.H}px`;
     this.cx.setTransform(this.DPR, 0, 0, this.DPR, 0, 0);
 
     const sr = this.skyEl.getBoundingClientRect();
@@ -919,8 +920,14 @@ export class SkyEngine {
     }
   }
 
+  private readonly onOrientationResize = (): void => {
+    this.resize();
+    window.setTimeout(this.resize, 80);
+  };
+
   private bindEvents(): void {
     window.addEventListener('resize', this.resize);
+    window.addEventListener('orientationchange', this.onOrientationResize);
     this.skyEl.addEventListener('contextmenu', (e) => e.preventDefault());
     this.skyEl.addEventListener('selectstart', (e) => e.preventDefault());
     // Prevent iOS Safari native long-press callout / pointercancel while holding sky or Moon/Sun
@@ -2370,6 +2377,7 @@ export class SkyEngine {
     this.stateObserver?.disconnect();
     this.stateObserver = null;
     window.removeEventListener('resize', this.resize);
+    window.removeEventListener('orientationchange', this.onOrientationResize);
     if (this.onDocPointerDown) document.removeEventListener('pointerdown', this.onDocPointerDown);
     if (this.onDocPointerMove) document.removeEventListener('pointermove', this.onDocPointerMove);
     if (this.onDocPointerUp) {

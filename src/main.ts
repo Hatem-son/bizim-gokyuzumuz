@@ -1114,7 +1114,11 @@ async function bootstrap(): Promise<void> {
     onboard.hide();
     refreshUiStatus();
     skyEngine?.resize();
-    window.setTimeout(() => skyEngine?.refreshCachedPositions(), 100);
+    updateOlcBox?.();
+    window.setTimeout(() => {
+      skyEngine?.refreshCachedPositions();
+      updateOlcBox?.();
+    }, 150);
 
     stars = await fetchAllStars(who);
     syncSkyStars();
@@ -1246,6 +1250,44 @@ async function bootstrap(): Promise<void> {
     stopGlobalTimers();
     if (appMounted) markSeen();
   });
+
+  // ?olc=1 geçici ekran/kapsayıcı teşhisi (parametre yoksa DOM'a asla eklenmez)
+  let updateOlcBox: (() => void) | null = null;
+  if (new URLSearchParams(window.location.search).get('olc') === '1') {
+    const probe = document.createElement('div');
+    probe.style.cssText =
+      'position:fixed;inset:0;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);';
+    document.body.appendChild(probe);
+
+    const box = document.createElement('pre');
+    box.id = 'olc-box';
+    box.style.cssText =
+      'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:9999;max-width:90vw;margin:0;padding:12px 14px;border-radius:14px;background:rgba(4,10,18,.92);border:1px solid rgba(255,255,255,.28);color:#eaf6ff;font:600 11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;pointer-events:none;';
+    document.body.appendChild(box);
+
+    const btm = (sel: string) => {
+      const el = document.querySelector(sel);
+      return el ? el.getBoundingClientRect().bottom.toFixed(1) : 'yok';
+    };
+
+    updateOlcBox = () => {
+      const cs = getComputedStyle(probe);
+      const navExt = navigator as Navigator & { standalone?: boolean };
+      box.textContent = [
+        `screen.height: ${window.screen.height}`,
+        `innerHeight: ${window.innerHeight}`,
+        `clientHeight: ${document.documentElement.clientHeight}`,
+        `vv.height: ${window.visualViewport ? window.visualViewport.height.toFixed(1) : 'yok'}`,
+        `safe-top: ${cs.paddingTop} | safe-bottom: ${cs.paddingBottom}`,
+        `bottom html:${btm('html')} body:${btm('body')}`,
+        `bottom #scene:${btm('#scene')} #ground:${btm('#ground')}`,
+        `navigator.standalone: ${String(navExt.standalone ?? false)}`,
+      ].join('\n');
+    };
+    window.addEventListener('resize', updateOlcBox);
+    window.addEventListener('orientationchange', () => window.setTimeout(() => updateOlcBox?.(), 80));
+    updateOlcBox();
+  }
 
   // Startup restoration
   const keyLoaded = await loadSavedKey();

@@ -33,8 +33,8 @@ function gardenSvg(): string {
     '<svg class="garden" viewBox="0 0 390 260" preserveAspectRatio="xMidYMax slice" aria-hidden="true">' +
     '<defs><linearGradient id="gMeadowShade" x1="0" y1="0" x2="0" y2="1">' +
     '<stop offset="0" stop-color="#0b2321" stop-opacity="0"/>' +
-    '<stop offset=".45" stop-color="#0a1e24" stop-opacity=".75"/>' +
-    '<stop offset="1" stop-color="#0d1430" stop-opacity="1"/></linearGradient></defs>' +
+    '<stop offset=".45" stop-color="#0a1e22" stop-opacity=".76"/>' +
+    '<stop offset="1" stop-color="#08171c" stop-opacity="1"/></linearGradient></defs>' +
     '<path d="M-10 210 Q95 196 195 204 Q295 212 400 198 L400 265 L-10 265 Z" fill="url(#gMeadowShade)"/>';
 
   // Arka uzun çayır yaprakları (ekran altının 20px altına kadar uzanır)
@@ -77,10 +77,16 @@ function foregroundGrassSvg(): string {
   // İkinci koyu ön plan çayır katmanı — en alt kenarı ve kökleri tamamen örter
   let f =
     '<svg class="grass-front-svg" viewBox="0 0 390 260" preserveAspectRatio="xMidYMax slice" aria-hidden="true">' +
-    '<defs><linearGradient id="gFrontMeadow" x1="0" y1="0" x2="0" y2="1">' +
+    '<defs>' +
+    '<linearGradient id="gFrontMeadow" x1="0" y1="0" x2="0" y2="1">' +
     '<stop offset="0" stop-color="#07181d" stop-opacity=".18"/>' +
-    '<stop offset=".55" stop-color="#081a21" stop-opacity=".86"/>' +
-    '<stop offset="1" stop-color="#0d1430" stop-opacity="1"/></linearGradient></defs>' +
+    '<stop offset=".55" stop-color="#08191e" stop-opacity=".86"/>' +
+    '<stop offset="1" stop-color="#08171c" stop-opacity="1"/></linearGradient>' +
+    '<linearGradient id="gMeadowBottomFade" x1="0" y1="0" x2="0" y2="1">' +
+    '<stop offset="0" stop-color="#08171c" stop-opacity="0"/>' +
+    '<stop offset=".7" stop-color="#08171c" stop-opacity=".88"/>' +
+    '<stop offset="1" stop-color="#08171c" stop-opacity="1"/></linearGradient>' +
+    '</defs>' +
     '<path d="M-12 224 Q95 214 195 224 Q295 214 402 224 L402 266 L-12 266 Z" fill="url(#gFrontMeadow)"/>';
 
   for (let i = 0; i < 64; i++) {
@@ -100,6 +106,7 @@ function foregroundGrassSvg(): string {
     )} 266 Z" fill="${color}" opacity=".94"/>`;
   }
 
+  f += '<rect x="-12" y="232" width="414" height="36" fill="url(#gMeadowBottomFade)"/>';
   return f + '</svg>';
 }
 
