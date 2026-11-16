@@ -1,5 +1,32 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
+// deno-lint-ignore-file no-explicit-any
+import { createClient } from 'npm:@supabase/supabase-js@2';
+// @ts-ignore: web-push için tip tanımı yok
 import webpush from 'npm:web-push@3.6.7';
+
+interface ProfileSubRow {
+  id: string;
+  who: 'hamham' | 'beto';
+  push_subscription: unknown;
+}
+
+interface DueStarRow {
+  id: string;
+  from_user: string;
+  unlock_at: string;
+}
+
+interface PushPayload {
+  title: string;
+  body: string;
+  url: string;
+}
+
+interface PushRequestBody {
+  mode?: string;
+  kind?: string;
+  once?: boolean;
+  unlockAt?: string | null;
+}
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -8,8 +35,19 @@ const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY') ?? '';
 const VAPID_SUBJECT = Deno.env.get('VAPID_SUBJECT') ?? 'mailto:gokyuzu@example.com';
 const ALLOWED_ORIGINS = (Deno.env.get('APP_ORIGIN') ?? '')
   .split(',')
-  .map((s) => s.trim())
+  .map((s: string) => s.trim())
   .filter(Boolean);
+
+function json(
+  data: unknown,
+  status: number,
+  corsHeaders: Record<string, string>
+): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
 
 function buildCorsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get('Origin')?.trim() ?? '';
@@ -50,14 +88,14 @@ function formatUnlockLabel(iso: string): string {
 }
 
 async function sendToProfile(
-  admin: ReturnType<typeof createClient>,
+  admin: any,
   profile: { id: string; push_subscription: unknown } | null | undefined,
-  payloadObj: { title: string; body: string; url: string }
+  payloadObj: PushPayload
 ): Promise<{ sent: boolean; statusCode?: number }> {
   if (!profile?.push_subscription) return { sent: false };
   try {
     await webpush.sendNotification(
-      profile.push_subscription as webpush.PushSubscription,
+      profile.push_subscription,
       JSON.stringify(payloadObj)
     );
     return { sent: true };
@@ -70,7 +108,9 @@ async function sendToProfile(
   }
 }
 
-async function processPendingUnlocks(admin: ReturnType<typeof createClient>) {
+async function processPendingUnlocks(
+  admin: any
+): Promise<{ checked: boolean; unlockedCount: number }> {
   const nowIso = new Date().toISOString();
   const { data: dueStars, error } = await admin
     .from('stars')
@@ -89,15 +129,10 @@ async function processPendingUnlocks(admin: ReturnType<typeof createClient>) {
     .from('profiles')
     .select('id, who, push_subscription');
 
-  const byId = new Map<string, { id: string; who: 'hamham' | 'beto'; push_subscription: unknown }>();
-  const byWho = new Map<'hamham' | 'beto', { id: string; who: 'hamham' | 'beto'; push_subscription: unknown }>();
-  for (const p of (profiles ?? []) as { id: string; who: 'hamham' | 'beto'; push_subscription: unknown }[]) {
-    byId.set(p.id, p);
-    byWho.set(p.who, p);
-  }
+  const profileList = (profiles ?? []) as ProfileSubRow[];
 
   let sentCount = 0;
-  for (const row of dueStars as { id: string; from_user: string; unlock_at: string }[]) {
+  for (const row of dueStars as DueStarRow[]) {
     // Atomik sahiplenme: iki eşzamanlı cron tetiklemesinde aynı bildirimin iki kez gitmesini önler
     const { data: claimed } = await admin
       .from('stars')
@@ -109,11 +144,11 @@ async function processPendingUnlocks(admin: ReturnType<typeof createClient>) {
 
     if (!claimed) continue;
 
-    const senderProfile = byId.get(row.from_user);
+    const senderProfile = profileList.find((p: ProfileSubRow) => p.id === row.from_user);
     if (!senderProfile) continue;
-    const recipientWho = senderProfile.who === 'hamham' ? 'beto' : 'hamham';
-    const recipientProfile = byWho.get(recipientWho);
-    const senderName = senderProfile.who === 'hamham' ? 'Ham ham' : 'Beto';
+
+    const recipientWho: 'hamham' | 'beto' = senderProfile.who === 'hamham' ? 'beto' : 'hamham';
+    const recipientProfile = profileList.find((p: ProfileSubRow) => p.who === recipientWho);
     const senderGen = senderProfile.who === 'hamham' ? "Ham ham'ın" : "Beto'nun";
     const recipientName = recipientWho === 'hamham' ? 'Ham ham' : 'Beto';
 
@@ -135,7 +170,7 @@ async function processPendingUnlocks(admin: ReturnType<typeof createClient>) {
   return { checked: true, unlockedCount: sentCount };
 }
 
-Deno.serve(async (req) => {
+Deno.serve(async (req: Request): Promise<Response> => {
   const corsHeaders = buildCorsHeaders(req);
 
   if (req.method === 'OPTIONS') {
@@ -147,51 +182,30 @@ Deno.serve(async (req) => {
 
   try {
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
-      return new Response(JSON.stringify({ error: 'VAPID or Supabase env missing' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return json({ error: 'VAPID or Supabase env missing' }, 500, corsHeaders);
     }
 
     const authHeader = req.headers.get('Authorization') ?? '';
     const jwt = authHeader.replace(/^Bearer\s+/i, '');
     if (!jwt) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return json({ error: 'Unauthorized' }, 401, corsHeaders);
     }
 
-    const body = (await req.json().catch(() => ({}))) as {
-      mode?: string;
-      kind?: string;
-      once?: boolean;
-      unlockAt?: string | null;
-    };
-
-    const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const body = (await req.json().catch(() => ({}))) as PushRequestBody;
+    const admin: any = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // pg_cron veya sunucu tarafından çağrılan zamanlı kilit açma kontrolü
     if (body.mode === 'check_unlocks') {
       if (jwt !== SUPABASE_SERVICE_ROLE_KEY) {
-        return new Response(JSON.stringify({ error: 'Forbidden' }), {
-          status: 403,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        return json({ error: 'Forbidden' }, 403, corsHeaders);
       }
       const result = await processPendingUnlocks(admin);
-      return new Response(JSON.stringify(result), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return json(result, 200, corsHeaders);
     }
 
     const { data: userData, error: userErr } = await admin.auth.getUser(jwt);
     if (userErr || !userData.user) {
-      return new Response(JSON.stringify({ error: 'Invalid token' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return json({ error: 'Invalid token' }, 401, corsHeaders);
     }
 
     const { data: senderProfile } = await admin
@@ -201,14 +215,11 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (!senderProfile) {
-      return new Response(JSON.stringify({ error: 'Forbidden' }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return json({ error: 'Forbidden' }, 403, corsHeaders);
     }
 
     const senderWho = senderProfile.who as 'hamham' | 'beto';
-    const recipientWho = senderWho === 'hamham' ? 'beto' : 'hamham';
+    const recipientWho: 'hamham' | 'beto' = senderWho === 'hamham' ? 'beto' : 'hamham';
     const senderName = senderWho === 'hamham' ? 'Ham ham' : 'Beto';
 
     const { data: recipient } = await admin
@@ -218,10 +229,7 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (!recipient?.push_subscription) {
-      return new Response(JSON.stringify({ sent: false, reason: 'no_subscription' }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return json({ sent: false, reason: 'no_subscription' }, 200, corsHeaders);
     }
 
     let title = `${senderName} seni düşündü`;
@@ -246,17 +254,12 @@ Deno.serve(async (req) => {
       url: '/',
     });
 
-    return new Response(JSON.stringify(res), {
-      status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  } catch (err) {
-    return new Response(
-      JSON.stringify({ error: err instanceof Error ? err.message : 'Unexpected error' }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
+    return json(res, 200, corsHeaders);
+  } catch (err: unknown) {
+    return json(
+      { error: err instanceof Error ? err.message : 'Unexpected error' },
+      500,
+      corsHeaders
     );
   }
 });
