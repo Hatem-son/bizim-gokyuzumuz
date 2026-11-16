@@ -62,6 +62,20 @@ export function translateAuthError(message: string, status?: number): string {
   return 'Sunucu hatası oluştu. Biraz sonra tekrar dene.';
 }
 
+export async function getSessionFast(): Promise<{
+  session: Session | null;
+  networkFailed?: boolean;
+}> {
+  const sb = getSupabase();
+  if (!sb) return { session: null };
+  try {
+    const { data, error } = await sb.auth.getSession();
+    return { session: data.session ?? null, networkFailed: Boolean(error) };
+  } catch {
+    return { session: null, networkFailed: true };
+  }
+}
+
 export async function getSessionAndProfile(): Promise<{
   session: Session | null;
   profile: ProfileRow | null;

@@ -230,13 +230,13 @@
           <small>Hesaptan ve gizli kelimeden çıkar, giriş ekranına döner</small>
         </button>
       </div>
-      <button class="set-ver" id="s-ver" type="button">Bizim Gökyüzümüz · v1.1.4</button>
+      <button class="set-ver" id="s-ver" type="button">Bizim Gökyüzümüz · v1.1.5</button>
     </div>
   </div>
   </template>
 
-  <!-- Onboarding -->
-  <section id="onboard" aria-label="Giriş">
+  <!-- Onboarding (açılışta kapalı; yalnızca kurulum yoksa JS ile açılır → asla seçim ekranı yanıp sönmez) -->
+  <section id="onboard" class="gone" aria-label="Giriş" aria-hidden="true" inert>
     <div class="ob-scene" id="ob-scene" aria-hidden="true"></div>
     <div class="ob">
       <p class="ob-eyebrow">HAM HAM &amp; BETO</p>
@@ -286,7 +286,7 @@
         <button class="link-btn" id="ob-wipe" type="button" hidden>Yerel doğrulamayı sıfırla ve yeniden kur</button>
         <button class="link-btn" id="back" type="button">Geri dön</button>
       </form>
-      <p class="ob-ver" id="ob-ver">v1.1.4</p>
+      <p class="ob-ver" id="ob-ver">v1.1.5</p>
     </div>
   </section>
 

@@ -33,7 +33,7 @@ import {
   type StarPayloadData,
 } from './lib/stars';
 import { STORAGE_KEYS, store } from './lib/storage';
-import { getSessionAndProfile, inferWhoFromEmail, isSupabaseConfigured, signOutSupabase } from './lib/supabase';
+import { getSessionAndProfile, getSessionFast, inferWhoFromEmail, isSupabaseConfigured, signOutSupabase } from './lib/supabase';
 import { formatDayLine, pickGreeting } from './sky/greetings';
 import { PANO, SkyEngine } from './sky/skyRenderer';
 import { currentDecimalHour, formatHour, getSolarTimes } from './sky/solar';
@@ -1304,32 +1304,31 @@ async function bootstrap(): Promise<void> {
     if (appMounted) markSeen();
   });
 
-  // Startup restoration (ilk kurulumdan sonra seçim ekranını tekrar gösterme)
+  // Startup restoration (ilk açılışta ağ beklemez; seçim ekranı asla yanıp sönmez)
   const savedWho = store.get<Who | null>(STORAGE_KEYS.me, null);
   let keyLoaded = await loadSavedKey();
   if (!keyLoaded && savedWho) {
-    // iOS standalone uyanışında IndexedDB bazen ilk tickte gecikebilir; bir kez daha dene
     await new Promise((r) => window.setTimeout(r, 80));
     keyLoaded = await loadSavedKey();
   }
 
   if (isSupabaseConfigured) {
-    const { session, profile, networkFailed } = await getSessionAndProfile();
-    const resolvedWho =
-      profile?.who ?? (session ? savedWho ?? inferWhoFromEmail(session.user.email) : savedWho);
+    const { session, networkFailed } = await getSessionFast();
+    const resolvedWho = session ? savedWho ?? inferWhoFromEmail(session.user.email) : savedWho;
 
-    if (session && resolvedWho && keyLoaded) {
+    if (resolvedWho && keyLoaded && (session || networkFailed || navigator.onLine === false)) {
       currentMe = resolvedWho;
       if (hasPin()) lock.show('unlock');
       await enterApp(resolvedWho);
-      return;
-    }
-
-    // Çevrimdışı / ağ uyanırken cihazda zaten anahtar + kimlik kayıtlıysa doğrudan içeri al
-    if (!session && savedWho && keyLoaded && (networkFailed || navigator.onLine === false)) {
-      currentMe = savedWho;
-      if (hasPin()) lock.show('unlock');
-      await enterApp(savedWho);
+      // Profil doğrulamasını açılışı bloklamadan arka planda çalıştır
+      if (session) {
+        void getSessionAndProfile().then(({ profile }) => {
+          if (profile && profile.who !== currentMe) {
+            currentMe = profile.who;
+            store.set(STORAGE_KEYS.me, profile.who);
+          }
+        });
+      }
       return;
     }
 

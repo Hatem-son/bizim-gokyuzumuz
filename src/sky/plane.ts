@@ -50,7 +50,8 @@ export class PlaneController {
   private lift = 18;
   private period = 1.15;
   private bannerW = 240;
-  private readonly bannerH = 34;
+  private readonly bannerH = 38;
+  private readonly notchW = 14;
   private readonly ropeW = 34;
   private readonly planeW = 66;
   private readonly planeH = 30;
@@ -161,10 +162,10 @@ export class PlaneController {
 
     probe.font = '400 22px "Great Vibes", "Snell Roundhand", cursive';
     const textW = Math.ceil(probe.measureText(text).width);
-    const notchW = 14;
+    const notchW = this.notchW;
     const padLeft = this.rev ? 22 : 28 + notchW;
     const padRight = this.rev ? 28 + notchW : 22;
-    this.bannerW = Math.max(180, textW + padLeft + padRight);
+    this.bannerW = Math.max(186, textW + padLeft + padRight);
 
     this.bannerCanvas.width = this.bannerW * s;
     this.bannerCanvas.height = this.bannerH * s;
@@ -174,44 +175,10 @@ export class PlaneController {
     g.scale(s, s);
     g.clearRect(0, 0, this.bannerW, this.bannerH);
 
-    // Swallowtail clip shape
-    g.save();
-    g.beginPath();
-    if (this.rev) {
-      // Plane flies right-to-left: banner trails to the right, swallowtail at right edge
-      g.moveTo(0, 0);
-      g.lineTo(this.bannerW, 0);
-      g.lineTo(this.bannerW - notchW, this.bannerH / 2);
-      g.lineTo(this.bannerW, this.bannerH);
-      g.lineTo(0, this.bannerH);
-    } else {
-      // Plane flies left-to-right: banner trails to the left, swallowtail at left edge
-      g.moveTo(0, 0);
-      g.lineTo(this.bannerW, 0);
-      g.lineTo(this.bannerW, this.bannerH);
-      g.lineTo(0, this.bannerH);
-      g.lineTo(notchW, this.bannerH / 2);
-    }
-    g.closePath();
-    g.clip();
-
-    // Cloth background gradient (yeterli kontrast ile saf beyaz kalp net görünür)
-    const bg = g.createLinearGradient(0, 0, 0, this.bannerH);
-    bg.addColorStop(0, '#f7d2e2');
-    bg.addColorStop(0.55, '#efbad0');
-    bg.addColorStop(1, '#e49fbe');
-    g.fillStyle = bg;
-    g.fillRect(0, 0, this.bannerW, this.bannerH);
-
-    // Top & bottom pink cloth trim
-    g.fillStyle = '#cf7ba0';
-    g.fillRect(0, 0, this.bannerW, 2);
-    g.fillRect(0, this.bannerH - 2, this.bannerW, 2);
-
-    // Crisp vector white heart + Great Vibes message (asla sistem emojisine düşmez)
-    const heartX = this.rev ? 14 : notchW + 16;
-    const heartY = this.bannerH / 2 - 4.5;
-    const hs = 11;
+    // Arka bez dokusu doğrudan vektörel çizileceği için burada yalnız saf beyaz vektör kalp + Great Vibes yazı hazırlanır (@4x)
+    const heartX = this.rev ? 15 : notchW + 17;
+    const heartY = this.bannerH / 2 - 4.8;
+    const hs = 11.5;
     g.fillStyle = '#ffffff';
     g.beginPath();
     g.moveTo(heartX, heartY + hs * 0.3);
@@ -221,12 +188,10 @@ export class PlaneController {
     g.bezierCurveTo(heartX + hs * 0.5, heartY - hs * 0.05, heartX, heartY, heartX, heartY + hs * 0.3);
     g.fill();
 
-    g.fillStyle = '#5a214f';
+    g.fillStyle = '#531b48';
     g.textBaseline = 'middle';
     g.font = '400 22px "Great Vibes", "Snell Roundhand", cursive';
     g.fillText(text, heartX + 14, this.bannerH / 2 + 1);
-
-    g.restore();
   }
 
   public launch(who: Who, skyTop: number, skyHeight: number): boolean {
@@ -297,48 +262,103 @@ export class PlaneController {
     ctx.quadraticCurveTo((tailX + ropeEndX) / 2, planeCy + 6, ropeEndX, y + this.bannerH - 2 + flagSwing);
     ctx.stroke();
 
-    // 2. Single-canvas cloth banner bent by traveling sine wave (3px GPU-friendly strips)
-    const sliceW = 3;
-    const s = this.bannerTexScale;
-    const numSlices = Math.ceil(this.bannerW / sliceW);
-
-    for (let i = 0; i < numSlices; i++) {
-      const sx = i * sliceW;
-      const w = Math.min(sliceW, this.bannerW - sx);
-      const u = sx / Math.max(1, this.bannerW - sliceW);
-      // 0 near rope, 1 at loose swallowtail end
+    // 2. Pürüzsüz vektörel dalgalanan kağıt şeridi + teğet eğimli @4x yazı (merdivenlenme sıfır)
+    const steps = 18;
+    const pts: { x: number; topY: number; botY: number; slope: number; far: number }[] = [];
+    for (let i = 0; i <= steps; i++) {
+      const u = i / steps;
+      const sx = u * this.bannerW;
       const far = this.rev ? u : 1 - u;
-
-      const amp = 0.6 + far * far * 4.4;
-      const phase = (ts * Math.PI * 2) / this.period - (1 - far) * 4.2;
+      const amp = 0.5 + far * far * 3.8;
+      const phase = (ts * Math.PI * 2) / this.period - (1 - far) * 4.0;
       const wave = Math.sin(phase);
       const dy = wave * amp + flagSwing * (1 - far * 0.4);
-      const scaleY = 1 + far * 0.045 * wave;
-      const dh = this.bannerH * scaleY;
-      const drawY = y + (this.bannerH - dh) / 2 + dy;
+      const dh = this.bannerH * (1 + far * 0.035 * wave);
+      const topY = y + (this.bannerH - dh) / 2 + dy;
+      pts.push({ x: flagX + sx, topY, botY: topY + dh, slope: Math.cos(phase), far });
+    }
 
+    const leftMid = (pts[0].topY + pts[0].botY) * 0.5;
+    const rightMid = (pts[steps].topY + pts[steps].botY) * 0.5;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].topY);
+    for (let i = 1; i <= steps; i++) ctx.lineTo(pts[i].x, pts[i].topY);
+    if (this.rev) {
+      ctx.lineTo(flagX + this.bannerW - this.notchW, rightMid);
+    }
+    for (let i = steps; i >= 0; i--) ctx.lineTo(pts[i].x, pts[i].botY);
+    if (!this.rev) {
+      ctx.lineTo(flagX + this.notchW, leftMid);
+    }
+    ctx.closePath();
+
+    // Yumuşak ipek kâğıt gradyanı
+    const bg = ctx.createLinearGradient(0, y - 4, 0, y + this.bannerH + 4);
+    bg.addColorStop(0, '#fae0eb');
+    bg.addColorStop(0.55, '#f2c3d7');
+    bg.addColorStop(1, '#e6a5c2');
+    ctx.fillStyle = bg;
+    ctx.fill();
+
+    // Doğal kıvrım ışık/gölge geçişi
+    const waveGrad = ctx.createLinearGradient(flagX, 0, flagX + this.bannerW, 0);
+    for (let i = 0; i <= 6; i++) {
+      const k = i / 6;
+      const idx = Math.min(steps, Math.round(k * steps));
+      const shade = pts[idx].slope * (0.04 + pts[idx].far * 0.11);
+      waveGrad.addColorStop(k, shade > 0 ? `rgba(110,30,80,${shade.toFixed(3)})` : `rgba(255,255,255,${(-shade * 0.7).toFixed(3)})`);
+    }
+    ctx.fillStyle = waveGrad;
+    ctx.fill();
+
+    // Teğet açısıyla bükülen @4x beyaz kalp ve yazı (piksel kırılması olmadan pürüzsüz eğrilir)
+    ctx.save();
+    ctx.clip();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    const s = this.bannerTexScale;
+    const overlap = 0.6;
+    for (let i = 0; i < steps; i++) {
+      const p0 = pts[i];
+      const p1 = pts[i + 1];
+      const w = p1.x - p0.x;
+      if (w <= 0) continue;
+      const sx = (i / steps) * this.bannerW;
+      const sw = this.bannerW / steps;
+      const shear = (p1.topY - p0.topY) / w;
+      const scaleY = (p0.botY - p0.topY + (p1.botY - p1.topY)) / (2 * this.bannerH);
+
+      ctx.save();
+      ctx.transform(1, shear, 0, scaleY, p0.x, p0.topY);
       ctx.drawImage(
         this.bannerCanvas,
         sx * s,
         0,
-        w * s,
+        sw * s,
         this.bannerH * s,
-        flagX + sx,
-        drawY,
-        w + 0.4,
-        dh
+        -overlap * 0.5,
+        0,
+        w + overlap,
+        this.bannerH
       );
-
-      // Cloth fold shadow on receding curve slopes
-      const slope = Math.cos(phase);
-      if (slope > 0.12) {
-        const foldAlpha = slope * (0.04 + far * 0.11);
-        if (foldAlpha > 0.025) {
-          ctx.fillStyle = `rgba(110, 30, 80, ${foldAlpha.toFixed(2)})`;
-          ctx.fillRect(flagX + sx, drawY, w + 0.4, dh);
-        }
-      }
+      ctx.restore();
     }
+    ctx.restore();
+
+    // Anti-aliased üst ve alt pembe şerit çizgisi (tam vektör, sıfır piksel basamağı)
+    ctx.strokeStyle = '#cf7ba0';
+    ctx.lineWidth = 1.6;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].topY + 0.8);
+    for (let i = 1; i <= steps; i++) ctx.lineTo(pts[i].x, pts[i].topY + 0.8);
+    ctx.moveTo(pts[0].x, pts[0].botY - 0.8);
+    for (let i = 1; i <= steps; i++) ctx.lineTo(pts[i].x, pts[i].botY - 0.8);
+    ctx.stroke();
+    ctx.restore();
 
     // 3. Airplane + spinning propeller
     ctx.save();

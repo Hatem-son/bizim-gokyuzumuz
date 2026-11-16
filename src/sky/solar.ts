@@ -151,7 +151,7 @@ export function getOrbPlacement(hour: number, moonPhase: number, now = new Date(
   const fm = ((((h - moonRise) % 24) + 24) % 24) / 12;
   const moonUp = fm >= 0 && fm <= 1;
   const moonFrac = moonUp ? fm : fm < 1.5 ? 0.86 : 0.14;
-  const moonOpacity = moonUp ? (sunUp ? 0.42 : 0.96) : sunUp ? 0.34 : 0.78;
+  const moonOpacity = sunUp ? (moonUp ? 0.56 : 0.45) : 1;
   const moonPos = {
     x: 16 + moonFrac * 68,
     y: 26 - Math.sin(Math.PI * moonFrac) * 12,

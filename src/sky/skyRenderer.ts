@@ -702,7 +702,7 @@ export class SkyEngine {
   }
 
   public resize = (): void => {
-    this.DPR = Math.min(1.5, window.devicePixelRatio || 1);
+    this.DPR = Math.min(2, window.devicePixelRatio || 1);
     const host = this.cv.parentElement;
     const hostW = host?.clientWidth || window.innerWidth;
     const hostH = host?.clientHeight || window.innerHeight;
@@ -1481,8 +1481,8 @@ export class SkyEngine {
     this.moonInfo = getMoonPhaseInfo();
     this.lastMoonBake = Date.now();
 
-    // Yalnızca Güneş ışığı vuran kısmı parlayan, gölgeli kısmı tamamen görünmez sade Ay
-    const size = 240;
+    // Yalnızca Güneş ışığı vuran kısmı parlayan, gölgeli kısmı tamamen görünmez HiDPI Ay
+    const size = 360; // 180px mantıksal kutuya @2x netlikte çizilir
     this.moonCanvas.width = size;
     this.moonCanvas.height = size;
     const g = this.moonCanvas.getContext('2d');
@@ -1490,22 +1490,23 @@ export class SkyEngine {
     g.clearRect(0, 0, size, size);
 
     const c = size / 2;
-    const r = 32; // ≈ 30px kompakt çap
+    const r = 36; // ≈ 36px (180px alanda @2x → Güneşle uyumlu, belirgin kompakt boyut)
     const p = this.moonInfo.phase;
 
-    // Parlak tarafın yönüne hafifçe kaymış yumuşak parıltı (gölgeli tarafta hale yok)
+    // Parlak tarafın çevresinde gerçek ay ışığı parıltısı (gölgeli tarafta hale yok, blur/filtre yok)
     const dir = p < 0.5 ? 1 : -1;
-    const illumFactor = Math.max(0.15, Math.abs(Math.sin(Math.PI * p)));
-    const hx = c + dir * r * 0.28 * (1 - illumFactor * 0.65);
-    const halo = g.createRadialGradient(hx, c, r * 0.2, hx, c, 108);
-    halo.addColorStop(0, 'rgba(255, 255, 255, 0.44)');
-    halo.addColorStop(0.28, 'rgba(224, 238, 255, 0.18)');
-    halo.addColorStop(0.62, 'rgba(195, 220, 255, 0.05)');
-    halo.addColorStop(1, 'rgba(180, 210, 255, 0)');
+    const illumFactor = Math.max(0.18, Math.abs(Math.sin(Math.PI * p)));
+    const hx = c + dir * r * 0.32 * (1 - illumFactor * 0.6);
+    const halo = g.createRadialGradient(hx, c, r * 0.15, hx, c, 156);
+    halo.addColorStop(0, 'rgba(255, 255, 255, 0.72)');
+    halo.addColorStop(0.16, 'rgba(232, 244, 255, 0.44)');
+    halo.addColorStop(0.38, 'rgba(204, 228, 255, 0.18)');
+    halo.addColorStop(0.68, 'rgba(180, 212, 255, 0.05)');
+    halo.addColorStop(1, 'rgba(170, 205, 255, 0)');
     g.fillStyle = halo;
     g.fillRect(0, 0, size, size);
 
-    // Kuzey yarımküre astronomik terminatör elipsi — yeni ayda bile ince bir hilal kalır
+    // Kuzey yarımküre astronomik terminatör elipsi — yeni ayda bile ince parlak hilal kalır
     const rx = Math.min(r * 0.94, Math.abs(Math.cos(2 * Math.PI * p)) * r);
     const litPath = new Path2D();
     if (p < 0.5) {
@@ -1519,24 +1520,25 @@ export class SkyEngine {
     }
     litPath.closePath();
 
-    // Yalnızca ışık vuran kısmı çiz (karanlık yarı tamamen şeffaf/görünmez)
+    // Yalnızca ışık vuran parlak yüzeyi çiz (karanlık yarı tamamen şeffaf)
     g.save();
     g.clip(litPath);
 
-    const moonGrad = g.createRadialGradient(c + dir * 6, c - 6, 2, c, c, r * 1.25);
+    const moonGrad = g.createRadialGradient(c + dir * 7, c - 7, 2, c, c, r * 1.25);
     moonGrad.addColorStop(0, '#ffffff');
-    moonGrad.addColorStop(0.55, '#f4f8ff');
-    moonGrad.addColorStop(1, '#dce7fb');
+    moonGrad.addColorStop(0.65, '#f6f9ff');
+    moonGrad.addColorStop(1, '#e6effd');
     g.fillStyle = moonGrad;
     g.fillRect(c - r - 2, c - r - 2, r * 2 + 4, r * 2 + 4);
 
-    g.fillStyle = 'rgba(155, 178, 214, 0.17)';
+    // Çok hafif ay yüzeyi dokusu (yüzeyi karartmadan doğallık verir)
+    g.fillStyle = 'rgba(172, 194, 228, 0.11)';
     const craters: [number, number, number][] = [
-      [c - 7, c - 7, 5.5],
-      [c + 9, c + 3, 6],
-      [c - 6, c + 9, 3.6],
-      [c + 11, c - 12, 2.6],
-      [c - 14, c + 3, 2.3],
+      [c - 8, c - 8, 6.2],
+      [c + 10, c + 4, 6.8],
+      [c - 7, c + 10, 4.2],
+      [c + 12, c - 13, 3.0],
+      [c - 15, c + 4, 2.6],
     ];
     for (const [cx0, cy0, cr] of craters) {
       g.beginPath();
@@ -1545,10 +1547,10 @@ export class SkyEngine {
     }
     g.restore();
 
-    // Aydınlık dış yayda ince parlak ışıltı
+    // Aydınlık yay üzerinde net gümüş-beyaz parıltı çizgisi
     g.save();
-    g.strokeStyle = 'rgba(255, 255, 255, 0.85)';
-    g.lineWidth = 1.6;
+    g.strokeStyle = 'rgba(255, 255, 255, 0.96)';
+    g.lineWidth = 2;
     g.beginPath();
     if (p < 0.5) {
       g.arc(c, c, r - 0.5, -Math.PI / 2, Math.PI / 2, false);
@@ -2195,7 +2197,7 @@ export class SkyEngine {
     this.moonUiAlpha += (moonTarget - this.moonUiAlpha) * Math.min(1, dt / 180);
 
     if (this.moonUiAlpha > 0.01 && !this.trav.on) {
-      const box = 112;
+      const box = 180;
       const half = box / 2;
       ctx.save();
       ctx.globalAlpha = this.moonUiAlpha * this.moonScreen.opacity;

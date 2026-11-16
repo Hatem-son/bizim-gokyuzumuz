@@ -105,39 +105,33 @@ function gardenFlowersHtml(): string {
 }
 
 function foregroundGrassSvg(): string {
-  // İkinci koyu ön plan çayır katmanı — en alt kenarı ve kökleri tamamen örter
+  // İkinci koyu ön plan çayır katmanı — otlar ekranın gerçek alt kenarının ötesine kesintisiz iner (alt şerit kesintisi yok)
   let f =
     '<svg class="grass-front-svg" viewBox="0 0 390 260" preserveAspectRatio="xMidYMax slice" aria-hidden="true">' +
     '<defs>' +
     '<linearGradient id="gFrontMeadow" x1="0" y1="0" x2="0" y2="1">' +
-    '<stop offset="0" stop-color="#07181d" stop-opacity=".18"/>' +
-    '<stop offset=".55" stop-color="#08191e" stop-opacity=".86"/>' +
-    '<stop offset="1" stop-color="#08171c" stop-opacity="1"/></linearGradient>' +
-    '<linearGradient id="gMeadowBottomFade" x1="0" y1="0" x2="0" y2="1">' +
-    '<stop offset="0" stop-color="#08171c" stop-opacity="0"/>' +
-    '<stop offset=".7" stop-color="#08171c" stop-opacity=".88"/>' +
+    '<stop offset="0" stop-color="#07181d" stop-opacity=".12"/>' +
+    '<stop offset=".6" stop-color="#08191e" stop-opacity=".68"/>' +
     '<stop offset="1" stop-color="#08171c" stop-opacity="1"/></linearGradient>' +
     '</defs>' +
-    '<path d="M-12 224 Q95 214 195 224 Q295 214 402 224 L402 266 L-12 266 Z" fill="url(#gFrontMeadow)"/>';
+    '<path d="M-12 224 Q95 214 195 224 Q295 214 402 224 L402 272 L-12 272 Z" fill="url(#gFrontMeadow)"/>';
 
   for (let i = 0; i < 64; i++) {
     const x = -8 + i * 6.4 + (i % 2) * 1.3;
-    // Ortadaki mum etiketi ve düğmeler önünde biraz alçalarak okunurluğu korur
     const centerDist = Math.abs(x - 195);
     const centerDip = centerDist < 72 ? 14 : 0;
     const h = Math.max(24, 34 + ((i * 29) % 42) - centerDip);
     const d = i % 2 ? 1 : -1;
     const tipX = x + d * (4 + (i % 4) * 1.8);
     const w = 1.9 + (i % 3) * 0.65;
-    const color = i % 3 === 0 ? '#06151b' : i % 2 === 0 ? '#081d22' : '#0b2528';
-    f += `<path d="M${(x - w).toFixed(1)} 266 Q ${(x + d * 2.5).toFixed(1)} ${(266 - h * 0.56).toFixed(1)} ${tipX.toFixed(1)} ${(
-      266 - h
-    ).toFixed(1)} Q ${(x + d * 1.2 + w * 0.7).toFixed(1)} ${(266 - h * 0.45).toFixed(1)} ${(x + w).toFixed(
+    const color = i % 3 === 0 ? '#071b21' : i % 2 === 0 ? '#0a2228' : '#0d2b2e';
+    f += `<path d="M${(x - w).toFixed(1)} 272 Q ${(x + d * 2.5).toFixed(1)} ${(272 - h * 0.56).toFixed(1)} ${tipX.toFixed(1)} ${(
+      272 - h
+    ).toFixed(1)} Q ${(x + d * 1.2 + w * 0.7).toFixed(1)} ${(272 - h * 0.45).toFixed(1)} ${(x + w).toFixed(
       1
-    )} 266 Z" fill="${color}" opacity=".94"/>`;
+    )} 272 Z" fill="${color}" opacity=".94"/>`;
   }
 
-  f += '<rect x="-12" y="232" width="414" height="36" fill="url(#gMeadowBottomFade)"/>';
   return f + '</svg>';
 }
 
