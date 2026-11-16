@@ -179,18 +179,6 @@ body {
   overscroll-behavior: none;
 }
 
-body::after {
-  content: "";
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: calc(env(safe-area-inset-bottom) + 90px);
-  background: linear-gradient(to bottom, transparent, var(--scene-bottom) 70%);
-  pointer-events: none;
-  z-index: 0;
-}
-
 button {
   font: inherit;
   color: inherit;
@@ -883,34 +871,21 @@ body.quiet .cdf {
   margin: 4px 0 -6px;
 }
 
-/* ---------- Ground action row (Stage 3 actions; candle & lilies arrive in Stage 5) ---------- */
+/* ---------- Ground action row ---------- */
 .ground {
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
   z-index: 3;
-  height: calc(var(--ground-h) + env(safe-area-inset-bottom) + 12px);
-  padding-bottom: calc(env(safe-area-inset-bottom) + 12px);
+  height: calc(var(--ground-h) + env(safe-area-inset-bottom));
   pointer-events: none;
-}
-
-.ground::after {
-  content: "";
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: calc(env(safe-area-inset-bottom) + 90px);
-  background: linear-gradient(to bottom, transparent, var(--scene-bottom) 70%);
-  pointer-events: none;
-  z-index: 0;
 }
 
 .center-row {
   position: absolute;
   left: 50%;
-  bottom: calc(env(safe-area-inset-bottom) + 12px);
+  bottom: calc(env(safe-area-inset-bottom) + 28px);
   transform: translateX(-50%);
   display: flex;
   align-items: flex-end;
@@ -1072,18 +1047,6 @@ body:not(.awake) .act {
     radial-gradient(140% 46% at 50% 106%, var(--horizon) 0%, transparent 62%),
     linear-gradient(180deg, var(--sky-1) 0%, var(--sky-2) 52%, var(--scene-bottom) 100%);
   transition: opacity .4s var(--ease), visibility .4s;
-}
-
-#onboard::after {
-  content: "";
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: calc(env(safe-area-inset-bottom) + 90px);
-  background: linear-gradient(to bottom, transparent, var(--scene-bottom) 70%);
-  pointer-events: none;
-  z-index: 1;
 }
 
 #onboard.gone {
@@ -1415,16 +1378,15 @@ body:not(.awake) .act {
   margin-top: 1px;
 }
 
-/* ---------- Settings Sheet ---------- */
+/* ---------- Settings Sheet & Bottom Sheets ---------- */
 .sheet {
   position: fixed;
   inset: 0;
-  height: 100dvh;
   z-index: 25;
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding: calc(env(safe-area-inset-top) + 16px) 0 max(env(safe-area-inset-bottom), var(--kbpad, 0px));
+  padding: 0;
   background: rgba(4, 2, 14, 0);
   pointer-events: none;
   visibility: visible;
@@ -1445,7 +1407,8 @@ body:not(.awake) .act {
 .sheet-card {
   width: 100%;
   max-width: 520px;
-  padding: 10px 20px calc(env(safe-area-inset-bottom) + 20px);
+  margin: 0;
+  padding: 10px 20px calc(env(safe-area-inset-bottom) + 16px);
   border-radius: 30px 30px 0 0;
   background: linear-gradient(180deg, rgba(255, 255, 255, .04), rgba(0, 0, 0, .28)), var(--sheet);
   border: 1px solid var(--line);
@@ -1456,7 +1419,7 @@ body:not(.awake) .act {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  max-height: calc(100dvh - env(safe-area-inset-top) - 16px - var(--kbpad, 0px));
+  max-height: calc(100dvh - env(safe-area-inset-top) - 12px);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -2423,56 +2386,50 @@ textarea:focus {
   pointer-events: none;
 }
 
-/* Keyboard open & timed mode: keep compose sheet anchored below safe-area-top and compact */
-.kb-open .sheet-card,
-.typing .sheet-card {
-  gap: 8px;
-  max-height: calc(100dvh - env(safe-area-inset-top) - 16px - var(--kbpad, 0px));
-}
-
-.typing .sheet {
+/* Keyboard open & timed mode: apply --kbpad ONLY to #compose when field focused, never #settings */
+.typing #compose.open {
   align-items: flex-end;
-  padding: calc(env(safe-area-inset-top) + 16px) 0 max(env(safe-area-inset-bottom), var(--kbpad, 0px));
+  padding: calc(env(safe-area-inset-top) + 12px) 0 var(--kbpad, 0px);
 }
 
-.typing .sheet-card {
-  border-radius: 26px;
-  border: 1px solid var(--line);
-  margin: 0 10px;
-  width: calc(100% - 20px);
-  padding: 14px 16px 14px;
+.kb-open #compose .sheet-card,
+.typing #compose.open .sheet-card {
+  gap: 8px;
+  border-radius: 26px 26px 0 0;
+  padding: 14px 16px calc(env(safe-area-inset-bottom) + 16px);
+  max-height: calc(100dvh - env(safe-area-inset-top) - 12px - var(--kbpad, 0px));
 }
 
-.typing .sheet:not(.open) .sheet-card {
-  transform: translateY(calc(100% + var(--kbpad, 0px) + 30px));
+.typing #compose:not(.open) .sheet-card {
+  transform: translateY(105%);
 }
 
-.kb-open .sheet-hint,
-.typing .sheet-hint,
-.kb-open .sheet-sub,
-.typing .sheet-sub,
-.kb-open .handle,
-.typing .handle,
+.kb-open #compose .sheet-hint,
+.typing #compose.open .sheet-hint,
+.kb-open #compose .sheet-sub,
+.typing #compose.open .sheet-sub,
+.kb-open #compose .handle,
+.typing #compose.open .handle,
 body.sched-open #chips {
   display: none;
 }
 
-.kb-open .sheet-head .medal,
-.typing .sheet-head .medal {
+.kb-open #compose .sheet-head .medal,
+.typing #compose.open .sheet-head .medal {
   width: 34px;
   height: 34px;
   font-size: 16px;
 }
 
-.kb-open .sheet-title,
-.typing .sheet-title {
+.kb-open #compose .sheet-title,
+.typing #compose.open .sheet-title {
   font-size: 30px;
 }
 
-.kb-open textarea,
-.typing textarea {
+.kb-open #compose textarea,
+.typing #compose.open textarea {
   min-height: 80px;
-  max-height: 24svh;
+  max-height: 24%;
 }
 
 body.sched-open #compose .sheet-card {

@@ -447,29 +447,48 @@ function receiveIncomingStar(star: StarRecord): void {
 }
 
 /* ---------- VisualViewport keyboard stabilization ---------- */
+let resetKeyboardRef: (() => void) | null = null;
+
+function isActiveTextField(): boolean {
+  const el = document.activeElement;
+  if (!(el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && !['file', 'checkbox', 'radio', 'button'].includes(el.type)))) {
+    return false;
+  }
+  return !el.closest('[inert], [hidden], .gone');
+}
+
 function setupKeyboardViewport(): void {
   const nav = navigator as Navigator & { platform?: string; maxTouchPoints?: number };
   const isIos =
     /iPhone|iPad|iPod/.test(navigator.userAgent) ||
     (nav.platform === 'MacIntel' && (nav.maxTouchPoints ?? 0) > 1);
 
-  const isField = (el: EventTarget | null): boolean =>
-    el instanceof HTMLTextAreaElement ||
-    (el instanceof HTMLInputElement && !['file', 'checkbox', 'radio', 'button'].includes(el.type));
-
   const settle = () => {
     window.scrollTo(0, 0);
     if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
   };
 
+  const resetKb = () => {
+    document.body.classList.remove('typing', 'kb-open');
+    document.documentElement.style.setProperty('--kbpad', '0px');
+    settle();
+  };
+  resetKeyboardRef = resetKb;
+
   const vv = window.visualViewport;
   const sync = () => {
+    const focused = isActiveTextField();
+    if (!focused) {
+      resetKb();
+      return;
+    }
     const vvKb = vv ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0;
     const kbOpen = vvKb > 120;
+    document.body.classList.add('typing');
     document.body.classList.toggle('kb-open', kbOpen);
     const pad = kbOpen
       ? vvKb
-      : document.body.classList.contains('typing') && isIos
+      : isIos
         ? Math.round(Math.min(340, window.innerHeight * 0.44))
         : 0;
     document.documentElement.style.setProperty('--kbpad', `${pad}px`);
@@ -490,25 +509,26 @@ function setupKeyboardViewport(): void {
     vv.addEventListener('scroll', onVv);
   }
 
-  document.addEventListener('focusin', (e) => {
-    if (isField(e.target)) {
-      document.body.classList.add('typing');
+  document.addEventListener('focusin', () => {
+    if (isActiveTextField()) {
       sync();
       settle();
       window.setTimeout(settle, 120);
       window.setTimeout(settle, 380);
+    } else {
+      resetKb();
     }
   });
 
   document.addEventListener('focusout', () => {
     window.setTimeout(() => {
-      if (!isField(document.activeElement) && !composeCtrl?.isOpen()) {
-        document.body.classList.remove('typing');
-        sync();
-        settle();
+      if (!isActiveTextField()) {
+        resetKb();
       }
-    }, 90);
+    }, 60);
   });
+
+  window.addEventListener('blur', resetKb);
 }
 
 /* ---------- Settings & Status UI ---------- */
@@ -885,6 +905,8 @@ async function bootstrap(): Promise<void> {
 
     const settingsSheet = $('#settings');
     openSettingsFn = () => {
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      resetKeyboardRef?.();
       refreshUiStatus();
       document.body.classList.add('sheet-open');
       settingsSheet.classList.add('open');
@@ -893,6 +915,7 @@ async function bootstrap(): Promise<void> {
     closeSettingsFn = () => {
       settingsSheet.classList.remove('open');
       document.body.classList.remove('sheet-open');
+      resetKeyboardRef?.();
       setInert(settingsSheet, true);
     };
 
@@ -1051,6 +1074,8 @@ async function bootstrap(): Promise<void> {
 
   async function enterApp(who: Who): Promise<void> {
     clearEnterTimers();
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    resetKeyboardRef?.();
     currentMe = who;
     store.set(STORAGE_KEYS.me, who);
     mountAppShell();
@@ -1135,11 +1160,13 @@ async function bootstrap(): Promise<void> {
   });
 
   document.addEventListener('visibilitychange', () => {
-    if (!appMounted) return;
     if (document.hidden) {
-      markSeen();
+      resetKeyboardRef?.();
+      if (appMounted) markSeen();
       return;
     }
+    if (!isActiveTextField()) resetKeyboardRef?.();
+    if (!appMounted) return;
     if (document.body.classList.contains('awake') && !lock.isLocked()) {
       void syncServerClock().then(() => checkAndCelebrateUnlocks(false));
       const lastSeen = store.get<number>(STORAGE_KEYS.seen, 0);

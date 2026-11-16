@@ -493,14 +493,9 @@ export function initComposeSheet(opts: {
     ta.blur();
     stopRec(true);
     sheet.classList.remove('open');
-    document.body.classList.remove('sheet-open');
-    document.body.classList.remove('sched-open');
+    document.body.classList.remove('sheet-open', 'sched-open', 'typing', 'kb-open');
+    document.documentElement.style.setProperty('--kbpad', '0px');
     setInert(sheet, true);
-    window.setTimeout(() => {
-      if (document.activeElement !== ta && !sheet.classList.contains('open')) {
-        document.body.classList.remove('typing');
-      }
-    }, 120);
   }
 
   sheet.addEventListener('click', (e) => {

@@ -30,7 +30,6 @@ function gardenSvg(): string {
   ];
 
   let g = '<svg class="garden" viewBox="0 0 390 240" preserveAspectRatio="xMidYMax slice" aria-hidden="true">';
-  g += '<defs><linearGradient id="gGrassFade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--sky-3);stop-opacity:0"/><stop offset="1" style="stop-color:var(--sky-3);stop-opacity:1"/></linearGradient></defs>';
   for (let i = 0; i < 27; i++) {
     const x = i * 15 + 4 + (i % 3) * 3;
     const h = 26 + ((i * 37) % 42);
@@ -58,7 +57,7 @@ function gardenSvg(): string {
       ${flower}</g>`;
   });
 
-  return g + '<rect x="-40" y="206" width="470" height="36" fill="url(#gGrassFade)" pointer-events="none"/></svg>';
+  return g + '</svg>';
 }
 
 function sideLilySvg(side: 'l' | 'r'): string {

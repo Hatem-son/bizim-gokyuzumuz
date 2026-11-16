@@ -21,7 +21,6 @@ function renderObSceneSvg(): string {
     blades += `<path d="M${x} 160 Q ${x + d * 4} ${160 - h * 0.6} ${x + d * 8} ${160 - h}" stroke="var(--leaf-1)" stroke-width="2" fill="none" stroke-linecap="round" opacity=".55"/>`;
   }
   return `<svg class="ob-garden" viewBox="0 0 390 160" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
-    <defs><linearGradient id="obGrassFade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--sky-3);stop-opacity:0"/><stop offset="1" style="stop-color:var(--sky-3);stop-opacity:1"/></linearGradient></defs>
     ${blades}
     <g transform="translate(173 94) scale(.28)" opacity=".55">
       <rect x="44" y="80" width="72" height="96" rx="10" fill="rgba(255,255,255,.12)" stroke="rgba(255,255,255,.28)" stroke-width="3"/>
@@ -29,7 +28,6 @@ function renderObSceneSvg(): string {
       <path d="M80 106 Q79 96 81 86" stroke="#2a1d1a" stroke-width="4" fill="none" stroke-linecap="round"/>
       <path d="M80 62 C88 74 87 86 80 90 C73 86 72 74 80 62Z" fill="#ffd99a" opacity=".75"/>
     </g>
-    <rect x="-20" y="128" width="430" height="34" fill="url(#obGrassFade)"/>
   </svg>`;
 }
 
