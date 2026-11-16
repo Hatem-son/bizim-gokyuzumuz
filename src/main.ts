@@ -758,7 +758,13 @@ async function bootstrap(): Promise<void> {
   const lock = initLockScreen({
     getMe: () => currentMe,
     onUnlock: () => {
-      document.body.classList.add('awake');
+      document.body.classList.add('dive-prep');
+      requestAnimationFrame(() => {
+        document.body.classList.add('awake', 'dive-go');
+      });
+      window.setTimeout(() => {
+        document.body.classList.remove('dive-prep', 'dive-go');
+      }, 1150);
       refreshUiStatus();
       if (greetPending) {
         greetPending = false;
@@ -1197,7 +1203,12 @@ async function bootstrap(): Promise<void> {
     }
 
     skyEngine?.triggerEnterReveal();
-    requestAnimationFrame(() => document.body.classList.add('awake'));
+    requestAnimationFrame(() => {
+      document.body.classList.add('awake');
+      if (document.body.classList.contains('dive-prep')) {
+        document.body.classList.add('dive-go');
+      }
+    });
     checkSyncHeartLockFn = () => lock.isLocked();
     if (lock.isLocked()) {
       syncHeartCheckPending = true;
@@ -1241,9 +1252,43 @@ async function bootstrap(): Promise<void> {
     }
   }
 
+  const splashEl = document.getElementById('launch-splash');
+  const reducedMotionStart = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const playLaunchDiveIn = async (who: Who, useSplash: boolean): Promise<void> => {
+    if (!useSplash || reducedMotionStart || !splashEl || hasPin()) {
+      if (splashEl) splashEl.hidden = true;
+      document.body.classList.remove('dive-prep', 'dive-go');
+      if (hasPin()) lock.show('unlock');
+      else if (!reducedMotionStart) document.body.classList.add('dive-prep');
+      await enterApp(who);
+      if (!hasPin() && !reducedMotionStart) {
+        window.setTimeout(() => document.body.classList.remove('dive-prep', 'dive-go'), 1150);
+      } else {
+        document.body.classList.remove('dive-prep', 'dive-go');
+      }
+      return;
+    }
+
+    splashEl.hidden = false;
+    splashEl.classList.remove('leaving');
+    document.body.classList.add('dive-prep');
+    const startedAt = performance.now();
+    await enterApp(who);
+    const waitMs = Math.max(0, 520 - (performance.now() - startedAt));
+    window.setTimeout(() => {
+      splashEl.classList.add('leaving');
+      requestAnimationFrame(() => document.body.classList.add('dive-go'));
+      window.setTimeout(() => {
+        splashEl.hidden = true;
+        splashEl.classList.remove('leaving');
+        document.body.classList.remove('dive-prep', 'dive-go');
+      }, 950);
+    }, waitMs);
+  };
+
   onboard = initOnboard({
     onPreviewTheme: applyTheme,
-    onComplete: (who) => void enterApp(who),
+    onComplete: (who) => void playLaunchDiveIn(who, false),
   });
 
   window.addEventListener('keydown', (e) => {
@@ -1304,7 +1349,7 @@ async function bootstrap(): Promise<void> {
     if (appMounted) markSeen();
   });
 
-  // Startup restoration (ilk açılışta ağ beklemez; seçim ekranı asla yanıp sönmez)
+  // Startup restoration (ilk açılışta ağ beklemez; seçim ekranı asla yanıp sönmez + kuruluysa dive-in açılışı)
   const savedWho = store.get<Who | null>(STORAGE_KEYS.me, null);
   let keyLoaded = await loadSavedKey();
   if (!keyLoaded && savedWho) {
@@ -1318,8 +1363,7 @@ async function bootstrap(): Promise<void> {
 
     if (resolvedWho && keyLoaded && (session || networkFailed || navigator.onLine === false)) {
       currentMe = resolvedWho;
-      if (hasPin()) lock.show('unlock');
-      await enterApp(resolvedWho);
+      void playLaunchDiveIn(resolvedWho, true);
       // Profil doğrulamasını açılışı bloklamadan arka planda çalıştır
       if (session) {
         void getSessionAndProfile().then(({ profile }) => {
@@ -1332,21 +1376,23 @@ async function bootstrap(): Promise<void> {
       return;
     }
 
+    if (splashEl) splashEl.hidden = true;
     if (savedWho) {
       currentMe = savedWho;
       onboard.show(savedWho);
       return;
     }
   } else if (currentMe && keyLoaded) {
-    if (hasPin()) lock.show('unlock');
-    await enterApp(currentMe);
+    void playLaunchDiveIn(currentMe, true);
     return;
   } else if (savedWho) {
+    if (splashEl) splashEl.hidden = true;
     currentMe = savedWho;
     onboard.show(savedWho);
     return;
   }
 
+  if (splashEl) splashEl.hidden = true;
   currentMe = null;
   onboard.show();
 }

@@ -74,12 +74,22 @@ export function initOnboard(opts: {
     stepWho.hidden = target !== 'who';
     stepAuth.hidden = target !== 'auth';
     stepKey.hidden = target !== 'key';
+    onboardEl.classList.toggle('step-form', target !== 'who');
 
     const el = target === 'who' ? stepWho : target === 'auth' ? stepAuth : stepKey;
     el.classList.remove('in');
     void el.offsetWidth;
     el.classList.add('in');
   }
+
+  // Kurulumda şifre / kelime yazılırken ekranın parmakla kaymasını ve lastik sıçramasını engelle
+  onboardEl.addEventListener(
+    'touchmove',
+    (e) => {
+      e.preventDefault();
+    },
+    { passive: false }
+  );
 
   function resetToWho(): void {
     chosen = null;

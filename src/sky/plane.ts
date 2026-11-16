@@ -50,14 +50,29 @@ export class PlaneController {
   private lift = 18;
   private period = 1.15;
   private bannerW = 240;
-  private readonly bannerH = 38;
+  private readonly bannerH = 40;
   private readonly notchW = 14;
   private readonly ropeW = 34;
   private readonly planeW = 66;
   private readonly planeH = 30;
+  private fontsReady = false;
 
   constructor() {
     this.bakePlaneSprite();
+    void this.ensureFontsLoaded();
+  }
+
+  private async ensureFontsLoaded(): Promise<void> {
+    if (this.fontsReady) return;
+    if (typeof document !== 'undefined' && 'fonts' in document) {
+      try {
+        await document.fonts.load('400 21px "Great Vibes"', 'Aşığım çok özel güzel ŞĞÜÖÇİı Beto Ham');
+        await document.fonts.ready;
+      } catch {
+        // Sistem fallback kullanılmadan önce denendi
+      }
+    }
+    this.fontsReady = true;
   }
 
   public isActive(): boolean {
@@ -160,12 +175,15 @@ export class PlaneController {
     const probe = this.bannerCanvas.getContext('2d');
     if (!probe) return;
 
-    probe.font = '400 22px "Great Vibes", "Snell Roundhand", cursive';
-    const textW = Math.ceil(probe.measureText(text).width);
+    const fontSpec = '400 21px "Great Vibes", "Snell Roundhand", cursive';
+    probe.font = fontSpec;
+    const metrics = probe.measureText(text);
+    const leftOver = Math.ceil(Math.max(0, metrics.actualBoundingBoxLeft ?? 0));
+    const inkW = Math.ceil(Math.max(metrics.width, metrics.actualBoundingBoxRight ?? metrics.width)) + leftOver;
     const notchW = this.notchW;
-    const padLeft = this.rev ? 22 : 28 + notchW;
-    const padRight = this.rev ? 28 + notchW : 22;
-    this.bannerW = Math.max(186, textW + padLeft + padRight);
+    const padLeft = this.rev ? 22 : 30 + notchW;
+    const padRight = this.rev ? 30 + notchW : 24;
+    this.bannerW = Math.max(198, inkW + padLeft + padRight);
 
     this.bannerCanvas.width = this.bannerW * s;
     this.bannerCanvas.height = this.bannerH * s;
@@ -176,7 +194,7 @@ export class PlaneController {
     g.clearRect(0, 0, this.bannerW, this.bannerH);
 
     // Arka bez dokusu doğrudan vektörel çizileceği için burada yalnız saf beyaz vektör kalp + Great Vibes yazı hazırlanır (@4x)
-    const heartX = this.rev ? 15 : notchW + 17;
+    const heartX = this.rev ? 16 : notchW + 18;
     const heartY = this.bannerH / 2 - 4.8;
     const hs = 11.5;
     g.fillStyle = '#ffffff';
@@ -188,14 +206,22 @@ export class PlaneController {
     g.bezierCurveTo(heartX + hs * 0.5, heartY - hs * 0.05, heartX, heartY, heartX, heartY + hs * 0.3);
     g.fill();
 
+    // Optik dikey ortalama (Ö, Ü aksanları ve ğ/y/z kuyrukları kesilmeden sığar)
+    const asc = metrics.actualBoundingBoxAscent ?? 16;
+    const desc = metrics.actualBoundingBoxDescent ?? 6;
+    const baselineY = this.bannerH / 2 + (asc - desc) * 0.5;
     g.fillStyle = '#531b48';
-    g.textBaseline = 'middle';
-    g.font = '400 22px "Great Vibes", "Snell Roundhand", cursive';
-    g.fillText(text, heartX + 14, this.bannerH / 2 + 1);
+    g.textBaseline = 'alphabetic';
+    g.font = fontSpec;
+    g.fillText(text, heartX + 14 + leftOver, baselineY);
   }
 
   public launch(who: Who, skyTop: number, skyHeight: number): boolean {
     if (this.active) return false;
+    if (!this.fontsReady) {
+      void this.ensureFontsLoaded();
+      return false;
+    }
     this.rev = Math.random() < 0.5;
     this.startT = performance.now();
     this.dur = 27_000 + Math.random() * 5000;
