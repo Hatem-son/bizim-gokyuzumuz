@@ -19,24 +19,37 @@ function zambakBloomSvg(cx: number, cy: number, scale: number, extra = ''): stri
 }
 
 function gardenSvg(): string {
-  // Alternating pink lilies & white zambaks behind the ground edge
+  // Arka gece çayırı + pembe zambak / beyaz lilyumlar (y=264 alt taşma ile kenarsız görünüm)
   const back: [number, number, number, boolean][] = [
-    [22, 126, 0.58, false],
-    [98, 100, 0.5, true],
-    [148, 138, 0.44, false],
-    [244, 134, 0.44, true],
-    [294, 102, 0.5, false],
-    [370, 124, 0.58, true],
+    [22, 124, 0.58, false],
+    [98, 98, 0.5, true],
+    [148, 136, 0.44, false],
+    [244, 132, 0.44, true],
+    [294, 100, 0.5, false],
+    [370, 122, 0.58, true],
   ];
 
-  let g = '<svg class="garden" viewBox="0 0 390 240" preserveAspectRatio="xMidYMax slice" aria-hidden="true">';
-  for (let i = 0; i < 27; i++) {
-    const x = i * 15 + 4 + (i % 3) * 3;
-    const h = 26 + ((i * 37) % 42);
+  let g =
+    '<svg class="garden" viewBox="0 0 390 260" preserveAspectRatio="xMidYMax slice" aria-hidden="true">' +
+    '<defs><linearGradient id="gMeadowShade" x1="0" y1="0" x2="0" y2="1">' +
+    '<stop offset="0" stop-color="#0b2321" stop-opacity="0"/>' +
+    '<stop offset=".45" stop-color="#0a1e24" stop-opacity=".75"/>' +
+    '<stop offset="1" stop-color="#0d1430" stop-opacity="1"/></linearGradient></defs>' +
+    '<path d="M-10 210 Q95 196 195 204 Q295 212 400 198 L400 265 L-10 265 Z" fill="url(#gMeadowShade)"/>';
+
+  // Arka uzun çayır yaprakları (ekran altının 20px altına kadar uzanır)
+  for (let i = 0; i < 48; i++) {
+    const x = -6 + i * 8.5 + (i % 3) * 1.4;
+    const h = 48 + ((i * 37) % 58);
     const d = i % 2 ? 1 : -1;
-    g += `<path class="blade" style="--bd:${(-i * 0.37).toFixed(2)}s;transform-origin:${x}px 240px" d="M${x} 240 Q ${
-      x + d * 5
-    } ${240 - h * 0.6} ${x + d * 10} ${240 - h}" stroke="var(--leaf-1)" stroke-width="2.2" fill="none" stroke-linecap="round" opacity=".8"/>`;
+    const lean = d * (6 + (i % 5) * 2.2);
+    const w = (1.6 + (i % 3) * 0.45).toFixed(1);
+    const color = i % 4 === 0 ? '#123d30' : i % 3 === 0 ? '#1a523b' : 'var(--leaf-1)';
+    const op = (0.58 + (i % 4) * 0.1).toFixed(2);
+    g += `<path class="blade" style="--bd:${(-i * 0.24).toFixed(2)}s;transform-origin:${x}px 264px" d="M${x} 264 Q ${(
+      x +
+      lean * 0.45
+    ).toFixed(1)} ${(264 - h * 0.55).toFixed(1)} ${(x + lean).toFixed(1)} ${264 - h}" stroke="${color}" stroke-width="${w}" fill="none" stroke-linecap="round" opacity="${op}"/>`;
   }
 
   back.forEach(([x, y, sc, isWhite], i) => {
@@ -44,11 +57,11 @@ function gardenSvg(): string {
     const flower = isWhite
       ? zambakBloomSvg(x, y, sc, 'class="main-bloom"')
       : lilyBloomSvg(x, y, sc, 'petal', 'stamens', 'class="main-bloom"');
-    g += `<g class="sway" style="--sd:${(-i * 1.3).toFixed(1)}s;transform-origin:${x}px 240px;--gd:${(
+    g += `<g class="sway" style="--sd:${(-i * 1.3).toFixed(1)}s;transform-origin:${x}px 262px;--gd:${(
       1.3 +
       i * 0.28
     ).toFixed(2)}s">
-      <path d="M${x + d * 4} 240 C ${x} 200, ${x - d * 6} ${y + 40}, ${x} ${y}" stroke="var(--leaf-1)" stroke-width="2" fill="none"/>
+      <path d="M${x + d * 4} 264 C ${x} 214, ${x - d * 6} ${y + 40}, ${x} ${y}" stroke="var(--leaf-1)" stroke-width="2" fill="none"/>
       <path d="M${x + d * 2} ${(y + 240) / 2 + 20} C ${x + d * 22} ${(y + 240) / 2 + 6}, ${x + d * 30} ${
         (y + 240) / 2 - 10
       }, ${x + d * 34} ${(y + 240) / 2 - 26} C ${x + d * 20} ${(y + 240) / 2 - 12}, ${x + d * 10} ${
@@ -60,13 +73,43 @@ function gardenSvg(): string {
   return g + '</svg>';
 }
 
+function foregroundGrassSvg(): string {
+  // İkinci koyu ön plan çayır katmanı — en alt kenarı ve kökleri tamamen örter
+  let f =
+    '<svg class="grass-front-svg" viewBox="0 0 390 260" preserveAspectRatio="xMidYMax slice" aria-hidden="true">' +
+    '<defs><linearGradient id="gFrontMeadow" x1="0" y1="0" x2="0" y2="1">' +
+    '<stop offset="0" stop-color="#07181d" stop-opacity=".18"/>' +
+    '<stop offset=".55" stop-color="#081a21" stop-opacity=".86"/>' +
+    '<stop offset="1" stop-color="#0d1430" stop-opacity="1"/></linearGradient></defs>' +
+    '<path d="M-12 224 Q95 214 195 224 Q295 214 402 224 L402 266 L-12 266 Z" fill="url(#gFrontMeadow)"/>';
+
+  for (let i = 0; i < 64; i++) {
+    const x = -8 + i * 6.4 + (i % 2) * 1.3;
+    // Ortadaki mum etiketi ve düğmeler önünde biraz alçalarak okunurluğu korur
+    const centerDist = Math.abs(x - 195);
+    const centerDip = centerDist < 72 ? 14 : 0;
+    const h = Math.max(24, 34 + ((i * 29) % 42) - centerDip);
+    const d = i % 2 ? 1 : -1;
+    const tipX = x + d * (4 + (i % 4) * 1.8);
+    const w = 1.9 + (i % 3) * 0.65;
+    const color = i % 3 === 0 ? '#06151b' : i % 2 === 0 ? '#081d22' : '#0b2528';
+    f += `<path d="M${(x - w).toFixed(1)} 266 Q ${(x + d * 2.5).toFixed(1)} ${(266 - h * 0.56).toFixed(1)} ${tipX.toFixed(1)} ${(
+      266 - h
+    ).toFixed(1)} Q ${(x + d * 1.2 + w * 0.7).toFixed(1)} ${(266 - h * 0.45).toFixed(1)} ${(x + w).toFixed(
+      1
+    )} 266 Z" fill="${color}" opacity=".94"/>`;
+  }
+
+  return f + '</svg>';
+}
+
 function sideLilySvg(side: 'l' | 'r'): string {
   const big = side === 'l';
-  return `<svg class="lily ${side}" id="lily-${side}" viewBox="0 0 150 240" aria-hidden="true"><g class="sway" style="--sd:${
+  return `<svg class="lily ${side}" id="lily-${side}" viewBox="0 0 150 260" aria-hidden="true"><g class="sway" style="--sd:${
     big ? 0 : -2.7
   }s">
-    <path d="M60 240 C 58 196, 66 140, 78 82" fill="none" stroke="var(--leaf-1)" stroke-width="3.4" stroke-linecap="round"/>
-    <path d="M56 240 C 52 206, 44 162, 36 122" fill="none" stroke="var(--leaf-1)" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M60 262 C 58 206, 66 144, 78 82" fill="none" stroke="var(--leaf-1)" stroke-width="3.4" stroke-linecap="round"/>
+    <path d="M56 262 C 52 214, 44 166, 36 122" fill="none" stroke="var(--leaf-1)" stroke-width="2.4" stroke-linecap="round"/>
     <path d="M62 222 C 38 210, 20 190, 8 164 C 30 176, 48 192, 62 206Z" fill="url(#gLeaf)"/>
     <path d="M64 198 C 86 184, 102 162, 112 136 C 94 152, 78 168, 64 186Z" fill="url(#gLeaf)"/>
     <path d="M52 172 C 36 164, 26 150, 18 130 C 34 144, 45 154, 54 162Z" fill="url(#gLeaf)" opacity=".85"/>
@@ -88,7 +131,6 @@ function candleJarSvg(): string {
       <linearGradient id="gLabel" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#efe3d6"/><stop offset=".5" stop-color="#fdf7f0"/><stop offset="1" stop-color="#e8dacb"/></linearGradient>
       <clipPath id="cJar"><path d="M43 86 Q43 80 49 80 L111 80 Q117 80 117 86 L117 168 Q117 178 107 178 L53 178 Q43 178 43 168Z"/></clipPath>
     </defs>
-    <ellipse cx="80" cy="184" rx="58" ry="5.5" fill="#000" opacity=".3"/>
     <path d="M40 84 Q40 76 48 76 L112 76 Q120 76 120 84 L120 168 Q120 182 106 182 L54 182 Q40 182 40 168Z" fill="rgba(255,255,255,.05)"/>
     <g clip-path="url(#cJar)">
       <path id="wax" fill="url(#gWax2)" d="M45 104 L115 104 L115 164 Q115 175 104 175 L56 175 Q45 175 45 164Z"/>
@@ -127,6 +169,8 @@ export class GardenController {
     onRaspberryTap: (raspEl: Element) => void;
   }) {
     $('#lilies').innerHTML = gardenSvg() + sideLilySvg('l') + sideLilySvg('r');
+    const grassFront = document.getElementById('grass-front');
+    if (grassFront) grassFront.innerHTML = foregroundGrassSvg();
     const holder = $('#candle-holder');
     holder.innerHTML = candleJarSvg();
 

@@ -7,17 +7,19 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Gökyüzümüz">
-  <meta name="theme-color" content="#17284d">
+  <meta name="theme-color" content="#0d1430">
   <title>Bizim Gökyüzümüz</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" type="image/png" href="/icons/favicon-64.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png">
 </head>
 <body>
-  <canvas id="sky-canvas" aria-hidden="true"></canvas>
-  <canvas id="sky-moon" class="sky-moon" width="80" height="80" aria-hidden="true"></canvas>
-  <div id="defs"></div>
-  <div id="app-root"></div>
+  <div id="scene">
+    <canvas id="sky-canvas" aria-hidden="true"></canvas>
+    <canvas id="sky-moon" class="sky-moon" width="80" height="80" aria-hidden="true"></canvas>
+    <div id="defs"></div>
+    <div id="app-root"></div>
+  </div>
 
   <template id="app-shell-tpl">
   <header class="top">
@@ -75,6 +77,7 @@
         <span class="act-lb">YAZ</span>
       </button>
     </div>
+    <div id="grass-front" class="grass-front" aria-hidden="true"></div>
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite">
@@ -227,7 +230,7 @@
           <small>Hesaptan ve gizli kelimeden çıkar, giriş ekranına döner</small>
         </button>
       </div>
-      <button class="set-ver" id="s-ver" type="button">Bizim Gökyüzümüz · v1.0.3</button>
+      <button class="set-ver" id="s-ver" type="button">Bizim Gökyüzümüz · v1.0.4</button>
     </div>
   </div>
   </template>
@@ -283,7 +286,7 @@
         <button class="link-btn" id="ob-wipe" type="button" hidden>Yerel doğrulamayı sıfırla ve yeniden kur</button>
         <button class="link-btn" id="back" type="button">Geri dön</button>
       </form>
-      <p class="ob-ver" id="ob-ver">v1.0.3</p>
+      <p class="ob-ver" id="ob-ver">v1.0.4</p>
     </div>
   </section>
 
