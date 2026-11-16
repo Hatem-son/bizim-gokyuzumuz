@@ -20,6 +20,8 @@ export interface OrbPlacement {
   sunX: number; // 0..100 (% across orb viewport)
   sunY: number; // 0..100 (% vertically in sky area)
   moonUp: boolean;
+  moonFrac: number; // 0..1 along the sky arc (clamped to endpoints when below horizon)
+  moonOpacity: number; // 1.0 above horizon (at night), 0.30 waiting below horizon
   moonX: number;
   moonY: number;
 }
@@ -143,12 +145,18 @@ export function getOrbPlacement(hour: number, moonPhase: number, now = new Date(
   const sunLow = sunUp && (fs < 0.14 || fs > 0.86);
   const sunPos = arc(fs);
 
-  // Güneş varken Ay kesinlikle görünmez
+  // Gerçek astronomik Ay yayı: meridyen geçişi ≈ yerel 12:00 + (yaş / 29.53) * 24 sa;
+  // doğuş ≈ geçiş - 6 sa, batış ≈ geçiş + 6 sa. Ufuk altındaysa yayın ucunda %30 opaklıkla bekler.
   const transit = (12 + moonPhase * 24) % 24;
-  const moonRise = transit - 6.2;
-  const fm = ((((h - moonRise) % 24) + 24) % 24) / 12.4;
-  const moonUp = !sunUp && fm >= 0 && fm <= 1;
-  const moonPos = arc(fm);
+  const moonRise = transit - 6;
+  const fm = ((((h - moonRise) % 24) + 24) % 24) / 12;
+  const moonUp = fm >= 0 && fm <= 1;
+  const moonFrac = moonUp ? fm : fm < 1.5 ? 1 : 0;
+  const moonOpacity = moonUp ? (sunUp ? 0.45 : 1) : 0.3;
+  const moonPos = {
+    x: 12 + moonFrac * 76,
+    y: 34 - Math.sin(Math.PI * moonFrac) * 20,
+  };
 
   return {
     sunUp,
@@ -156,6 +164,8 @@ export function getOrbPlacement(hour: number, moonPhase: number, now = new Date(
     sunX: sunPos.x,
     sunY: sunPos.y,
     moonUp,
+    moonFrac,
+    moonOpacity,
     moonX: moonPos.x,
     moonY: moonPos.y,
   };

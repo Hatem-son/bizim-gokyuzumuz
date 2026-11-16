@@ -168,7 +168,7 @@ export class DiagOverlay {
       `visualViewport.height: ${vv ? Math.round(vv.height) : 'yok'} pt   offsetTop: ${vv ? Math.round(vv.offsetTop) : 'yok'} pt`,
       `safe-area top: ${probeCs ? Math.round(parseFloat(probeCs.paddingTop) || 0) : 0} pt`,
       `safe-area bottom: ${probeCs ? Math.round(parseFloat(probeCs.paddingBottom) || 0) : 0} pt`,
-      `--kb: ${kbVar}`,
+      `--app-h: ${getComputedStyle(htmlEl).getPropertyValue('--app-h').trim() || 'yok'}   --kb: ${kbVar}`,
       `html    rect: ${fmtRect(htmlEl)}`,
       `body    rect: ${fmtRect(bodyEl)}`,
       `app     rect: ${fmtRect(appEl)}`,

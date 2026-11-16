@@ -510,22 +510,61 @@ function receiveIncomingStar(star: StarRecord): void {
   );
 }
 
-/* ---------- VisualViewport keyboard stabilization ---------- */
+/* ---------- Root screen height (--app-h) & VisualViewport keyboard (--kb) ---------- */
+let lastAppH = 0;
+
+function setAppHeight(): void {
+  const nav = navigator as Navigator & { standalone?: boolean };
+  const standalone = window.matchMedia('(display-mode: standalone)').matches || nav.standalone === true;
+  const candidate = standalone
+    ? Math.max(window.innerHeight, document.documentElement.clientHeight, window.screen.height)
+    : window.innerHeight;
+  const el = document.activeElement;
+  const inputFocused =
+    (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) && !el.closest('[inert], [hidden], .gone');
+  if (inputFocused && lastAppH > 0 && candidate < lastAppH) return;
+  lastAppH = candidate;
+  document.documentElement.style.setProperty('--app-h', `${candidate}px`);
+}
+
 let resetKeyboardRef: (() => void) | null = null;
 
 function setupKeyboardViewport(): void {
+  setAppHeight();
+  window.addEventListener('resize', setAppHeight);
+  window.addEventListener('orientationchange', () => window.setTimeout(setAppHeight, 300));
+  window.addEventListener('pageshow', setAppHeight);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) setAppHeight();
+  });
+  requestAnimationFrame(() => requestAnimationFrame(setAppHeight));
+  window.setTimeout(setAppHeight, 500);
+
   const settle = () => {
     window.scrollTo(0, 0);
     if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
   };
 
-  const sync = () => {
+  const resetKb = () => {
     settle();
+    document.documentElement.style.setProperty('--kb', '0px');
+    document.body.classList.remove('kb-active');
     composeCtrl?.syncViewport();
   };
+  resetKeyboardRef = resetKb;
 
-  resetKeyboardRef = () => {
+  const sync = () => {
     settle();
+    const vv = window.visualViewport;
+    const rawVvKb = vv ? Math.max(0, Math.round(window.innerHeight - (vv.height + vv.offsetTop))) : 0;
+    let kb = 0;
+    if (rawVvKb > 60 && vv) {
+      const uiEl = document.getElementById('ui');
+      const uiBottom = uiEl ? uiEl.getBoundingClientRect().bottom : window.innerHeight;
+      kb = Math.max(0, Math.round(uiBottom - (vv.offsetTop + vv.height)));
+    }
+    document.documentElement.style.setProperty('--kb', `${kb}px`);
+    document.body.classList.toggle('kb-active', kb > 0);
     composeCtrl?.syncViewport();
   };
 
@@ -548,9 +587,16 @@ function setupKeyboardViewport(): void {
 
   document.addEventListener('focusin', sync);
   document.addEventListener('focusout', () => {
-    window.setTimeout(sync, 60);
+    window.setTimeout(() => {
+      const el = document.activeElement;
+      const stillFocused =
+        el instanceof HTMLTextAreaElement ||
+        (el instanceof HTMLInputElement && !['file', 'checkbox', 'radio', 'button'].includes(el.type));
+      if (!stillFocused) resetKb();
+      else sync();
+    }, 60);
   });
-  window.addEventListener('blur', resetKeyboardRef);
+  window.addEventListener('blur', resetKb);
 }
 
 /* ---------- Settings & Status UI ---------- */
@@ -701,7 +747,14 @@ async function bootstrap(): Promise<void> {
     openSettingsFn = null;
     closeSettingsFn = null;
     schedulePushNudgeFn = null;
-    document.body.classList.remove('awake', 'quiet', 'sheet-open', 'sched-open');
+    document.body.classList.remove('awake', 'quiet', 'sheet-open', 'sched-open', 'kb-active');
+    document.documentElement.style.setProperty('--kb', '0px');
+    const groundEl = document.getElementById('ground');
+    if (groundEl) groundEl.hidden = true;
+    const liliesEl = document.getElementById('lilies');
+    if (liliesEl) liliesEl.innerHTML = '';
+    const frontEl = document.getElementById('grass-front');
+    if (frontEl) frontEl.innerHTML = '';
     appRoot.innerHTML = '';
     appMounted = false;
   };
@@ -733,6 +786,8 @@ async function bootstrap(): Promise<void> {
   const mountAppShell = () => {
     if (appMounted) return;
     appMounted = true;
+    const groundEl = document.getElementById('ground');
+    if (groundEl) groundEl.hidden = false;
     appRoot.appendChild(shellTpl.content.cloneNode(true));
 
     countdownCtrl = new CountdownController();
@@ -781,7 +836,6 @@ async function bootstrap(): Promise<void> {
 
     skyEngine = new SkyEngine({
       canvas: $('#sky-canvas') as HTMLCanvasElement,
-      moonCanvas: $('#sky-moon') as HTMLCanvasElement,
       skyElement: skyEl,
       compassElement: compassEl,
       compassThumb,
@@ -1123,8 +1177,16 @@ async function bootstrap(): Promise<void> {
     mountAppShell();
     onboard.hide();
     refreshUiStatus();
+    if (hasPin() && lock.isLocked()) {
+      resetKeyboardRef?.();
+    }
+    setAppHeight();
     skyEngine?.resize();
-    window.setTimeout(() => skyEngine?.refreshCachedPositions(), 100);
+    window.setTimeout(() => {
+      setAppHeight();
+      skyEngine?.resize();
+      skyEngine?.refreshCachedPositions();
+    }, 120);
 
     stars = await fetchAllStars(who);
     syncSkyStars();
@@ -1176,7 +1238,14 @@ async function bootstrap(): Promise<void> {
     if (!store.get<number | null>(STORAGE_KEYS.pan, null)) {
       enterTimers.push(
         window.setTimeout(() => {
-          if (!appMounted || !document.body.classList.contains('awake') || store.get(STORAGE_KEYS.pan, null) || !skyEngine) {
+          if (
+            !appMounted ||
+            !document.body.classList.contains('awake') ||
+            document.body.classList.contains('sheet-open') ||
+            document.querySelector('.sheet.open, .modal.open, #lock:not(.gone)') ||
+            store.get(STORAGE_KEYS.pan, null) ||
+            !skyEngine
+          ) {
             return;
           }
           store.set(STORAGE_KEYS.pan, 1);

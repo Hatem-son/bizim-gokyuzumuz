@@ -150,9 +150,9 @@ export class SkyEngine {
   };
   private lastBakedSkyKey = '';
   private lastCssColsKey = '';
-  private lastMoonUp: boolean | null = null;
   private skyElWidth = 0;
-  private moonCenter = { x: 355, y: 45 };
+  private resizeObserver: ResizeObserver | null = null;
+  private resizeRafs: number[] = [];
 
   private readonly planeCtrl = new PlaneController();
 
@@ -182,7 +182,8 @@ export class SkyEngine {
   private lastSkySampleMs = 0;
 
   private sunScreen = { up: false, low: false, x: 0, y: 0, r: 20 };
-  private moonScreen = { up: false, x: 0, y: 0, r: 26 };
+  private moonScreen = { up: true, frac: 0.5, opacity: 1, x: 0, y: 0, r: 26 };
+  private moonUiAlpha = 1;
 
   // Stars & Links state
   private me: Who = 'beto';
@@ -300,6 +301,21 @@ export class SkyEngine {
     this.syncSkyState(true);
     this.refreshCachedPositions();
     this.startLoop();
+
+    const host = this.cv.parentElement;
+    if (host && typeof ResizeObserver !== 'undefined') {
+      this.resizeObserver = new ResizeObserver(() => this.resize());
+      this.resizeObserver.observe(host);
+    }
+    // iOS standalone açılışta geçici kısa innerHeight döndürebilir: ilk 1 sn içinde 3 kez yeniden ölç
+    let count = 0;
+    const kick = () => {
+      this.resize();
+      if (++count < 3) {
+        this.resizeRafs.push(requestAnimationFrame(kick));
+      }
+    };
+    this.resizeRafs.push(requestAnimationFrame(kick));
   }
 
   public refreshCachedPositions(): void {
@@ -664,25 +680,22 @@ export class SkyEngine {
 
   public resize = (): void => {
     this.DPR = Math.min(1.5, window.devicePixelRatio || 1);
-    const cvRect = this.cv.getBoundingClientRect();
-    this.W = Math.max(window.innerWidth, Math.ceil(cvRect.width));
-    this.H = Math.max(window.innerHeight, window.screen?.height || 0, Math.ceil(cvRect.height));
+    const host = this.cv.parentElement;
+    const hostW = host?.clientWidth || window.innerWidth;
+    const hostH = host?.clientHeight || window.innerHeight;
+    this.W = Math.max(window.innerWidth, hostW);
+    this.H = Math.max(window.innerHeight, hostH);
     this.cv.width = Math.floor(this.W * this.DPR);
     this.cv.height = Math.floor(this.H * this.DPR);
+    this.cv.style.width = `${this.W}px`;
     this.cv.style.height = `${this.H}px`;
     this.cx.setTransform(this.DPR, 0, 0, this.DPR, 0, 0);
 
     const sr = this.skyEl.getBoundingClientRect();
     this.skyElWidth = Math.round(sr.width) || this.W;
     this.skyTop = sr.top || 84;
-    this.skyHeight = sr.height || this.H * 0.6;
+    this.skyHeight = sr.height || this.H * 0.56;
     this.worldW = this.skyElWidth * PANO;
-
-    const moonRect = this.moonCanvas.getBoundingClientRect();
-    this.moonCenter = {
-      x: moonRect.width > 0 ? moonRect.left + moonRect.width / 2 : this.W - 35,
-      y: moonRect.height > 0 ? moonRect.top + moonRect.height / 2 : 45,
-    };
 
     const rnd = mulberry32(4);
     const dustCount = Math.min(25, Math.max(12, Math.round((this.worldW * this.H) / 90_000)));
@@ -1415,7 +1428,8 @@ export class SkyEngine {
     this.moonInfo = getMoonPhaseInfo();
     this.lastMoonBake = Date.now();
 
-    const size = 80;
+    const size = 96;
+    const displayDiam = 48;
     this.moonCanvas.width = size;
     this.moonCanvas.height = size;
     const g = this.moonCanvas.getContext('2d');
@@ -1423,20 +1437,13 @@ export class SkyEngine {
     g.clearRect(0, 0, size, size);
 
     const c = size / 2;
-    const r = 34;
+    const r = displayDiam - 2; // 46 -> 92px = crisp 46-48pt @2x
     const p = this.moonInfo.phase;
 
-    // Neredeyse sıfır parlama, filtre yok
-    const glow = g.createRadialGradient(c, c, r * 0.9, c, c, size / 2);
-    glow.addColorStop(0, 'rgba(255, 246, 222, 0.08)');
-    glow.addColorStop(1, 'rgba(255, 246, 222, 0)');
-    g.fillStyle = glow;
-    g.fillRect(0, 0, size, size);
-
-    // Karanlık tarafta çok hafif "dünya ışığı" (Earthshine)
-    g.fillStyle = 'rgba(155, 178, 225, 0.14)';
+    // Karanlık yarıda çok hafif "dünya ışığı" (Earthshine), sıfır parlama/filtre
+    g.fillStyle = 'rgba(155, 178, 225, 0.16)';
     g.strokeStyle = 'rgba(215, 228, 255, 0.14)';
-    g.lineWidth = 1;
+    g.lineWidth = 1.5;
     g.beginPath();
     g.arc(c, c, r, 0, Math.PI * 2);
     g.fill();
@@ -1459,21 +1466,21 @@ export class SkyEngine {
     g.save();
     g.clip(litPath);
 
-    const moonGrad = g.createRadialGradient(c - 8, c - 9, 3, c, c, r * 1.35);
+    const moonGrad = g.createRadialGradient(c - 10, c - 10, 4, c, c, r * 1.35);
     moonGrad.addColorStop(0, '#fffef6');
     moonGrad.addColorStop(0.7, '#f6ebd0');
     moonGrad.addColorStop(1, '#e3d2ae');
     g.fillStyle = moonGrad;
     g.fillRect(c - r - 2, c - r - 2, r * 2 + 4, r * 2 + 4);
 
-    g.fillStyle = 'rgba(182, 162, 122, 0.32)';
+    g.fillStyle = 'rgba(182, 162, 122, 0.30)';
     const craters: [number, number, number][] = [
-      [c - 8, c - 8, 6.8],
-      [c + 11, c + 4, 7.6],
-      [c - 7, c + 11, 4.2],
-      [c + 14, c - 15, 2.8],
-      [c - 18, c + 3, 2.5],
-      [c + 2, c + 21, 2.2],
+      [c - 10, c - 10, 8],
+      [c + 13, c + 5, 9],
+      [c - 9, c + 14, 5],
+      [c + 16, c - 18, 3.6],
+      [c - 22, c + 4, 3.2],
+      [c + 3, c + 25, 2.8],
     ];
     for (const [cx0, cy0, cr] of craters) {
       g.beginPath();
@@ -1483,12 +1490,23 @@ export class SkyEngine {
     g.restore();
   }
 
+  private getMoonArcPoint(frac: number, skyW: number, panShift: number): { x: number; y: number } {
+    const startX = skyW * 0.14 + panShift;
+    const spanW = skyW * 0.72;
+    const baseY = this.skyTop + this.skyHeight * 0.26;
+    const archH = Math.min(72, this.skyHeight * 0.17);
+    return {
+      x: startX + frac * spanW,
+      y: baseY - Math.sin(Math.PI * frac) * archH,
+    };
+  }
+
   private syncSkyState(force = false): void {
     const nowMs = Date.now();
     if (!force && nowMs - this.lastSkySampleMs < 1000) return;
     this.lastSkySampleMs = nowMs;
 
-    if (nowMs - this.lastMoonBake > 10 * 60 * 1000) {
+    if (nowMs - this.lastMoonBake > 60 * 1000) {
       this.bakeMoonSprite();
     }
 
@@ -1508,6 +1526,8 @@ export class SkyEngine {
     const skyW = this.getSkyW();
     const maxOx = this.getMaxOx();
     const parallaxX = -(this.ox - maxOx * 0.5) * 0.12;
+    const moonPan = -(this.ox - maxOx * 0.5) * 0.35;
+    const moonPt = this.getMoonArcPoint(orbs.moonFrac, skyW, moonPan);
 
     this.sunScreen = {
       up: orbs.sunUp,
@@ -1517,15 +1537,13 @@ export class SkyEngine {
       r: 20,
     };
 
-    if (this.lastMoonUp !== orbs.moonUp) {
-      this.lastMoonUp = orbs.moonUp;
-      this.moonCanvas.classList.toggle('day-hidden', !orbs.moonUp);
-    }
     this.moonScreen = {
-      up: orbs.moonUp,
-      x: this.moonCenter.x,
-      y: this.moonCenter.y,
-      r: 17,
+      up: true,
+      frac: orbs.moonFrac,
+      opacity: orbs.moonOpacity,
+      x: moonPt.x,
+      y: moonPt.y,
+      r: 24,
     };
   }
 
@@ -2016,10 +2034,15 @@ export class SkyEngine {
     const skyW = this.getSkyW();
     const maxOx = this.getMaxOx();
     const parallaxX = -(this.ox - maxOx * 0.5) * 0.12;
+    const moonPan = -(this.ox - maxOx * 0.5) * 0.35;
     const hour = this.getCurrentHour();
     const orbs = getOrbPlacement(hour, this.moonInfo.phase);
     this.sunScreen.x = (orbs.sunX / 100) * skyW + parallaxX;
-    this.moonScreen.x = (orbs.moonX / 100) * skyW + parallaxX;
+    const moonPt = this.getMoonArcPoint(orbs.moonFrac, skyW, moonPan);
+    this.moonScreen.frac = orbs.moonFrac;
+    this.moonScreen.opacity = orbs.moonOpacity;
+    this.moonScreen.x = moonPt.x;
+    this.moonScreen.y = moonPt.y;
 
     const ctx = this.cx;
 
@@ -2092,12 +2115,38 @@ export class SkyEngine {
       }
     }
 
-    // 5. Sun (Moon renders on #sky-moon fixed top-right layer)
+    // 5. Sun + Moon on dotted celestial arc (upper 35% sky, glides on DOĞU–BATI swipe)
     ctx.globalAlpha = 1;
     if (this.sunScreen.up) {
       const sprite = this.sunScreen.low ? this.sunLowCanvas : this.sunDayCanvas;
       const half = sprite.width / 2;
       ctx.drawImage(sprite, this.sunScreen.x - half, this.sunScreen.y - half);
+    }
+
+    const moonTarget = this.isMoonOverlayClosed() ? 1 : 0;
+    this.moonUiAlpha += (moonTarget - this.moonUiAlpha) * Math.min(1, dt / 180);
+
+    if (this.moonUiAlpha > 0.01 && !this.trav.on) {
+      const skyW = this.getSkyW();
+      const moonPan = -(this.ox - this.getMaxOx() * 0.5) * 0.35;
+      ctx.save();
+      ctx.globalAlpha = this.moonUiAlpha * 0.1;
+      ctx.strokeStyle = '#dbe8ff';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 6]);
+      ctx.beginPath();
+      for (let i = 0; i <= 32; i++) {
+        const pt = this.getMoonArcPoint(i / 32, skyW, moonPan);
+        if (i === 0) ctx.moveTo(pt.x, pt.y);
+        else ctx.lineTo(pt.x, pt.y);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      const diam = 48;
+      ctx.globalAlpha = this.moonUiAlpha * this.moonScreen.opacity;
+      ctx.drawImage(this.moonCanvas, this.moonScreen.x - diam / 2, this.moonScreen.y - diam / 2, diam, diam);
+      ctx.restore();
     }
 
     // 6. Airplane + banner (stopped after 20s deep idle)
@@ -2205,8 +2254,18 @@ export class SkyEngine {
     ctx.fill();
   }
 
+  private isMoonOverlayClosed(): boolean {
+    return (
+      document.body.classList.contains('awake') &&
+      !document.body.classList.contains('sheet-open') &&
+      !document.querySelector('.sheet.open, .modal.open, #lock:not(.gone), #onboard:not(.gone)')
+    );
+  }
+
   private hasActiveMotion(now: number): boolean {
     if (now < this.boostUntil) return true;
+    const moonTarget = this.isMoonOverlayClosed() ? 1 : 0;
+    if (Math.abs(moonTarget - this.moonUiAlpha) > 0.02) return true;
     if (this.drag !== null || this.panRaf !== 0 || this.timelapseActive || this.trav.on) return true;
     if (this.planeCtrl.isActive()) return true;
     if (
@@ -2370,6 +2429,10 @@ export class SkyEngine {
     this.pauseLoop();
     cancelAnimationFrame(this.panRaf);
     cancelAnimationFrame(this.timelapseRaf);
+    for (const id of this.resizeRafs) cancelAnimationFrame(id);
+    this.resizeRafs = [];
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
     document.removeEventListener('visibilitychange', this.onVisibility);
     document.removeEventListener('pointerdown', this.onAnyPointer, { capture: true });
     document.removeEventListener('touchstart', this.onAnyPointer, { capture: true });

@@ -115,6 +115,7 @@
   --env-2: #e9b6cd;
   --env-3: #fae3ee;
 
+  --kb: 0px;
   color-scheme: dark;
 }
 
@@ -154,24 +155,14 @@ body[data-me="beto"] {
 }
 
 html {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  overflow: hidden;
-  overscroll-behavior: none;
-  touch-action: manipulation;
+  height: var(--app-h, 100vh);
   background-color: var(--ground-bottom);
   margin: 0;
+  touch-action: manipulation;
 }
 
 body {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  height: var(--app-h, 100vh);
   overflow: hidden;
   overscroll-behavior: none;
   touch-action: manipulation;
@@ -185,14 +176,35 @@ body {
   user-select: none;
 }
 
-#scene {
+#scene,
+#ui {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  bottom: 0;
-  overflow-x: hidden;
-  overflow-y: visible;
+  height: var(--app-h, 100vh);
+}
+
+#scene {
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+#ui {
+  z-index: 1;
+  pointer-events: none;
+}
+
+#app-root {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+#app-root > *,
+#ui > section {
+  pointer-events: auto;
 }
 
 button {
@@ -228,33 +240,15 @@ textarea:focus-visible {
   --g: var(--gold-glow);
 }
 
-/* Single sky canvas sized to max(window.innerHeight, screen.height) */
+/* Single sky canvas filling #scene (--app-h) */
 #sky-canvas {
   position: absolute;
   left: 0;
-  right: 0;
   top: 0;
   width: 100%;
+  height: var(--app-h, 100vh);
   pointer-events: none;
   z-index: 0;
-}
-
-.sky-moon {
-  position: fixed;
-  top: calc(env(safe-area-inset-top) + 14px);
-  right: 18px;
-  width: 34px;
-  height: 34px;
-  z-index: 1;
-  pointer-events: none;
-  opacity: 1;
-  transition: opacity .3s var(--ease);
-}
-
-.sky-moon.day-hidden,
-body:not(.awake) .sky-moon,
-body.sheet-open .sky-moon {
-  opacity: 0;
 }
 
 /* Performance rule: permanent on-screen glass uses crisp solid translucent fill (no continuous backdrop-filter) */
@@ -291,7 +285,7 @@ body.sheet-open .sky-moon {
   font-size: 13px;
 }
 
-/* ---------- Top bar ---------- */
+/* ---------- Top bar (sayacı PWA'da ortalar, menü sağ üstte) ---------- */
 .top {
   position: fixed;
   left: 0;
@@ -299,12 +293,11 @@ body.sheet-open .sky-moon {
   top: 0;
   z-index: 6;
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
-  gap: 12px;
-  padding: calc(env(safe-area-inset-top) + 12px) 62px 0 16px;
+  padding: calc(env(safe-area-inset-top) + 14px) 16px 0;
   pointer-events: none;
-  transition: opacity .55s var(--ease) .35s, transform .55s var(--ease) .35s;
+  transition: opacity .45s var(--ease) .25s, transform .55s var(--ease) .35s;
 }
 
 .top > * {
@@ -315,6 +308,12 @@ body:not(.awake) .top {
   opacity: 0;
   transform: translateY(-12px);
   pointer-events: none;
+}
+
+body.sheet-open .top {
+  opacity: 0;
+  pointer-events: none;
+  transition-delay: 0s;
 }
 
 .identity-pill {
@@ -341,6 +340,9 @@ body:not(.awake) .top {
 }
 
 .icon-btn {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 18px);
+  right: 16px;
   width: 44px;
   height: 44px;
   border-radius: 50%;
@@ -666,7 +668,7 @@ body:not(.awake) .compass {
 .floor-light {
   position: absolute;
   left: 50%;
-  bottom: calc(env(safe-area-inset-bottom) * 2 + 6px);
+  bottom: calc(env(safe-area-inset-bottom) + 6px);
   width: 340px;
   height: 180px;
   margin-left: -170px;
@@ -908,6 +910,10 @@ body.deep-idle .candle-flame {
   animation-name: notePopBelow;
 }
 
+body.sheet-open .float-note {
+  display: none;
+}
+
 @keyframes notePop {
   0% { opacity: 0; transform: translate(-50%, calc(-100% + 8px)); }
   12% { opacity: 1; transform: translate(-50%, -100%); }
@@ -935,9 +941,9 @@ body.deep-idle .candle-flame {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: calc(-1 * env(safe-area-inset-bottom));
-  z-index: 3;
-  height: calc(36% + env(safe-area-inset-bottom));
+  bottom: 0;
+  z-index: 2;
+  height: 36%;
   background: linear-gradient(
     180deg,
     rgba(8, 23, 28, 0) 0%,
@@ -949,16 +955,20 @@ body.deep-idle .candle-flame {
   pointer-events: none;
 }
 
+.ground[hidden] {
+  display: none;
+}
+
 .center-row {
   position: absolute;
   left: 50%;
-  bottom: calc(env(safe-area-inset-bottom) * 2 + 24px);
+  bottom: calc(env(safe-area-inset-bottom) + 24px);
   transform: translateX(-50%);
   display: flex;
   align-items: flex-end;
   gap: 12px;
   pointer-events: auto;
-  z-index: 1;
+  z-index: 5;
 }
 
 .act {
@@ -1098,12 +1108,11 @@ body:not(.awake) .act {
 
 /* ---------- Onboarding ---------- */
 #onboard {
-  position: fixed;
+  position: absolute;
   left: 0;
   right: 0;
   top: 0;
-  bottom: calc(-1 * env(safe-area-inset-bottom));
-  height: auto;
+  height: var(--app-h, 100vh);
   z-index: 30;
   display: grid;
   place-items: center;
@@ -1432,8 +1441,11 @@ body:not(.awake) .act {
 
 /* ---------- Settings Sheet & Bottom Sheets ---------- */
 .sheet {
-  position: fixed;
-  inset: 0;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--app-h, 100vh);
   z-index: 25;
   display: flex;
   align-items: flex-end;
@@ -1471,7 +1483,7 @@ body:not(.awake) .act {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  max-height: calc(100dvh - env(safe-area-inset-top) - 12px);
+  max-height: calc(var(--app-h, 100vh) - env(safe-area-inset-top) - 12px);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -1668,8 +1680,11 @@ body:not(.awake) .act {
 
 /* ---------- Lock Screen ---------- */
 #lock {
-  position: fixed;
-  inset: 0;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--app-h, 100vh);
   z-index: 40;
   display: grid;
   place-items: center;
@@ -2424,7 +2439,7 @@ textarea:focus {
   pointer-events: none;
 }
 
-/* Compose sheet pinned above keyboard via visualViewport (zero transitions/padding hacks) */
+/* Compose sheet pinned above keyboard via measured --kb (no jumps, fixed textarea) */
 #compose {
   padding-top: env(safe-area-inset-top);
   transition: none;
@@ -2439,13 +2454,14 @@ textarea:focus {
 }
 
 #compose .sheet-card {
-  position: fixed;
+  position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
   margin: 0 auto;
   gap: 8px;
-  padding: 10px 16px calc(env(safe-area-inset-bottom) + 14px);
+  padding: 10px 16px calc(env(safe-area-inset-bottom) + 16px);
+  max-height: calc(var(--app-h, 100vh) - env(safe-area-inset-top) - 12px - var(--kb, 0px));
   background: linear-gradient(180deg, rgba(255, 255, 255, .04), rgba(0, 0, 0, .28)), #11183c;
   transition: none;
   transform: translate3d(0, 105%, 0);
@@ -2456,13 +2472,11 @@ body[data-me="beto"] #compose .sheet-card {
 }
 
 #compose.open .sheet-card {
-  transform: translate3d(0, 0, 0);
+  transform: translate3d(0, calc(-1 * var(--kb, 0px)), 0);
 }
 
-#compose.compact .handle,
-#compose.compact .sheet-sub,
-#compose.compact .sheet-hint {
-  display: none;
+body.kb-active #compose .sheet-card {
+  padding-bottom: 12px;
 }
 
 #compose .sheet-head .medal {
@@ -2477,12 +2491,12 @@ body[data-me="beto"] #compose .sheet-card {
 
 #compose textarea {
   flex: none;
-  height: 96px;
-  min-height: 96px;
-  max-height: 96px;
-  padding: 9px 14px;
-  font-size: 16.5px;
-  line-height: 1.35;
+  height: 104px;
+  min-height: 104px;
+  max-height: 104px;
+  padding: 10px 14px;
+  font-size: 17px;
+  line-height: 1.38;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -2523,9 +2537,11 @@ body.sched-open #compose .sched-dt-label {
 
 /* ---------- Letter & Envelope Modal ---------- */
 .modal {
-  position: fixed;
-  inset: 0;
-  height: 100dvh;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--app-h, 100vh);
   z-index: 26;
   display: grid;
   place-items: center;

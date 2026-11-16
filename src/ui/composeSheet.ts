@@ -208,31 +208,15 @@ export function initComposeSheet(opts: {
 
   function syncViewport(): void {
     if (!sheet.classList.contains('open')) {
-      form.style.transform = '';
-      form.style.maxHeight = '';
-      form.style.paddingBottom = '';
-      sheet.classList.remove('hide-chips', 'compact');
+      sheet.classList.remove('hide-chips');
       return;
     }
 
-    const vv = window.visualViewport;
-    const vvHeight = vv ? vv.height : window.innerHeight;
-    const vvTop = vv ? vv.offsetTop : 0;
-    const bottomOffset = Math.max(0, Math.round(window.innerHeight - (vvTop + vvHeight)));
-    const safeTop = parseFloat(getComputedStyle(sheet).paddingTop) || 0;
-    const maxCardH = Math.max(200, Math.floor(vvHeight - safeTop - 10));
-
-    form.style.maxHeight = `${maxCardH}px`;
-    form.style.transform = bottomOffset > 0 ? `translate3d(0, -${bottomOffset}px, 0)` : 'translate3d(0, 0, 0)';
-    form.style.paddingBottom = bottomOffset > 0 ? '10px' : '';
-
-    // Alan daraldığında (klavye açık) önce yardımcı alt yazıları sonra çipleri gizle
-    sheet.classList.toggle('compact', bottomOffset > 0 || maxCardH < 360);
     if (schedOn) {
       sheet.classList.add('hide-chips');
     } else {
       sheet.classList.remove('hide-chips');
-      if (form.scrollHeight > maxCardH + 1) {
+      if (form.scrollHeight > form.clientHeight + 2) {
         sheet.classList.add('hide-chips');
       }
     }
