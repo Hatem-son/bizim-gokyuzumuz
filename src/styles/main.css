@@ -980,9 +980,9 @@ body.sheet-open .float-note {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: -8px;
   z-index: 2;
-  height: 36%;
+  height: calc(36% + 8px);
   background: linear-gradient(
     180deg,
     rgba(8, 23, 28, 0) 0%,
@@ -992,6 +992,18 @@ body.sheet-open .float-note {
     var(--ground-bottom) 100%
   );
   pointer-events: none;
+}
+
+.ground::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 22px;
+  background: linear-gradient(to bottom, transparent, var(--ground-bottom) 60%, var(--ground-bottom) 100%);
+  pointer-events: none;
+  z-index: 4;
 }
 
 .ground[hidden] {

@@ -1,6 +1,15 @@
 import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js';
+import { USER_EMAILS } from '../config';
 import type { ProfileRow, Who } from '../types';
 import { STORAGE_KEYS, store } from './storage';
+
+export function inferWhoFromEmail(email?: string | null): Who | null {
+  if (!email) return null;
+  const norm = email.trim().toLowerCase();
+  if (norm === USER_EMAILS.hamham.toLowerCase()) return 'hamham';
+  if (norm === USER_EMAILS.beto.toLowerCase()) return 'beto';
+  return null;
+}
 
 const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() || '';
 const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim() || '';
@@ -56,29 +65,40 @@ export function translateAuthError(message: string, status?: number): string {
 export async function getSessionAndProfile(): Promise<{
   session: Session | null;
   profile: ProfileRow | null;
+  networkFailed?: boolean;
 }> {
   const sb = getSupabase();
   if (!sb) return { session: null, profile: null };
 
-  const { data: sessionData, error: sessionErr } = await sb.auth.getSession();
-  if (sessionErr || !sessionData.session) {
-    return { session: null, profile: null };
+  let session: Session | null = null;
+  try {
+    const { data: sessionData, error: sessionErr } = await sb.auth.getSession();
+    if (sessionErr || !sessionData.session) {
+      return { session: null, profile: null, networkFailed: Boolean(sessionErr) };
+    }
+    session = sessionData.session;
+  } catch {
+    return { session: null, profile: null, networkFailed: true };
   }
 
-  const { data: profileData, error: profileErr } = await sb
-    .from('profiles')
-    .select('id, who, push_subscription')
-    .eq('id', sessionData.session.user.id)
-    .maybeSingle();
+  try {
+    const { data: profileData, error: profileErr } = await sb
+      .from('profiles')
+      .select('id, who, push_subscription')
+      .eq('id', session.user.id)
+      .maybeSingle();
 
-  if (profileErr || !profileData) {
-    return { session: sessionData.session, profile: null };
+    if (profileErr || !profileData) {
+      return { session, profile: null, networkFailed: Boolean(profileErr) };
+    }
+
+    return {
+      session,
+      profile: profileData as ProfileRow,
+    };
+  } catch {
+    return { session, profile: null, networkFailed: true };
   }
-
-  return {
-    session: sessionData.session,
-    profile: profileData as ProfileRow,
-  };
 }
 
 export async function signInWithPassword(

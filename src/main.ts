@@ -33,7 +33,7 @@ import {
   type StarPayloadData,
 } from './lib/stars';
 import { STORAGE_KEYS, store } from './lib/storage';
-import { getSessionAndProfile, isSupabaseConfigured, signOutSupabase } from './lib/supabase';
+import { getSessionAndProfile, inferWhoFromEmail, isSupabaseConfigured, signOutSupabase } from './lib/supabase';
 import { formatDayLine, pickGreeting } from './sky/greetings';
 import { PANO, SkyEngine } from './sky/skyRenderer';
 import { currentDecimalHour, formatHour, getSolarTimes } from './sky/solar';
@@ -1304,23 +1304,50 @@ async function bootstrap(): Promise<void> {
     if (appMounted) markSeen();
   });
 
-  // Startup restoration
-  const keyLoaded = await loadSavedKey();
+  // Startup restoration (ilk kurulumdan sonra seçim ekranını tekrar gösterme)
+  const savedWho = store.get<Who | null>(STORAGE_KEYS.me, null);
+  let keyLoaded = await loadSavedKey();
+  if (!keyLoaded && savedWho) {
+    // iOS standalone uyanışında IndexedDB bazen ilk tickte gecikebilir; bir kez daha dene
+    await new Promise((r) => window.setTimeout(r, 80));
+    keyLoaded = await loadSavedKey();
+  }
+
   if (isSupabaseConfigured) {
-    const { session, profile } = await getSessionAndProfile();
-    if (session && profile && keyLoaded) {
-      currentMe = profile.who;
+    const { session, profile, networkFailed } = await getSessionAndProfile();
+    const resolvedWho =
+      profile?.who ?? (session ? savedWho ?? inferWhoFromEmail(session.user.email) : savedWho);
+
+    if (session && resolvedWho && keyLoaded) {
+      currentMe = resolvedWho;
       if (hasPin()) lock.show('unlock');
-      await enterApp(profile.who);
+      await enterApp(resolvedWho);
+      return;
+    }
+
+    // Çevrimdışı / ağ uyanırken cihazda zaten anahtar + kimlik kayıtlıysa doğrudan içeri al
+    if (!session && savedWho && keyLoaded && (networkFailed || navigator.onLine === false)) {
+      currentMe = savedWho;
+      if (hasPin()) lock.show('unlock');
+      await enterApp(savedWho);
+      return;
+    }
+
+    if (savedWho) {
+      currentMe = savedWho;
+      onboard.show(savedWho);
       return;
     }
   } else if (currentMe && keyLoaded) {
     if (hasPin()) lock.show('unlock');
     await enterApp(currentMe);
     return;
+  } else if (savedWho) {
+    currentMe = savedWho;
+    onboard.show(savedWho);
+    return;
   }
 
-  store.del(STORAGE_KEYS.me);
   currentMe = null;
   onboard.show();
 }

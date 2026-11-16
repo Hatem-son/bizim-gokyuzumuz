@@ -32,7 +32,7 @@ function renderObSceneSvg(): string {
 }
 
 export interface OnboardController {
-  show: () => void;
+  show: (preselectedWho?: Who | null) => void;
   hide: () => void;
 }
 
@@ -96,11 +96,18 @@ export function initOnboard(opts: {
     showStep('who');
   }
 
-  function show(): void {
+  function show(preselectedWho: Who | null = null): void {
     document.body.classList.remove('awake');
     resetToWho();
     setInert(onboardEl, false);
     onboardEl.classList.remove('gone');
+    if (preselectedWho) {
+      chosen = preselectedWho;
+      opts.onPreviewTheme(preselectedWho);
+      whoBox.classList.add('chosen');
+      $$(`.who-card[data-who="${preselectedWho}"]`).forEach((c) => c.classList.add('sel'));
+      void afterWhoSelected(preselectedWho);
+    }
   }
 
   function hide(): void {

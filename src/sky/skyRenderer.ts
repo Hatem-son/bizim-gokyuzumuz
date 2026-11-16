@@ -89,7 +89,7 @@ function mulberry32(seed: number): () => number {
 }
 
 function bandY(f: number): number {
-  return 0.5 + 0.26 * Math.sin(f * Math.PI * 2 * 1.15 + 0.6) + 0.07 * Math.sin(f * Math.PI * 2 * 3.1 + 2);
+  return 0.5 + 0.25 * Math.sin(f * Math.PI * 2 + 0.6) + 0.07 * Math.sin(f * Math.PI * 6 + 2);
 }
 
 const COLOR_HEX: Record<SkyColorKey, { core: string; mid: string; glow: string }> = {
@@ -151,6 +151,7 @@ export class SkyEngine {
   private lastBakedSkyKey = '';
   private lastCssColsKey = '';
   private skyElWidth = 0;
+  private nebPattern: CanvasPattern | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private resizeRafs: number[] = [];
 
@@ -1268,6 +1269,7 @@ export class SkyEngine {
     this.nebScale = Math.min(1, Math.sqrt(12e6 / Math.max(1, w * h)));
     this.nebCanvas.width = Math.ceil(w * this.nebScale);
     this.nebCanvas.height = Math.ceil(h * this.nebScale);
+    this.nebPattern = null;
 
     const n = this.nebCanvas.getContext('2d');
     if (!n) return;
@@ -1279,11 +1281,16 @@ export class SkyEngine {
     const by = (f: number) => this.skyTop + bandY(f) * this.skyHeight;
 
     const blob = (x: number, y: number, r: number, rgb: string, a: number) => {
-      const g = n.createRadialGradient(x, y, 0, x, y, r);
-      g.addColorStop(0, `rgba(${rgb},${a.toFixed(3)})`);
-      g.addColorStop(1, `rgba(${rgb},0)`);
-      n.fillStyle = g;
-      n.fillRect(x - r, y - r, r * 2, r * 2);
+      const drawAt = (cx0: number) => {
+        const g = n.createRadialGradient(cx0, y, 0, cx0, y, r);
+        g.addColorStop(0, `rgba(${rgb},${a.toFixed(3)})`);
+        g.addColorStop(1, `rgba(${rgb},0)`);
+        n.fillStyle = g;
+        n.fillRect(cx0 - r, y - r, r * 2, r * 2);
+      };
+      drawAt(x);
+      if (x - r < 0) drawAt(x + w);
+      if (x + r > w) drawAt(x - w);
     };
 
     for (let i = 0; i < 36 * PANO; i++) {
@@ -1298,18 +1305,23 @@ export class SkyEngine {
       const f = rnd();
       const x = f * w;
       const y = by(f) + (rnd() - 0.4) * this.skyHeight * 0.05;
-      const ang = Math.atan2(by(f + 0.002) - by(f), 0.002 * w);
-      n.save();
-      n.translate(x, y);
-      n.rotate(ang);
-      n.scale(1, 0.26);
+      const ang = Math.atan2(by((f + 0.002) % 1) - by(f), 0.002 * w);
       const r = 40 + rnd() * 90;
-      const g = n.createRadialGradient(0, 0, 0, 0, 0, r);
-      g.addColorStop(0, 'rgba(2,4,12,.22)');
-      g.addColorStop(1, 'rgba(2,4,12,0)');
-      n.fillStyle = g;
-      n.fillRect(-r, -r, r * 2, r * 2);
-      n.restore();
+      const drawRift = (cx0: number) => {
+        n.save();
+        n.translate(cx0, y);
+        n.rotate(ang);
+        n.scale(1, 0.26);
+        const g = n.createRadialGradient(0, 0, 0, 0, 0, r);
+        g.addColorStop(0, 'rgba(2,4,12,.22)');
+        g.addColorStop(1, 'rgba(2,4,12,0)');
+        n.fillStyle = g;
+        n.fillRect(-r, -r, r * 2, r * 2);
+        n.restore();
+      };
+      drawRift(x);
+      if (x - r < 0) drawRift(x + w);
+      if (x + r > w) drawRift(x - w);
     }
 
     const tint = () => {
@@ -1333,17 +1345,20 @@ export class SkyEngine {
       n.fillRect(rnd() * w, rnd() * h * 0.9, sz, sz);
     }
 
-    // Sabit arka plan yıldız tozlarını bir kez offscreen canvas'a çiz
+    // Sabit arka plan yıldız tozlarını bir kez offscreen canvas'a çiz (kenarlarda sarımlı)
     const staticDustCount = Math.min(260, Math.round((w * h) / 9500));
     for (let i = 0; i < staticDustCount; i++) {
       const f = rnd();
+      const x = f * w;
       const y =
         rnd() < 0.48
           ? this.skyTop + (bandY(f) + (rnd() + rnd() + rnd() - 1.5) * 0.12) * this.skyHeight
           : rnd() * h * 0.88;
       const sz = 2.4 + (rnd() * 1.1 + 0.4) * 2.6;
       n.globalAlpha = 0.22 + rnd() * 0.45;
-      n.drawImage(this.dustSprite, f * w - sz * 0.5, y - sz * 0.5, sz, sz);
+      n.drawImage(this.dustSprite, x - sz * 0.5, y - sz * 0.5, sz, sz);
+      if (x - sz < 0) n.drawImage(this.dustSprite, x + w - sz * 0.5, y - sz * 0.5, sz, sz);
+      if (x + sz > w) n.drawImage(this.dustSprite, x - w - sz * 0.5, y - sz * 0.5, sz, sz);
     }
     n.globalAlpha = 1;
   }
@@ -1375,6 +1390,14 @@ export class SkyEngine {
     g.fillStyle = rg;
     g.fillRect(-this.W, -this.H * 2, this.W * 2, this.H * 4);
     g.restore();
+
+    // Alt kenarı çimen alt rengine (#08171c) pürüzsüz bağla: tam en altta tek piksel çizgi bile kalmaz
+    const seamFade = g.createLinearGradient(0, this.H * 0.82, 0, this.H);
+    seamFade.addColorStop(0, 'rgba(8, 23, 28, 0)');
+    seamFade.addColorStop(0.7, 'rgba(8, 23, 28, 0.85)');
+    seamFade.addColorStop(1, '#08171c');
+    g.fillStyle = seamFade;
+    g.fillRect(0, this.H * 0.82, this.W, this.H * 0.18 + 2);
   }
 
   private bakeSunSprites(): void {
@@ -1428,7 +1451,7 @@ export class SkyEngine {
     this.moonInfo = getMoonPhaseInfo();
     this.lastMoonBake = Date.now();
 
-    // Güneşle uyumlu sade ve belirgin Ay (240x240 tuval → 112px mantıksal alan, ~30px kompakt disk)
+    // Yalnızca Güneş ışığı vuran kısmı parlayan, gölgeli kısmı tamamen görünmez sade Ay
     const size = 240;
     this.moonCanvas.width = size;
     this.moonCanvas.height = size;
@@ -1437,29 +1460,23 @@ export class SkyEngine {
     g.clearRect(0, 0, size, size);
 
     const c = size / 2;
-    const r = 32; // ≈ 30px görüntü çapı (kompakt, gökyüzünde güneş gibi net)
+    const r = 32; // ≈ 30px kompakt çap
     const p = this.moonInfo.phase;
 
-    // Yumuşak gümüş haleyle karanlık gökyüzünden ayrılır (blur/shadow filtre yok)
-    const halo = g.createRadialGradient(c, c, r * 0.4, c, c, 112);
-    halo.addColorStop(0, 'rgba(226, 239, 255, 0.30)');
-    halo.addColorStop(0.32, 'rgba(190, 214, 255, 0.11)');
-    halo.addColorStop(0.68, 'rgba(168, 196, 248, 0.03)');
-    halo.addColorStop(1, 'rgba(168, 196, 248, 0)');
+    // Parlak tarafın yönüne hafifçe kaymış yumuşak parıltı (gölgeli tarafta hale yok)
+    const dir = p < 0.5 ? 1 : -1;
+    const illumFactor = Math.max(0.15, Math.abs(Math.sin(Math.PI * p)));
+    const hx = c + dir * r * 0.28 * (1 - illumFactor * 0.65);
+    const halo = g.createRadialGradient(hx, c, r * 0.2, hx, c, 108);
+    halo.addColorStop(0, 'rgba(255, 255, 255, 0.44)');
+    halo.addColorStop(0.28, 'rgba(224, 238, 255, 0.18)');
+    halo.addColorStop(0.62, 'rgba(195, 220, 255, 0.05)');
+    halo.addColorStop(1, 'rgba(180, 210, 255, 0)');
     g.fillStyle = halo;
     g.fillRect(0, 0, size, size);
 
-    // Karanlık yarı: yumuşak gümüş-mavi dolgu ve ince kenar
-    g.fillStyle = 'rgba(170, 195, 238, 0.24)';
-    g.strokeStyle = 'rgba(225, 238, 255, 0.42)';
-    g.lineWidth = 2;
-    g.beginPath();
-    g.arc(c, c, r, 0, Math.PI * 2);
-    g.fill();
-    g.stroke();
-
-    // Kuzey yarımküre astronomik terminatör elipsi (büyüyen Ay sağdan aydınlanır)
-    const rx = Math.abs(Math.cos(2 * Math.PI * p)) * r;
+    // Kuzey yarımküre astronomik terminatör elipsi — yeni ayda bile ince bir hilal kalır
+    const rx = Math.min(r * 0.94, Math.abs(Math.cos(2 * Math.PI * p)) * r);
     const litPath = new Path2D();
     if (p < 0.5) {
       litPath.moveTo(c, c - r);
@@ -1472,17 +1489,18 @@ export class SkyEngine {
     }
     litPath.closePath();
 
+    // Yalnızca ışık vuran kısmı çiz (karanlık yarı tamamen şeffaf/görünmez)
     g.save();
     g.clip(litPath);
 
-    const moonGrad = g.createRadialGradient(c - 7, c - 7, 2, c, c, r * 1.3);
+    const moonGrad = g.createRadialGradient(c + dir * 6, c - 6, 2, c, c, r * 1.25);
     moonGrad.addColorStop(0, '#ffffff');
-    moonGrad.addColorStop(0.62, '#eef4ff');
-    moonGrad.addColorStop(1, '#d4e0f5');
+    moonGrad.addColorStop(0.55, '#f4f8ff');
+    moonGrad.addColorStop(1, '#dce7fb');
     g.fillStyle = moonGrad;
     g.fillRect(c - r - 2, c - r - 2, r * 2 + 4, r * 2 + 4);
 
-    g.fillStyle = 'rgba(145, 168, 205, 0.24)';
+    g.fillStyle = 'rgba(155, 178, 214, 0.17)';
     const craters: [number, number, number][] = [
       [c - 7, c - 7, 5.5],
       [c + 9, c + 3, 6],
@@ -1497,9 +1515,9 @@ export class SkyEngine {
     }
     g.restore();
 
-    // Aydınlık kenarda ince parlak dudak (ince hilal ve yeni ayda bile seçilir)
+    // Aydınlık dış yayda ince parlak ışıltı
     g.save();
-    g.strokeStyle = 'rgba(255, 255, 255, 0.72)';
+    g.strokeStyle = 'rgba(255, 255, 255, 0.85)';
     g.lineWidth = 1.6;
     g.beginPath();
     if (p < 0.5) {
@@ -2070,30 +2088,34 @@ export class SkyEngine {
     // 1. Sky gradient + horizon
     this.drawSkyBackdrop();
 
-    // 2. Pre-baked Milky Way nebula & deep starfield
+    // 2. Pre-baked Milky Way nebula & deep starfield (hardware repeat-x → 0 dikiş, sonsuz sarım)
     const nebAlpha = Math.max(0, 1 - 0.88 * this.currentDaylight);
-    if (nebAlpha > 0.01) {
-      const swN = Math.min(this.nebCanvas.width, this.W * this.nebScale);
-      const sx = Math.max(0, Math.min(this.nebCanvas.width - swN, this.ox * this.nebScale));
-      ctx.globalAlpha = nebAlpha;
-      ctx.drawImage(
-        this.nebCanvas,
-        sx,
-        0,
-        swN,
-        this.H * this.nebScale,
-        sx / this.nebScale - this.ox,
-        0,
-        swN / this.nebScale,
-        this.H
-      );
+    if (nebAlpha > 0.01 && this.worldW > 0 && this.nebCanvas.width > 0) {
+      if (!this.nebPattern) {
+        this.nebPattern = ctx.createPattern(this.nebCanvas, 'repeat-x');
+      }
+      if (this.nebPattern) {
+        const worldW = this.worldW;
+        const wrapOx = ((this.ox % worldW) + worldW) % worldW;
+        const pxScale = this.nebCanvas.width / worldW;
+        const pyScale = this.nebCanvas.height / this.H;
+        ctx.save();
+        ctx.globalAlpha = nebAlpha;
+        ctx.fillStyle = this.nebPattern;
+        ctx.translate(-wrapOx, 0);
+        ctx.scale(1 / pxScale, 1 / pyScale);
+        ctx.fillRect(wrapOx * pxScale, 0, this.W * pxScale, this.nebCanvas.height);
+        ctx.restore();
+      }
     }
 
-    // 3. Soft twinkling dust pinpoints (anti-aliased sprite, never square pixels)
+    // 3. Soft twinkling dust pinpoints (modulo sarımlı, aşırı sağ/sol kaydırmada bile sonsuz devam eder)
     const dim = 1 - 0.65 * this.currentDaylight;
-    if (dim > 0.03) {
+    if (dim > 0.03 && this.worldW > 0) {
+      const worldW = this.worldW;
       for (const d of this.dust) {
-        const x = d.x - this.ox;
+        let x = (((d.x - this.ox) % worldW) + worldW) % worldW;
+        if (x > worldW - 8) x -= worldW;
         if (x < -4 || x > this.W + 4) continue;
         const tw = this.reducedMotion ? 1 : 0.42 + 0.58 * (0.5 + 0.5 * Math.sin(ts * d.speed + d.phase));
         const sz = 2.6 + d.r * 2.8;
