@@ -1539,7 +1539,8 @@ export class SkyEngine {
 
     const vars = ['--sky-1', '--sky-2', '--sky-3', '--horizon'];
     vars.forEach((v, i) => document.body.style.setProperty(v, cols[i]));
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', cols[0]);
+    document.body.style.setProperty('--scene-bottom', cols[2]);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', cols[2]);
 
     const orbs = getOrbPlacement(hour, this.moonInfo.phase);
     const skyW = this.getSkyW();

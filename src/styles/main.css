@@ -87,6 +87,7 @@
   --sky-2: #08122b;
   --sky-3: #17284d;
   --horizon: #3e5480;
+  --scene-bottom: #17284d;
 
   --accent: #ffc6e2;
   --accent-strong: #ff8cc2;
@@ -156,27 +157,38 @@ body[data-me="beto"] {
 
 html,
 body {
-  height: 100%;
+  background: var(--scene-bottom);
   margin: 0;
-  background-color: var(--sky-3);
+  min-height: 100%;
 }
 
 body {
   position: fixed;
-  inset: 0;
-  height: 100lvh;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: calc(-1 * env(safe-area-inset-bottom));
+  height: auto;
   overflow: hidden;
   font-family: var(--font-ui);
   color: var(--ink);
-  background-color: var(--sky-3);
-  background-image:
-    radial-gradient(140% 46% at 50% 106%, var(--horizon) 0%, transparent 62%),
-    linear-gradient(180deg, var(--sky-1) 0%, var(--sky-2) 52%, var(--sky-3) 100%);
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
   -webkit-user-select: none;
   user-select: none;
   overscroll-behavior: none;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(env(safe-area-inset-bottom) + 90px);
+  background: linear-gradient(to bottom, transparent, var(--scene-bottom) 70%);
+  pointer-events: none;
+  z-index: 0;
 }
 
 button {
@@ -212,12 +224,15 @@ textarea:focus-visible {
   --g: var(--gold-glow);
 }
 
-/* Single sky canvas (full 100lvh covering safe-area-inset-bottom) */
+/* Single sky canvas (stretches seamlessly under bottom safe-area) */
 #sky-canvas {
   position: fixed;
-  inset: 0;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: calc(-1 * env(safe-area-inset-bottom));
   width: 100%;
-  height: 100lvh;
+  height: calc(100% + env(safe-area-inset-bottom));
   pointer-events: none;
   z-index: 0;
 }
@@ -465,7 +480,7 @@ body:not(.awake) .compass {
 
 @media (min-width: 700px) {
   :root { --ground-h: 236px; }
-  .lily { height: min(236px, 32svh); }
+  .lily { height: min(236px, 100%); }
   .lily.l { left: 8%; }
   .lily.r { right: 8%; }
 }
@@ -668,7 +683,7 @@ body.awake .floor-light {
 .lily {
   position: absolute;
   bottom: 0;
-  height: min(214px, 30svh);
+  height: min(214px, 100%);
   width: auto;
   overflow: visible;
   transform-origin: 45% 100%;
@@ -704,7 +719,7 @@ body.awake .floor-light {
   left: 0;
   bottom: 0;
   width: 100%;
-  height: min(240px, 32svh);
+  height: min(240px, 100%);
   overflow: visible;
 }
 
@@ -882,12 +897,12 @@ body.quiet .cdf {
 
 .ground::after {
   content: "";
-  position: absolute;
+  position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
-  height: calc(env(safe-area-inset-bottom) + 26px);
-  background: linear-gradient(180deg, rgba(23, 40, 77, 0) 0%, var(--sky-3) 82%);
+  height: calc(env(safe-area-inset-bottom) + 90px);
+  background: linear-gradient(to bottom, transparent, var(--scene-bottom) 70%);
   pointer-events: none;
   z-index: 0;
 }
@@ -1042,19 +1057,33 @@ body:not(.awake) .act {
 /* ---------- Onboarding ---------- */
 #onboard {
   position: fixed;
-  inset: 0;
-  height: 100dvh;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: calc(-1 * env(safe-area-inset-bottom));
+  height: auto;
   z-index: 30;
   display: grid;
   place-items: center;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: calc(env(safe-area-inset-top) + 24px) 20px calc(env(safe-area-inset-bottom) + 24px);
-  background-color: var(--sky-3);
-  background-image:
+  background:
     radial-gradient(140% 46% at 50% 106%, var(--horizon) 0%, transparent 62%),
-    linear-gradient(180deg, var(--sky-1) 0%, var(--sky-2) 52%, var(--sky-3) 100%);
+    linear-gradient(180deg, var(--sky-1) 0%, var(--sky-2) 52%, var(--scene-bottom) 100%);
   transition: opacity .4s var(--ease), visibility .4s;
+}
+
+#onboard::after {
+  content: "";
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(env(safe-area-inset-bottom) + 90px);
+  background: linear-gradient(to bottom, transparent, var(--scene-bottom) 70%);
+  pointer-events: none;
+  z-index: 1;
 }
 
 #onboard.gone {
