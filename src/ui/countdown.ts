@@ -1,4 +1,4 @@
-import { HEART_PATH, lilyBloomSvg, whiteZambakSvg } from '../lib/illustrations';
+import { HEART_PATH, whiteZambakSvg, zambakBudSvg } from '../lib/illustrations';
 import { $ } from './dom';
 
 export const TARGET_DATE = new Date(2027, 0, 9, 0, 0, 0);
@@ -23,25 +23,20 @@ export class CountdownController {
   private timerId = 0;
 
   constructor() {
-    $('#cd-sprig').innerHTML =
-      `<path d="M-8 24 C -16 11, -24 5, -33 3 C -22 12, -16 18, -10 26Z" fill="url(#gLeaf)"/>` +
-      `<path d="M-4 24 C 3 11, 12 7, 23 7 C 12 14, 5 19, -2 27Z" fill="url(#gLeaf)" opacity=".92"/>` +
-      `<path d="M12 -4 C 18 -11, 23 -15, 25 -22 C 18 -16, 14 -10, 10 -4Z" fill="url(#gLeaf)" opacity=".85"/>` +
-      lilyBloomSvg(-1, -1, 0.54, 'sp', 'sp-st') +
-      whiteZambakSvg(18, 12, 0.32, 'sp', 'sp-st');
+    const sprigArc =
+      `<path d="M 8 10 C 26 9, 43 16, 51 32 C 54 39, 54 47, 50 55" fill="none" stroke="url(#gCdStem)" stroke-width="1.85" stroke-linecap="round"/>` +
+      `<path d="M 27 10.5 C 19 4.5, 11 4.2, 4 7.5 C 12 9.4, 19 10.6, 27 11.4 Z" fill="url(#gLeaf)"/>` +
+      `<path d="M 25 10.7 Q 15 6.8 6 7.5" fill="none" stroke="#9be09e" stroke-opacity=".55" stroke-width=".55" stroke-linecap="round"/>` +
+      `<path d="M 41 16 C 43 8.5, 48 4, 54.5 3.5 C 50.5 8.5, 46.5 12.5, 42 17 Z" fill="url(#gLeaf)" opacity=".92"/>` +
+      `<path d="M 41.5 15.8 Q 46.5 8.5 52.8 4.4" fill="none" stroke="#9be09e" stroke-opacity=".48" stroke-width=".5" stroke-linecap="round"/>` +
+      `<path d="M 52 35 C 58 40, 59 48, 55.5 56 C 53 49, 52 42, 50 36 Z" fill="url(#gLeaf)" opacity=".88"/>` +
+      `<path d="M 51.6 36.2 Q 55.5 45 55 53.5" fill="none" stroke="#9be09e" stroke-opacity=".45" stroke-width=".5" stroke-linecap="round"/>` +
+      zambakBudSvg(27, 10.5, 0.44, -84) +
+      zambakBudSvg(52, 40, 0.56, 154) +
+      `<g transform="translate(47 20) rotate(32)">${whiteZambakSvg(0, 0, 0.28, 'sp', 'sp-st')}</g>`;
 
-    $('#cd-sprig2').innerHTML =
-      `<path d="M-2 5 C -10 9, -15 14, -17 19 C -10 16, -4 12, 1 7Z" fill="url(#gLeaf)"/>` +
-      `<path d="M3 4 C 10 8, 15 12, 17 17 C 11 14, 6 10, 1 6Z" fill="url(#gLeaf)" opacity=".86"/>` +
-      whiteZambakSvg(0, 0, 0.36, 'sp', 'sp-st');
-
-    const sprig3 = document.getElementById('cd-sprig3');
-    if (sprig3) {
-      sprig3.innerHTML =
-        `<path d="M2 5 C 9 10, 13 14, 15 18 C 8 15, 4 11, -1 7Z" fill="url(#gLeaf)"/>` +
-        `<path d="M-3 4 C -9 8, -13 12, -14 16 C -8 13, -4 9, 0 5Z" fill="url(#gLeaf)" opacity=".85"/>` +
-        whiteZambakSvg(0, 0, 0.32, 'sp', 'sp-st');
-    }
+    $('#cd-sprig').innerHTML = sprigArc;
+    $('#cd-sprig2').innerHTML = `<g transform="rotate(180 32 32)">${sprigArc}</g>`;
 
     this.tick();
     this.startTimer();

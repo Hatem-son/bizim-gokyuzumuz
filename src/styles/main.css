@@ -701,11 +701,13 @@ body:not(.awake) .compass {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 6px 22px 6px 6px;
+  justify-content: center;
+  gap: 12px;
+  margin: 0 auto;
+  padding: 6px 20px 6px 8px;
   border-radius: 999px;
   cursor: pointer;
-  text-align: left;
+  text-align: center;
 }
 
 .cd-dial {
@@ -754,51 +756,34 @@ body:not(.awake) .compass {
   50% { transform: scale(1.12) rotate(6deg); }
 }
 
-.cd-sprig {
+.cd-sprig,
+.cd-sprig2 {
   position: absolute;
-  right: -17px;
-  top: -16px;
-  width: 54px;
-  height: 54px;
+  width: 64px;
+  height: 64px;
   overflow: visible;
   pointer-events: none;
-  transform-origin: 24% 78%;
   will-change: transform;
   backface-visibility: hidden;
-  animation: cdSprigSway 8.2s ease-in-out infinite;
+  animation: cdSprigSway 9s ease-in-out infinite;
+}
+
+.cd-sprig {
+  right: -13px;
+  top: -11px;
+  transform-origin: 48% 52%;
 }
 
 .cd-sprig2 {
-  position: absolute;
-  right: 16px;
-  bottom: -14px;
-  width: 32px;
-  height: 32px;
-  overflow: visible;
-  pointer-events: none;
-  transform-origin: 35% 20%;
-  will-change: transform;
-  backface-visibility: hidden;
-  animation: cdSprigSway 7.4s ease-in-out -2.6s infinite;
-}
-
-.cd-sprig3 {
-  position: absolute;
   left: -13px;
   bottom: -11px;
-  width: 34px;
-  height: 34px;
-  overflow: visible;
-  pointer-events: none;
-  transform-origin: 72% 24%;
-  will-change: transform;
-  backface-visibility: hidden;
-  animation: cdSprigSway 8.8s ease-in-out -4.1s infinite;
+  transform-origin: 52% 48%;
+  animation-delay: -4.5s;
 }
 
 @keyframes cdSprigSway {
-  0%, 100% { transform: rotate3d(0, 0, 1, -1.6deg); }
-  50% { transform: rotate3d(0, 0, 1, 1.8deg); }
+  0%, 100% { transform: rotate3d(0, 0, 1, -1.1deg); }
+  50% { transform: rotate3d(0, 0, 1, 1.1deg); }
 }
 
 .cd-days {
@@ -830,6 +815,8 @@ body:not(.awake) .compass {
 .cd-text {
   display: flex;
   flex-direction: column;
+  align-items: center;
+  text-align: center;
 }
 
 .cd-label {
@@ -2160,14 +2147,12 @@ body.quiet .lily,
 body.quiet .flower-stem,
 body.quiet .cd-sprig,
 body.quiet .cd-sprig2,
-body.quiet .cd-sprig3,
 body.quiet .cdf,
 body.quiet .candle-flame,
 body.deep-idle .lily,
 body.deep-idle .flower-stem,
 body.deep-idle .cd-sprig,
 body.deep-idle .cd-sprig2,
-body.deep-idle .cd-sprig3,
 body.deep-idle .cdf,
 body.deep-idle .candle-flame {
   animation-play-state: paused !important;
@@ -2178,7 +2163,6 @@ body.deep-idle .candle-flame {
   .flower-stem,
   .cd-sprig,
   .cd-sprig2,
-  .cd-sprig3,
   .candle-flame,
   .ls-orb,
   .ob h1,

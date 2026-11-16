@@ -30,6 +30,7 @@ export function sharedSvgDefs(): string {
     <radialGradient id="gThroat"><stop offset="0" stop-color="#f1f8be"/><stop offset="1" stop-color="#eef7b8" stop-opacity="0"/></radialGradient>
     <radialGradient id="gZambakThroat"><stop offset="0" stop-color="#e2f18e" stop-opacity=".95"/><stop offset=".55" stop-color="#f7fadc" stop-opacity=".55"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
     <linearGradient id="gLeaf" x1="0" y1="1" x2="1" y2="0"><stop offset="0" style="stop-color:var(--leaf-1)"/><stop offset="1" style="stop-color:var(--leaf-2)"/></linearGradient>
+    <linearGradient id="gCdStem" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#275e3d"/><stop offset=".6" stop-color="#488e5b"/><stop offset="1" stop-color="#76c280"/></linearGradient>
     <linearGradient id="gBud" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--leaf-2)"/><stop offset=".55" style="stop-color:var(--petal-mid)"/><stop offset="1" style="stop-color:var(--petal-tip)"/></linearGradient>
     <radialGradient id="gDrupe" cx=".36" cy=".32" r=".75"><stop offset="0" stop-color="#ff9ab4"/><stop offset=".35" stop-color="#ef3a6c"/><stop offset=".8" stop-color="#b01248"/><stop offset="1" stop-color="#6e0628"/></radialGradient>
     <radialGradient id="gDrupeD" cx=".38" cy=".34" r=".75"><stop offset="0" stop-color="#e65a80"/><stop offset=".5" stop-color="#b3154b"/><stop offset="1" stop-color="#5c0422"/></radialGradient>
@@ -173,5 +174,15 @@ export function whiteZambakSvg(
   }
 
   return `<g transform="translate(${cx} ${cy}) scale(${scale})" ${extra}><g transform="scale(1 .9)">${petals}<circle r="11.5" fill="url(#gZambakThroat)"/></g><g class="${stamenCls}">${stamens}<circle r="2.6" fill="#c7de8a"/><circle cx="-.6" cy="-.6" r=".9" fill="#f7fce2"/></g></g>`;
+}
+
+export function zambakBudSvg(cx: number, cy: number, scale: number, angle = 0): string {
+  return `<g transform="translate(${cx} ${cy}) rotate(${angle}) scale(${scale})">
+    <path d="M-2.2 1 Q -5 -5 -4 -10 Q -1.5 -5 0 0 Q 1.5 -5 4 -10 Q 5 -5 2.2 1 Z" fill="url(#gLeaf)" opacity=".92"/>
+    <path d="M0 -1 C 5.8 -5.5, 6.2 -15, 0 -23.5 C -6.2 -15, -5.8 -5.5, 0 -1 Z" fill="url(#gZambak)" stroke="rgba(222,228,204,.55)" stroke-width=".6"/>
+    <path d="M-.4 -2 C 2.8 -7, 3.2 -14, -.2 -21.5 C -2.8 -14.5, -2.4 -7.5, -.4 -2 Z" fill="url(#gZambakB)" opacity=".6"/>
+    <path d="M.9 -4 C 3.4 -9, 3.6 -14.5, 1.2 -19" fill="none" stroke="#ffffff" stroke-opacity=".75" stroke-width=".85" stroke-linecap="round"/>
+    <path d="M0 1 Q -1.5 -3.5 0 -7 Q 1.5 -3.5 0 1 Z" fill="#5da66b"/>
+  </g>`;
 }
 

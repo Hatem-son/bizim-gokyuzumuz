@@ -23,6 +23,8 @@ interface DustParticle {
   alpha: number;
 }
 
+type MeteorHue = 'ice' | 'gold' | 'rose' | 'white';
+
 interface Meteor {
   x: number;
   y: number;
@@ -30,7 +32,18 @@ interface Meteor {
   vy: number;
   life: number;
   max: number;
+  len: number;
+  thick: number;
+  hue: MeteorHue;
+  curve: number;
 }
+
+const METEOR_PALETTES: Record<MeteorHue, { rgb: string; halo: SkyColorKey }> = {
+  ice: { rgb: '184,226,255', halo: 'blue' },
+  gold: { rgb: '255,222,158', halo: 'gold' },
+  rose: { rgb: '255,198,228', halo: 'pink' },
+  white: { rgb: '242,248,255', halo: 'blue' },
+};
 
 interface SparkParticle {
   x: number;
@@ -209,7 +222,7 @@ export class SkyEngine {
   private sparks: SparkParticle[] = [];
   private rings: BurstRing[] = [];
   private comets: FlyingComet[] = [];
-  private nextMeteorAt = 4000;
+  private nextMeteorAt = 0;
   private lastFrameT = 0;
   private mainRaf = 0;
   private idleTimer = 0;
@@ -231,6 +244,7 @@ export class SkyEngine {
       return;
     }
     this.markInteraction();
+    if (!this.meteors.length) this.nextMeteorAt = 0;
     this.updateLoopState();
   };
 
@@ -2151,38 +2165,132 @@ export class SkyEngine {
       }
     }
 
-    // 4. Shooting stars (night/twilight only, stopped after 20s deep idle)
-    if (!this.reducedMotion && !this.deepIdle && this.currentDaylight < 0.75) {
-      if (t > this.nextMeteorAt) {
-        this.nextMeteorAt = t + 8500 + Math.random() * 11500;
-        this.meteors.push({
-          x: this.W * (0.35 + Math.random() * 0.65),
-          y: this.skyTop + Math.random() * this.skyHeight * 0.4,
-          vx: -(0.55 + Math.random() * 0.3),
-          vy: 0.25 + Math.random() * 0.14,
-          life: 0,
-          max: 950,
-        });
+    // 4. Shooting stars (night/twilight multi-hue tapered comets + gentle paired cascades, zero blur)
+    if (!this.reducedMotion && !this.deepIdle && this.currentDaylight < 0.75 && this.W > 0 && this.skyHeight > 0) {
+      if (this.nextMeteorAt === 0) {
+        this.nextMeteorAt = t + 950;
       }
-      this.meteors = this.meteors.filter((m) => (m.life += dt) < m.max);
-      ctx.lineWidth = 1.35;
-      for (const m of this.meteors) {
-        m.x += m.vx * dt;
-        m.y += m.vy * dt;
-        const al = Math.sin((m.life / m.max) * Math.PI) * 0.85 * (1 - this.currentDaylight);
-        const len = 82;
-        ctx.strokeStyle = `rgba(255,255,255,${(al * 0.35).toFixed(2)})`;
-        ctx.beginPath();
-        ctx.moveTo(m.x - m.vx * len * 0.45, m.y - m.vy * len * 0.45);
-        ctx.lineTo(m.x - m.vx * len, m.y - m.vy * len);
-        ctx.stroke();
+      if (t > this.nextMeteorAt && this.meteors.length < 5) {
+        this.nextMeteorAt = t + 3000 + Math.random() * 3800;
+        const leftDir = Math.random() < 0.78 ? -1 : 1;
+        const pickHue = (): MeteorHue => {
+          const r = Math.random();
+          return r < 0.42 ? 'ice' : r < 0.72 ? 'white' : r < 0.9 ? 'gold' : 'rose';
+        };
+        const baseX = leftDir < 0 ? this.W * (0.34 + Math.random() * 0.64) : this.W * (0.04 + Math.random() * 0.56);
+        const baseY = this.skyTop + (0.04 + Math.random() * 0.36) * this.skyHeight;
+        const speed = 0.54 + Math.random() * 0.34;
+        const baseVx = leftDir * speed;
+        const baseVy = 0.19 + Math.random() * 0.16;
 
-        ctx.strokeStyle = `rgba(255,255,255,${al.toFixed(2)})`;
+        this.meteors.push({
+          x: baseX,
+          y: baseY,
+          vx: baseVx,
+          vy: baseVy,
+          life: 0,
+          max: 860 + Math.random() * 280,
+          len: 95 + Math.random() * 65,
+          thick: 1.55 + Math.random() * 0.7,
+          hue: pickHue(),
+          curve: 0.05 + Math.random() * 0.06,
+        });
+
+        // 38% chance of a gentle parallel twin companion, 14% chance of a 3rd distant cascade streak
+        if (Math.random() < 0.38 && this.meteors.length < 4) {
+          this.meteors.push({
+            x: Math.max(24, Math.min(this.W - 24, baseX + (Math.random() - 0.5) * 86)),
+            y: Math.max(this.skyTop + 10, baseY + (Math.random() - 0.4) * 44),
+            vx: baseVx * (0.86 + Math.random() * 0.2),
+            vy: baseVy * (0.88 + Math.random() * 0.22),
+            life: -(260 + Math.random() * 420),
+            max: 760 + Math.random() * 240,
+            len: 75 + Math.random() * 45,
+            thick: 1.25 + Math.random() * 0.45,
+            hue: pickHue(),
+            curve: 0.04 + Math.random() * 0.05,
+          });
+          if (Math.random() < 0.36 && this.meteors.length < 4) {
+            this.meteors.push({
+              x: Math.max(24, Math.min(this.W - 24, baseX + (Math.random() - 0.5) * 140)),
+              y: Math.max(this.skyTop + 14, baseY + (Math.random() - 0.3) * 60),
+              vx: baseVx * 0.92,
+              vy: baseVy * 0.95,
+              life: -(620 + Math.random() * 460),
+              max: 720 + Math.random() * 220,
+              len: 64 + Math.random() * 38,
+              thick: 1.1 + Math.random() * 0.35,
+              hue: 'white',
+              curve: 0.04,
+            });
+          }
+        }
+      }
+
+      this.meteors = this.meteors.filter((m) => (m.life += dt) < m.max);
+      const dayAtten = Math.max(0.18, 1 - this.currentDaylight * 0.9);
+      ctx.save();
+      ctx.lineCap = 'round';
+      for (const m of this.meteors) {
+        if (m.life <= 0) continue;
+        const p = m.life / m.max;
+        m.x += m.vx * dt;
+        m.y += (m.vy + m.curve * p) * dt;
+
+        const arcEnv = Math.sin(p * Math.PI);
+        const al = Math.pow(Math.max(0, arcEnv), 0.72) * 0.94 * dayAtten;
+        if (al <= 0.02) continue;
+
+        const sp = Math.hypot(m.vx, m.vy) || 1;
+        const ux = m.vx / sp;
+        const uy = m.vy / sp;
+        const tailPx = m.len * (0.4 + 0.6 * arcEnv);
+        const tx = m.x - ux * tailPx;
+        const ty = m.y - uy * tailPx;
+        const pal = METEOR_PALETTES[m.hue];
+
+        // Soft outer luminous wake
+        const wakeGrad = ctx.createLinearGradient(m.x, m.y, tx, ty);
+        wakeGrad.addColorStop(0, `rgba(${pal.rgb},${(al * 0.36).toFixed(3)})`);
+        wakeGrad.addColorStop(0.5, `rgba(${pal.rgb},${(al * 0.14).toFixed(3)})`);
+        wakeGrad.addColorStop(1, `rgba(${pal.rgb},0)`);
+        ctx.strokeStyle = wakeGrad;
+        ctx.lineWidth = m.thick * 2.5;
         ctx.beginPath();
         ctx.moveTo(m.x, m.y);
-        ctx.lineTo(m.x - m.vx * len * 0.5, m.y - m.vy * len * 0.5);
+        ctx.lineTo(tx, ty);
         ctx.stroke();
+
+        // Crisp white-hot tapering core trail
+        const cxTail = m.x - ux * tailPx * 0.72;
+        const cyTail = m.y - uy * tailPx * 0.72;
+        const coreGrad = ctx.createLinearGradient(m.x, m.y, cxTail, cyTail);
+        coreGrad.addColorStop(0, `rgba(255,255,255,${al.toFixed(3)})`);
+        coreGrad.addColorStop(0.38, `rgba(${pal.rgb},${(al * 0.58).toFixed(3)})`);
+        coreGrad.addColorStop(1, `rgba(${pal.rgb},0)`);
+        ctx.strokeStyle = coreGrad;
+        ctx.lineWidth = m.thick;
+        ctx.beginPath();
+        ctx.moveTo(m.x, m.y);
+        ctx.lineTo(cxTail, cyTail);
+        ctx.stroke();
+
+        // Pre-baked starlight head halo + crisp core dot + peak twinkle glint (zero blur)
+        const haloSz = 14 * m.thick;
+        ctx.globalAlpha = Math.min(1, al * 0.8);
+        ctx.drawImage(this.starHalos[pal.halo], m.x - haloSz * 0.5, m.y - haloSz * 0.5, haloSz, haloSz);
+        if (al > 0.38) {
+          const glSz = 11 + m.thick * 4;
+          ctx.globalAlpha = Math.min(1, (al - 0.35) * 1.15);
+          ctx.drawImage(this.glintSprite, m.x - glSz * 0.5, m.y - glSz * 0.5, glSz, glSz);
+        }
+        ctx.globalAlpha = al;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, m.thick * 0.9, 0, Math.PI * 2);
+        ctx.fill();
       }
+      ctx.restore();
     }
 
     // 5. Sun + Moon on dotted celestial arc (upper 35% sky, glides on DOĞU–BATI swipe)
