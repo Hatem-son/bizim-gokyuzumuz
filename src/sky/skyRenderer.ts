@@ -100,6 +100,7 @@ const COLOR_HEX: Record<SkyColorKey, { core: string; mid: string; glow: string }
 
 export interface SkyEngineOptions {
   canvas: HTMLCanvasElement;
+  moonCanvas?: HTMLCanvasElement;
   skyElement: HTMLElement;
   compassElement: HTMLElement;
   compassThumb: HTMLElement;
@@ -132,7 +133,7 @@ export class SkyEngine {
   // Offscreen pre-baked layers (Rule 3: baked once, drawn via drawImage)
   private readonly skyBgCanvas = document.createElement('canvas');
   private readonly nebCanvas = document.createElement('canvas');
-  private readonly moonCanvas = document.createElement('canvas');
+  private readonly moonCanvas: HTMLCanvasElement;
   private readonly sunDayCanvas = document.createElement('canvas');
   private readonly sunLowCanvas = document.createElement('canvas');
   private readonly flameHaloCanvas = document.createElement('canvas');
@@ -241,6 +242,14 @@ export class SkyEngine {
   private suppressNextClick = false;
   private lastOrbTapAt = 0;
   private singleOrbTapTimer = 0;
+  private revealAt = 0;
+  private docOrbPointerId: number | null = null;
+  private docOrbStartX = 0;
+  private docOrbStartY = 0;
+  private docOrbMoved = false;
+  private onDocPointerDown?: (e: PointerEvent) => void;
+  private onDocPointerMove?: (e: PointerEvent) => void;
+  private onDocPointerUp?: (e: PointerEvent) => void;
 
   private trav = {
     on: false,
@@ -270,6 +279,7 @@ export class SkyEngine {
   constructor(opts: SkyEngineOptions) {
     this.opts = opts;
     this.cv = opts.canvas;
+    this.moonCanvas = opts.moonCanvas ?? document.createElement('canvas');
     const ctx = this.cv.getContext('2d', { alpha: false });
     if (!ctx) throw new Error('2D canvas context oluşturulamadı');
     this.cx = ctx;
@@ -300,6 +310,11 @@ export class SkyEngine {
     this.flareAt = now;
     this.nextSmokeAt = Math.min(this.nextSmokeAt, now + 1400);
     this.boostMotion(1900);
+  }
+
+  public triggerEnterReveal(): void {
+    this.revealAt = this.reducedMotion ? 0 : performance.now();
+    this.boostMotion(1600);
   }
 
   public launchPlane(): boolean {
@@ -642,8 +657,9 @@ export class SkyEngine {
 
   public resize = (): void => {
     this.DPR = Math.min(2, window.devicePixelRatio || 1);
-    this.W = window.innerWidth;
-    this.H = window.innerHeight;
+    const cvRect = this.cv.getBoundingClientRect();
+    this.W = Math.max(window.innerWidth, Math.ceil(cvRect.width));
+    this.H = Math.max(window.innerHeight, Math.ceil(cvRect.height));
     this.cv.width = Math.floor(this.W * this.DPR);
     this.cv.height = Math.floor(this.H * this.DPR);
     this.cx.setTransform(this.DPR, 0, 0, this.DPR, 0, 0);
@@ -1040,6 +1056,74 @@ export class SkyEngine {
     this.skyEl.addEventListener('pointerup', (e) => endDrag(e, false));
     this.skyEl.addEventListener('pointercancel', (e) => endDrag(e, true));
 
+    // Sağ üstte sabit Ay (#sky üstünde durduğu için dokunuş/uzun basma yakalama)
+    const triggerOrbTap = (orb: { orb: 'sun' | 'moon'; x: number; y: number }) => {
+      const now = Date.now();
+      if (now - this.lastOrbTapAt < 400) {
+        window.clearTimeout(this.singleOrbTapTimer);
+        this.lastOrbTapAt = 0;
+        this.startHeartFormation();
+        this.opts.onOrbDoubleTap?.(orb.orb);
+      } else {
+        this.lastOrbTapAt = now;
+        this.singleOrbTapTimer = window.setTimeout(() => {
+          this.opts.onOrbTap?.(orb.orb, { x: orb.x, y: orb.y });
+        }, 400);
+      }
+    };
+
+    this.onDocPointerDown = (e: PointerEvent) => {
+      if (e.button > 0 || !document.body.classList.contains('awake') || this.timelapseActive || this.trav.on) return;
+      if (document.querySelector('.sheet.open, .modal.open, #lock:not(.gone), #onboard:not(.gone)')) return;
+      const target = e.target as Element | null;
+      if (target?.closest('button, a, input, textarea, #sky')) return;
+      if (!this.moonScreen.up) return;
+      const dist = Math.hypot(e.clientX - this.moonScreen.x, e.clientY - this.moonScreen.y);
+      if (dist > 34) return;
+
+      this.boostMotion(900);
+      this.docOrbPointerId = e.pointerId;
+      this.docOrbStartX = e.clientX;
+      this.docOrbStartY = e.clientY;
+      this.docOrbMoved = false;
+      this.suppressNextClick = false;
+      window.clearTimeout(this.orbPressTimer);
+      this.orbPressTimer = window.setTimeout(() => {
+        if (this.trav.on) return;
+        this.withoutMode = true;
+        this.suppressNextClick = true;
+        this.opts.onWithoutChange?.(true);
+      }, 500);
+    };
+
+    this.onDocPointerMove = (e: PointerEvent) => {
+      if (this.docOrbPointerId !== e.pointerId) return;
+      if (Math.hypot(e.clientX - this.docOrbStartX, e.clientY - this.docOrbStartY) > 14) {
+        this.docOrbMoved = true;
+        window.clearTimeout(this.orbPressTimer);
+      }
+    };
+
+    this.onDocPointerUp = (e: PointerEvent) => {
+      if (this.docOrbPointerId !== e.pointerId) return;
+      const moved = this.docOrbMoved;
+      this.docOrbPointerId = null;
+      window.clearTimeout(this.orbPressTimer);
+      releaseWithout();
+      if (this.suppressNextClick) {
+        this.suppressNextClick = false;
+        return;
+      }
+      if (!moved && e.type === 'pointerup' && this.moonScreen.up) {
+        triggerOrbTap({ orb: 'moon', x: this.moonScreen.x, y: this.moonScreen.y });
+      }
+    };
+
+    document.addEventListener('pointerdown', this.onDocPointerDown);
+    document.addEventListener('pointermove', this.onDocPointerMove);
+    document.addEventListener('pointerup', this.onDocPointerUp);
+    document.addEventListener('pointercancel', this.onDocPointerUp);
+
     window.addEventListener('keydown', (e) => {
       if (!document.body.classList.contains('awake') || this.trav.on) return;
       if (document.querySelector('.sheet.open, .modal.open, #lock:not(.gone)')) return;
@@ -1371,37 +1455,40 @@ export class SkyEngine {
     this.moonInfo = getMoonPhaseInfo();
     this.lastMoonBake = Date.now();
 
-    const size = 160;
+    const size = 80;
     this.moonCanvas.width = size;
     this.moonCanvas.height = size;
     const g = this.moonCanvas.getContext('2d');
     if (!g) return;
+    g.clearRect(0, 0, size, size);
 
     const c = size / 2;
-    const r = 24;
+    const r = 34;
     const p = this.moonInfo.phase;
 
-    const glow = g.createRadialGradient(c, c, r * 0.6, c, c, 76);
-    glow.addColorStop(0, 'rgba(255,246,222,0.22)');
-    glow.addColorStop(0.48, 'rgba(255,246,222,0.06)');
-    glow.addColorStop(1, 'rgba(255,246,222,0)');
+    // Neredeyse sıfır parlama, filtre yok
+    const glow = g.createRadialGradient(c, c, r * 0.9, c, c, size / 2);
+    glow.addColorStop(0, 'rgba(255, 246, 222, 0.08)');
+    glow.addColorStop(1, 'rgba(255, 246, 222, 0)');
     g.fillStyle = glow;
     g.fillRect(0, 0, size, size);
 
-    g.fillStyle = 'rgba(200,210,255,0.08)';
-    g.strokeStyle = 'rgba(255,255,255,0.12)';
-    g.lineWidth = 0.8;
+    // Karanlık tarafta çok hafif "dünya ışığı" (Earthshine)
+    g.fillStyle = 'rgba(155, 178, 225, 0.14)';
+    g.strokeStyle = 'rgba(215, 228, 255, 0.14)';
+    g.lineWidth = 1;
     g.beginPath();
     g.arc(c, c, r, 0, Math.PI * 2);
     g.fill();
     g.stroke();
 
+    // Kuzey yarımküre astronomik terminatör elipsi (büyüyen Ay sağdan aydınlanır)
     const rx = Math.abs(Math.cos(2 * Math.PI * p)) * r;
     const litPath = new Path2D();
     if (p < 0.5) {
       litPath.moveTo(c, c - r);
       litPath.arc(c, c, r, -Math.PI / 2, Math.PI / 2, false);
-      litPath.ellipse(c, c, Math.max(0.01, rx), r, 0, Math.PI / 2, -Math.PI / 2, p >= 0.25);
+      litPath.ellipse(c, c, Math.max(0.01, rx), r, 0, Math.PI / 2, -Math.PI / 2, p < 0.25);
     } else {
       litPath.moveTo(c, c - r);
       litPath.arc(c, c, r, -Math.PI / 2, Math.PI / 2, true);
@@ -1412,21 +1499,21 @@ export class SkyEngine {
     g.save();
     g.clip(litPath);
 
-    const moonGrad = g.createRadialGradient(c - 6, c - 7, 2, c, c, r * 1.4);
+    const moonGrad = g.createRadialGradient(c - 8, c - 9, 3, c, c, r * 1.35);
     moonGrad.addColorStop(0, '#fffef6');
     moonGrad.addColorStop(0.7, '#f6ebd0');
     moonGrad.addColorStop(1, '#e3d2ae');
     g.fillStyle = moonGrad;
     g.fillRect(c - r - 2, c - r - 2, r * 2 + 4, r * 2 + 4);
 
-    g.fillStyle = 'rgba(182, 162, 122, 0.36)';
+    g.fillStyle = 'rgba(182, 162, 122, 0.32)';
     const craters: [number, number, number][] = [
-      [c - 6, c - 6, 5.2],
-      [c + 8, c + 3, 5.8],
-      [c - 5, c + 8, 3.0],
-      [c + 10, c - 11, 2.0],
-      [c - 13, c + 2, 1.8],
-      [c + 1, c + 15, 1.6],
+      [c - 8, c - 8, 6.8],
+      [c + 11, c + 4, 7.6],
+      [c - 7, c + 11, 4.2],
+      [c + 14, c - 15, 2.8],
+      [c - 18, c + 3, 2.5],
+      [c + 2, c + 21, 2.2],
     ];
     for (const [cx0, cy0, cr] of craters) {
       g.beginPath();
@@ -1467,11 +1554,13 @@ export class SkyEngine {
       r: 20,
     };
 
+    this.moonCanvas.classList.toggle('day-hidden', !orbs.moonUp);
+    const moonRect = this.moonCanvas.getBoundingClientRect();
     this.moonScreen = {
       up: orbs.moonUp,
-      x: (orbs.moonX / 100) * skyW + parallaxX,
-      y: this.skyTop + (orbs.moonY / 100) * this.skyHeight,
-      r: 26,
+      x: moonRect.width > 0 ? moonRect.left + moonRect.width / 2 : this.W - 35,
+      y: moonRect.height > 0 ? moonRect.top + moonRect.height / 2 : 45,
+      r: 17,
     };
   }
 
@@ -1585,12 +1674,30 @@ export class SkyEngine {
       }
     }
 
-    // 2. Sent stars
+    // 2. Sent stars (with choreographed staggered entrance after login)
     const nowMs = this.opts.getNowMs?.() ?? Date.now();
     const starTotal = Math.max(1, this.stars.length);
+    const revealElapsed = this.revealAt > 0 ? t - this.revealAt : -1;
+    const revealStepMs = starTotal > 1 ? Math.min(120, Math.floor(800 / (starTotal - 1))) : 0;
+    if (this.revealAt > 0 && revealElapsed > 1400) {
+      this.revealAt = 0;
+    }
+
     for (let idx = 0; idx < this.stars.length; idx++) {
       const s = this.stars[idx];
       if (this.hiddenStarIds.has(s.id)) continue;
+
+      let revealAlpha = 1;
+      let revealScale = 1;
+      if (this.revealAt > 0) {
+        const raw = (revealElapsed - idx * revealStepMs) / 380;
+        if (raw <= 0) continue;
+        if (raw < 1) {
+          const ease = 1 - Math.pow(1 - raw, 3);
+          revealAlpha = ease;
+          revealScale = 0.6 + 0.4 * ease;
+        }
+      }
       let { x, y } = this.getStarScreenPos(s);
 
       if (heartBlend > 0.001) {
@@ -1657,14 +1764,14 @@ export class SkyEngine {
       }
 
       const scale =
-        (s.size / 8.5) * bornScale * goldScale * (1 + 0.25 * heartBlend + wakeWave * 0.45);
+        (s.size / 8.5) * bornScale * goldScale * revealScale * (1 + 0.25 * heartBlend + wakeWave * 0.45);
       const scint = this.reducedMotion || isLocked
         ? 1
         : 0.78 +
           0.14 * Math.sin(ts * twSpeed + phase) +
           0.08 * Math.sin(ts * (twSpeed * 2.37) + phase * 1.7);
       const lockDim = isLocked ? 0.36 : 1;
-      const dayDim = Math.max(0.45, 1 - 0.35 * this.currentDaylight) * this.withoutAlpha * lockDim;
+      const dayDim = Math.max(0.45, 1 - 0.35 * this.currentDaylight) * this.withoutAlpha * lockDim * revealAlpha;
 
       // Soft pulsing outer ring for recipient's unlocked & unopened stars
       if (!isLocked && !mine && !s.openedAt) {
@@ -2002,15 +2109,12 @@ export class SkyEngine {
       }
     }
 
-    // 5. Sun or Moon (mutually exclusive)
+    // 5. Sun (Moon renders on #sky-moon fixed top-right layer)
     ctx.globalAlpha = 1;
     if (this.sunScreen.up) {
       const sprite = this.sunScreen.low ? this.sunLowCanvas : this.sunDayCanvas;
       const half = sprite.width / 2;
       ctx.drawImage(sprite, this.sunScreen.x - half, this.sunScreen.y - half);
-    } else if (this.moonScreen.up) {
-      const half = this.moonCanvas.width / 2;
-      ctx.drawImage(this.moonCanvas, this.moonScreen.x - half, this.moonScreen.y - half);
     }
 
     // 6. Airplane + rippling cloth banner (single canvas)
@@ -2119,6 +2223,16 @@ export class SkyEngine {
     const wick = this.cachedWickPos;
     if (!wick) return;
 
+    // Giriş animasyonunda mum alevi en son (~850 ms sonra) yanar
+    let igniteAlpha = 1;
+    if (this.revealAt > 0) {
+      const rel = (t - this.revealAt - 850) / 400;
+      if (rel <= 0) return;
+      if (rel < 1) {
+        igniteAlpha = 1 - Math.pow(1 - rel, 3);
+      }
+    }
+
     // Multi-harmonic noise + occasional wind gust
     if (t > this.breezeNext) {
       this.breezeNext = t + 7000 + Math.random() * 14000;
@@ -2144,7 +2258,7 @@ export class SkyEngine {
     // Pre-baked flame halo
     const haloScale = 1 + n1 * 0.035 + boost * 0.35;
     const haloSize = 150 * haloScale;
-    ctx.globalAlpha = Math.min(1, 0.78 + n1 * 0.1 + boost * 0.22);
+    ctx.globalAlpha = Math.min(1, 0.78 + n1 * 0.1 + boost * 0.22) * igniteAlpha;
     ctx.drawImage(this.flameHaloCanvas, wick.x - haloSize / 2, wick.y - 24 - haloSize / 2, haloSize, haloSize);
 
     // Pre-baked flame sprites (zero gradient allocations per frame)
@@ -2152,8 +2266,9 @@ export class SkyEngine {
     ctx.translate(wick.x, wick.y + 1);
     ctx.transform(1, 0, Math.tan(skew), 1, 0, 0);
     ctx.scale(sx, sy);
+    ctx.globalAlpha = igniteAlpha;
     ctx.drawImage(this.flameOutCanvas, -32, -88);
-    ctx.globalAlpha = Math.min(1, 0.84 + n1 * 0.1 + boost * 0.08);
+    ctx.globalAlpha = Math.min(1, 0.84 + n1 * 0.1 + boost * 0.08) * igniteAlpha;
     ctx.drawImage(this.flameMidCanvas, -16, -42);
     ctx.restore();
 
@@ -2429,5 +2544,11 @@ export class SkyEngine {
     this.stateObserver?.disconnect();
     this.stateObserver = null;
     window.removeEventListener('resize', this.resize);
+    if (this.onDocPointerDown) document.removeEventListener('pointerdown', this.onDocPointerDown);
+    if (this.onDocPointerMove) document.removeEventListener('pointermove', this.onDocPointerMove);
+    if (this.onDocPointerUp) {
+      document.removeEventListener('pointerup', this.onDocPointerUp);
+      document.removeEventListener('pointercancel', this.onDocPointerUp);
+    }
   }
 }

@@ -9,7 +9,17 @@ export function isStandalonePwa(): boolean {
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (!('serviceWorker' in navigator)) return null;
   try {
-    return await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+    const reg = await navigator.serviceWorker.register('/sw.js', {
+      scope: '/',
+      updateViaCache: 'none',
+    });
+    void reg.update().catch(() => undefined);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) {
+        void reg.update().catch(() => undefined);
+      }
+    });
+    return reg;
   } catch {
     return null;
   }

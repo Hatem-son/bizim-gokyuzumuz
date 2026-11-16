@@ -15,8 +15,11 @@
 </head>
 <body>
   <canvas id="sky-canvas" aria-hidden="true"></canvas>
+  <canvas id="sky-moon" class="sky-moon" width="80" height="80" aria-hidden="true"></canvas>
   <div id="defs"></div>
+  <div id="app-root"></div>
 
+  <template id="app-shell-tpl">
   <header class="top">
     <button class="countdown solid-glass" id="countdown" type="button" aria-label="9 Ocak'a geri sayım">
       <span class="cd-dial">
@@ -91,7 +94,7 @@
   </div>
 
   <!-- Compose Sheet -->
-  <div class="sheet" id="compose" aria-hidden="true">
+  <div class="sheet" id="compose" aria-hidden="true" inert>
     <form class="sheet-card" id="compose-form" role="dialog" aria-modal="true" aria-labelledby="c-title">
       <div class="handle"></div>
       <div class="sheet-head">
@@ -126,7 +129,10 @@
             </span>
             <button class="sched-cancel" id="sched-cancel" type="button">Vazgeç</button>
           </div>
-          <input class="sched-dt" id="sched-dt" type="datetime-local" aria-label="Açılma tarihi ve saati">
+          <div class="sched-dt-wrap">
+            <div class="sched-dt-label" id="sched-dt-label" aria-hidden="true"></div>
+            <input class="sched-dt" id="sched-dt" type="datetime-local" aria-label="Açılma tarihi ve saati">
+          </div>
           <div class="sched-presets" id="sched-presets">
             <button class="sched-preset" data-preset="tomorrow" type="button">Yarın sabah</button>
             <button class="sched-preset" data-preset="week" type="button">Bir hafta sonra</button>
@@ -151,7 +157,7 @@
   </div>
 
   <!-- Letter & Envelope Modal -->
-  <div class="modal" id="letter-modal" aria-hidden="true">
+  <div class="modal" id="letter-modal" aria-hidden="true" inert>
     <div class="env" id="env" aria-hidden="true">
       <div class="env-back"></div>
       <div class="env-flap">
@@ -183,7 +189,7 @@
   </div>
 
   <!-- Settings Sheet -->
-  <div class="sheet" id="settings" aria-hidden="true">
+  <div class="sheet" id="settings" aria-hidden="true" inert>
     <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="s-title">
       <div class="handle"></div>
       <div class="sheet-head">
@@ -224,9 +230,11 @@
       <button class="set-ver" id="s-ver" type="button">Bizim Gökyüzümüz · v1.0.0</button>
     </div>
   </div>
+  </template>
 
   <!-- Onboarding -->
   <section id="onboard" aria-label="Giriş">
+    <div class="ob-scene" id="ob-scene" aria-hidden="true"></div>
     <div class="ob">
       <p class="ob-eyebrow">HAM HAM &amp; BETO</p>
       <h1>Bizim Gökyüzümüz</h1>
@@ -279,7 +287,7 @@
   </section>
 
   <!-- Lock Screen -->
-  <section id="lock" class="gone" aria-label="Kilit" aria-hidden="true">
+  <section id="lock" class="gone" aria-label="Kilit" aria-hidden="true" inert>
     <div class="lk-in">
       <span class="medal" id="lk-medal"></span>
       <p class="lk-title" id="lk-title">Hoş geldin</p>

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gokyuzu-shell-v2';
+const CACHE_NAME = 'gokyuzu-shell-v3';
 const SHELL_URLS = [
   '/',
   '/index.html',
@@ -19,15 +19,27 @@ const SHELL_URLS = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_URLS)).then(() => self.skipWaiting())
+    caches
+      .open(CACHE_NAME)
+      .then((cache) =>
+        Promise.all(
+          SHELL_URLS.map((u) =>
+            cache.add(new Request(u, { cache: 'reload' })).catch(() => undefined)
+          )
+        )
+      )
+      .then(() => self.skipWaiting())
   );
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    ).then(() => self.clients.claim())
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+      )
+      .then(() => self.clients.claim())
   );
 });
 
@@ -39,13 +51,15 @@ self.addEventListener('fetch', (event) => {
   // Never cache Supabase API, Realtime, Storage, or external font/API requests aggressively as shell
   if (url.origin !== self.location.origin) return;
 
-  // Navigation requests: network first with offline shell fallback
+  // Navigation requests: network first bypassing HTTP cache with offline shell fallback
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request)
+      fetch(new Request(request, { cache: 'no-store' }))
         .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE_NAME).then((c) => c.put('/index.html', copy));
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE_NAME).then((c) => c.put('/index.html', copy));
+          }
           return res;
         })
         .catch(() => caches.match('/index.html'))

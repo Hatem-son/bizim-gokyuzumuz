@@ -9,7 +9,7 @@ import {
   type StarPayloadData,
 } from '../lib/stars';
 import type { StarRecord, Who } from '../types';
-import { $ } from './dom';
+import { $, setInert } from './dom';
 import { showToast } from './toast';
 
 const PLAY_PATH = 'M8 5v14l11-7z';
@@ -212,7 +212,7 @@ export function initLetterModal(opts: {
     fillLetter(star, data, url, allStars, isPaired);
     card.getAnimations().forEach((a) => a.cancel());
     modal.classList.add('open');
-    modal.setAttribute('aria-hidden', 'false');
+    setInert(modal, false);
 
     const color = PEOPLE[star.from].color;
     if (!star.openedAt) {
@@ -385,7 +385,7 @@ export function initLetterModal(opts: {
     }
 
     modal.classList.remove('open');
-    modal.setAttribute('aria-hidden', 'true');
+    setInert(modal, true);
   }
 
   closeBtn.addEventListener('click', close);

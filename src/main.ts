@@ -40,7 +40,7 @@ import { currentDecimalHour, formatHour, getSolarTimes } from './sky/solar';
 import type { StarKind, StarRecord, Who } from './types';
 import { initComposeSheet, type ComposeController } from './ui/composeSheet';
 import { CountdownController } from './ui/countdown';
-import { $ } from './ui/dom';
+import { $, setInert } from './ui/dom';
 import { showFloatNote } from './ui/floatNote';
 import { GardenController } from './ui/garden';
 import { initLetterModal, type LetterController } from './ui/letterModal';
@@ -50,12 +50,17 @@ import { showToast } from './ui/toast';
 
 let currentMe: Who | null = store.get<Who | null>(STORAGE_KEYS.me, null);
 let bioSupported = false;
+let appMounted = false;
 let skyEngine: SkyEngine | null = null;
+let countdownCtrl: CountdownController | null = null;
 let composeCtrl: ComposeController | null = null;
 let letterCtrl: LetterController | null = null;
 let gardenCtrl: GardenController | null = null;
 let captionTimer = 0;
 let greetPending = false;
+let planeInterval = 0;
+let perfTimer = 0;
+let enterTimers: number[] = [];
 
 let stars: StarRecord[] = [];
 let viewMonthK = monthIdx(new Date());
@@ -64,6 +69,11 @@ let pairedIds = new Set<string>();
 let unsubRealtime: (() => void) | null = null;
 let unlockCheckTimer = 0;
 let pushNudgeTimer = 0;
+
+function clearEnterTimers(): void {
+  for (const id of enterTimers) window.clearTimeout(id);
+  enterTimers = [];
+}
 
 function getSeenUnlockIds(who: Who): Set<string> {
   return new Set(store.get<string[]>(`gokyuzu.unlockedSeen.${who}`, []));
@@ -453,32 +463,17 @@ function setupKeyboardViewport(): void {
   };
 
   const vv = window.visualViewport;
-  const updateKbPad = () => {
-    const realKb = Boolean(vv && window.innerHeight - vv.height > 120);
-    const pad =
-      document.body.classList.contains('typing') && isIos && !realKb
+  const sync = () => {
+    const vvKb = vv ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0;
+    const kbOpen = vvKb > 120;
+    document.body.classList.toggle('kb-open', kbOpen);
+    const pad = kbOpen
+      ? vvKb
+      : document.body.classList.contains('typing') && isIos
         ? Math.round(Math.min(340, window.innerHeight * 0.44))
         : 0;
     document.documentElement.style.setProperty('--kbpad', `${pad}px`);
-  };
-
-  const sync = () => {
-    const kbOpen = Boolean(vv && window.innerHeight - vv.height > 120);
-    document.body.classList.toggle('kb-open', kbOpen);
-    const boxes = [...Array.from(document.querySelectorAll<HTMLElement>('.sheet')), $('#onboard')];
-    for (const el of boxes) {
-      if (vv && kbOpen) {
-        el.style.top = `${vv.offsetTop}px`;
-        el.style.height = `${vv.height}px`;
-        el.style.bottom = 'auto';
-      } else {
-        el.style.top = '';
-        el.style.height = '';
-        el.style.bottom = '';
-      }
-    }
     if (kbOpen) settle();
-    updateKbPad();
   };
 
   if (vv) {
@@ -631,221 +626,40 @@ async function bootstrap(): Promise<void> {
   setupKeyboardViewport();
   bioSupported = await isPlatformBiometricSupported();
 
-  new CountdownController();
-
-  $('#countdown').addEventListener('click', (e) => {
-    if (!currentMe) return;
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    showFloatNote(
-      { x: r.left + r.width / 2, y: r.top, height: r.height },
-      `9 Ocak'ta yeniden konuşacağız<small>${
-        currentMe === 'beto' ? 'Senin doğum günün' : "Beto'nun doğum günü"
-      } · açan her çiçek yolun bir parçası</small>`
-    );
-  });
-
-  gardenCtrl = new GardenController({
-    onCandleTap: (candleEl) => {
-      skyEngine?.triggerFlameFlare();
-      const left = gardenCtrl?.getDaysRemaining() ?? 0;
-      const r = candleEl.getBoundingClientRect();
-      showFloatNote(
-        { x: r.left + r.width / 2, y: r.top, height: r.height },
-        left > 0 ? `Bu mum 9 Ocak'a kadar yanacak<small>Her gün biraz eriyor · ${left} gün kaldı</small>` : 'Bu mum ikimiz için yandı'
-      );
-    },
-    onRaspberryTap: (raspEl) => {
-      const r = raspEl.getBoundingClientRect();
-      const cx = r.left + r.width / 2;
-      const cy = r.top + r.height / 2;
-      skyEngine?.spawnBurst(cx, cy, 'pink', false);
-      showFloatNote(
-        { x: cx, y: cy, height: r.height },
-        currentMe === 'beto'
-          ? "Senin için toplandı<small>Ham ham'dan, ahududu kokulu</small>"
-          : "Beto'nun en sevdiği<small>9 Ocak'a bir sepet saklıyorum</small>"
-      );
-    },
-  });
-
-  const skyEl = $('#sky');
-  const compassEl = $('#compass');
-  const compassThumb = $('#cp-thumb');
-
-  skyEngine = new SkyEngine({
-    canvas: $('#sky-canvas') as HTMLCanvasElement,
-    skyElement: skyEl,
-    compassElement: compassEl,
-    compassThumb,
-    travelLabelElement: $('#tlabel'),
-    getWickPos: () => gardenCtrl?.getWickScreenPos() ?? null,
-    getBloomPositions: () => gardenCtrl?.getBloomScreenCenters() ?? [],
-    getAllStars: () => stars,
-    getViewMonth: () => viewMonthK,
-    getNowMs: getServerNowMs,
-    onSelectMonth: (monthK, item) => {
-      if (monthK !== viewMonthK) {
-        viewMonthK = monthK;
-        skyEngine?.centerPanorama();
-        syncSkyStars();
-      }
-      showSkyCaption(item.title, item.n ? `${item.n} YILDIZ` : 'HENÜZ YILDIZ YOK', 2800);
-    },
-    onWithoutChange: (active) => {
-      if (active) {
-        showSkyCaption('Sensiz gökyüzü', 'BIRAKINCA DÖNERİZ', 0);
-      } else {
-        showSkyCaption('Seninle gökyüzü', `${stars.length} YILDIZ`, 2600);
-      }
-    },
-    onHeartStart: () => {
-      window.setTimeout(
-        () => showToast('Bütün yıldızlarımız', 'Hepsi birlikte bir kalp', 'gold', '♡'),
-        1500
-      );
-    },
-    onCaption: (title, sub, ms) => {
-      const capT = $('#sky-cap-t').textContent || '';
-      showSkyCaption(title || capT, sub, ms);
-    },
-    onTimelapseEnd: () => {
-      markSeen();
-      refreshUiStatus();
-    },
-    onStarTap: (star, pt) => {
-      void handleStarTap(star, pt);
-    },
-    onOrbTap: (orb, pt) => {
-      if (orb === 'moon') {
-        const info = skyEngine!.getMoonInfo();
-        showFloatNote(pt, `Şu an aynı Ay'a bakıyoruz<small>${info.name} · %${info.illum} aydınlık · iki kez dokun</small>`);
-      } else {
-        const { rise, set } = getSolarTimes();
-        showFloatNote(
-          pt,
-          `Aynı Güneş ikimizi de ısıtıyor<small>Doğuş ${formatHour(rise)} · batış ${formatHour(set)} · iki kez dokun</small>`
-        );
-      }
-    },
-  });
-
-  composeCtrl = initComposeSheet({
-    getMe: () => currentMe,
-    onSend: (params) => {
-      void sendStarAction(params);
-    },
-  });
-
-  letterCtrl = initLetterModal({
-    onBurst: (x, y, color, big) => skyEngine?.spawnBurst(x, y, color, big),
-    onStarUpdated: (updated) => {
-      const idx = stars.findIndex((s) => s.id === updated.id);
-      if (idx >= 0) stars[idx] = updated;
-      saveLocalStarsSnapshot(stars);
-      syncSkyStars();
-    },
-    getStarScreenPos: (star) =>
-      skyEngine?.getStarScreenPos(star) ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 },
-  });
-
-  // DÜŞÜNDÜM button (tap + 3s hold charge)
-  const missBtn = $('#btn-miss') as HTMLButtonElement;
-  let charge: { t0: number } | null = null;
-  const chargeLoop = () => {
-    if (!charge) return;
-    const held = (performance.now() - charge.t0) / 1000;
-    const p = Math.min(1, held / 3);
-    missBtn.style.setProperty('--p', p.toFixed(3));
-    requestAnimationFrame(chargeLoop);
-  };
-  const chargeEnd = (cancel: boolean) => {
-    if (!charge) return;
-    const held = Math.min(3, (performance.now() - charge.t0) / 1000);
-    charge = null;
-    missBtn.classList.remove('charging');
-    missBtn.style.setProperty('--p', '0');
-    if (cancel) return;
-
-    missBtn.classList.remove('pop');
-    void missBtn.offsetWidth;
-    missBtn.classList.add('pop');
-
-    if (held < 0.3 && !store.get<number | null>(STORAGE_KEYS.hint, null)) {
-      store.set(STORAGE_KEYS.hint, 1);
-      const r = missBtn.getBoundingClientRect();
-      window.setTimeout(
-        () =>
-          showFloatNote(
-            { x: r.left + r.width / 2, y: r.top, height: r.height },
-            'Basılı da tutabilirsin<small>Ne kadar uzun tutarsan yıldız o kadar büyür</small>'
-          ),
-        300
-      );
-    }
-
-    const ic = missBtn.querySelector('.act-ic')!.getBoundingClientRect();
-    void sendStarAction({
-      kind: 'miss',
-      data: { text: '', held: +held.toFixed(1) },
-      origin: { x: ic.left + ic.width / 2, y: ic.top + ic.height / 2 },
-    });
-  };
-  missBtn.addEventListener(
-    'touchstart',
-    (e) => {
-      e.preventDefault();
-    },
-    { passive: false }
-  );
-  missBtn.addEventListener('pointerdown', (e) => {
-    if (e.button > 0 || charge) return;
-    e.preventDefault();
-    try {
-      missBtn.setPointerCapture(e.pointerId);
-    } catch {
-      // Ignore
-    }
-    charge = { t0: performance.now() };
-    missBtn.classList.add('charging');
-    chargeLoop();
-  });
-  missBtn.addEventListener('pointerup', () => chargeEnd(false));
-  missBtn.addEventListener('pointercancel', () => {
-    if (charge && (performance.now() - charge.t0) / 1000 >= 0.35) {
-      chargeEnd(false);
-    } else {
-      chargeEnd(true);
-    }
-  });
-  missBtn.addEventListener('contextmenu', (e) => e.preventDefault());
-  missBtn.addEventListener('selectstart', (e) => e.preventDefault());
-
-  // YAZ button -> Compose Sheet
-  $('#btn-write').addEventListener('click', () => {
-    if (!currentMe) return;
-    composeCtrl?.open(currentMe);
-  });
-
-  const settingsSheet = $('#settings');
-  const openSettings = () => {
-    refreshUiStatus();
-    settingsSheet.classList.add('open');
-    settingsSheet.setAttribute('aria-hidden', 'false');
-  };
-  const closeSettings = () => {
-    settingsSheet.classList.remove('open');
-    settingsSheet.setAttribute('aria-hidden', 'true');
-  };
-
-  window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      letterCtrl?.close();
-      composeCtrl?.close();
-      closeSettings();
-    }
-  });
+  const appRoot = $('#app-root');
+  const shellTpl = $('#app-shell-tpl') as HTMLTemplateElement;
 
   let onboard: ReturnType<typeof initOnboard>;
+  let openSettingsFn: (() => void) | null = null;
+  let closeSettingsFn: (() => void) | null = null;
+  let schedulePushNudgeFn: (() => void) | null = null;
+
+  const unmountAppShell = () => {
+    clearEnterTimers();
+    window.clearTimeout(pushNudgeTimer);
+    window.clearTimeout(unlockCheckTimer);
+    window.clearInterval(perfTimer);
+    window.clearInterval(planeInterval);
+    perfTimer = 0;
+    planeInterval = 0;
+    unsubRealtime?.();
+    unsubRealtime = null;
+    skyEngine?.destroy();
+    skyEngine = null;
+    gardenCtrl?.destroy();
+    gardenCtrl = null;
+    countdownCtrl?.destroy();
+    countdownCtrl = null;
+    composeCtrl = null;
+    letterCtrl = null;
+    openSettingsFn = null;
+    closeSettingsFn = null;
+    schedulePushNudgeFn = null;
+    document.body.classList.remove('awake', 'quiet', 'sheet-open', 'sched-open', 'typing');
+    appRoot.innerHTML = '';
+    appMounted = false;
+  };
+
   const lock = initLockScreen({
     getMe: () => currentMe,
     onUnlock: () => {
@@ -857,9 +671,7 @@ async function bootstrap(): Promise<void> {
       }
     },
     onForgotReset: async () => {
-      window.clearTimeout(unlockCheckTimer);
-      unsubRealtime?.();
-      unsubRealtime = null;
+      unmountAppShell();
       await clearActiveKey();
       store.del(STORAGE_KEYS.me);
       currentMe = null;
@@ -869,9 +681,379 @@ async function bootstrap(): Promise<void> {
     onStatusChange: refreshUiStatus,
   });
 
+  const mountAppShell = () => {
+    if (appMounted) return;
+    appMounted = true;
+    appRoot.appendChild(shellTpl.content.cloneNode(true));
+
+    countdownCtrl = new CountdownController();
+
+    $('#countdown').addEventListener('click', (e) => {
+      if (!currentMe) return;
+      const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      showFloatNote(
+        { x: r.left + r.width / 2, y: r.top, height: r.height },
+        `9 Ocak'ta yeniden konuşacağız<small>${
+          currentMe === 'beto' ? 'Senin doğum günün' : "Beto'nun doğum günü"
+        } · açan her çiçek yolun bir parçası</small>`
+      );
+    });
+
+    gardenCtrl = new GardenController({
+      onCandleTap: (candleEl) => {
+        skyEngine?.triggerFlameFlare();
+        const left = gardenCtrl?.getDaysRemaining() ?? 0;
+        const r = candleEl.getBoundingClientRect();
+        showFloatNote(
+          { x: r.left + r.width / 2, y: r.top, height: r.height },
+          left > 0
+            ? `Bu mum 9 Ocak'a kadar yanacak<small>Her gün biraz eriyor · ${left} gün kaldı</small>`
+            : 'Bu mum ikimiz için yandı'
+        );
+      },
+      onRaspberryTap: (raspEl) => {
+        const r = raspEl.getBoundingClientRect();
+        const cx = r.left + r.width / 2;
+        const cy = r.top + r.height / 2;
+        skyEngine?.spawnBurst(cx, cy, 'pink', false);
+        showFloatNote(
+          { x: cx, y: cy, height: r.height },
+          currentMe === 'beto'
+            ? "Senin için toplandı<small>Ham ham'dan, ahududu kokulu</small>"
+            : "Beto'nun en sevdiği<small>9 Ocak'a bir sepet saklıyorum</small>"
+        );
+      },
+    });
+
+    const skyEl = $('#sky');
+    const compassEl = $('#compass');
+    const compassThumb = $('#cp-thumb');
+
+    skyEngine = new SkyEngine({
+      canvas: $('#sky-canvas') as HTMLCanvasElement,
+      moonCanvas: $('#sky-moon') as HTMLCanvasElement,
+      skyElement: skyEl,
+      compassElement: compassEl,
+      compassThumb,
+      travelLabelElement: $('#tlabel'),
+      getWickPos: () => gardenCtrl?.getWickScreenPos() ?? null,
+      getBloomPositions: () => gardenCtrl?.getBloomScreenCenters() ?? [],
+      getAllStars: () => stars,
+      getViewMonth: () => viewMonthK,
+      getNowMs: getServerNowMs,
+      onSelectMonth: (monthK, item) => {
+        if (monthK !== viewMonthK) {
+          viewMonthK = monthK;
+          skyEngine?.centerPanorama();
+          syncSkyStars();
+        }
+        showSkyCaption(item.title, item.n ? `${item.n} YILDIZ` : 'HENÜZ YILDIZ YOK', 2800);
+      },
+      onWithoutChange: (active) => {
+        if (active) {
+          showSkyCaption('Sensiz gökyüzü', 'BIRAKINCA DÖNERİZ', 0);
+        } else {
+          showSkyCaption('Seninle gökyüzü', `${stars.length} YILDIZ`, 2600);
+        }
+      },
+      onHeartStart: () => {
+        window.setTimeout(
+          () => showToast('Bütün yıldızlarımız', 'Hepsi birlikte bir kalp', 'gold', '♡'),
+          1500
+        );
+      },
+      onCaption: (title, sub, ms) => {
+        const capT = $('#sky-cap-t').textContent || '';
+        showSkyCaption(title || capT, sub, ms);
+      },
+      onTimelapseEnd: () => {
+        markSeen();
+        refreshUiStatus();
+      },
+      onStarTap: (star, pt) => {
+        void handleStarTap(star, pt);
+      },
+      onOrbTap: (orb, pt) => {
+        if (orb === 'moon') {
+          const info = skyEngine!.getMoonInfo();
+          showFloatNote(pt, `Şu an aynı Ay'a bakıyoruz<small>${info.name} · %${info.illum} aydınlık · iki kez dokun</small>`);
+        } else {
+          const { rise, set } = getSolarTimes();
+          showFloatNote(
+            pt,
+            `Aynı Güneş ikimizi de ısıtıyor<small>Doğuş ${formatHour(rise)} · batış ${formatHour(set)} · iki kez dokun</small>`
+          );
+        }
+      },
+    });
+
+    composeCtrl = initComposeSheet({
+      getMe: () => currentMe,
+      onSend: (params) => {
+        void sendStarAction(params);
+      },
+    });
+
+    letterCtrl = initLetterModal({
+      onBurst: (x, y, color, big) => skyEngine?.spawnBurst(x, y, color, big),
+      onStarUpdated: (updated) => {
+        const idx = stars.findIndex((s) => s.id === updated.id);
+        if (idx >= 0) stars[idx] = updated;
+        saveLocalStarsSnapshot(stars);
+        syncSkyStars();
+      },
+      getStarScreenPos: (star) =>
+        skyEngine?.getStarScreenPos(star) ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+    });
+
+    // DÜŞÜNDÜM button (tap + 3s hold charge)
+    const missBtn = $('#btn-miss') as HTMLButtonElement;
+    let charge: { t0: number } | null = null;
+    const chargeLoop = () => {
+      if (!charge) return;
+      const held = (performance.now() - charge.t0) / 1000;
+      const p = Math.min(1, held / 3);
+      missBtn.style.setProperty('--p', p.toFixed(3));
+      requestAnimationFrame(chargeLoop);
+    };
+    const chargeEnd = (cancel: boolean) => {
+      if (!charge) return;
+      const held = Math.min(3, (performance.now() - charge.t0) / 1000);
+      charge = null;
+      missBtn.classList.remove('charging');
+      missBtn.style.setProperty('--p', '0');
+      if (cancel) return;
+
+      missBtn.classList.remove('pop');
+      void missBtn.offsetWidth;
+      missBtn.classList.add('pop');
+
+      if (held < 0.3 && !store.get<number | null>(STORAGE_KEYS.hint, null)) {
+        store.set(STORAGE_KEYS.hint, 1);
+        const r = missBtn.getBoundingClientRect();
+        window.setTimeout(
+          () =>
+            showFloatNote(
+              { x: r.left + r.width / 2, y: r.top, height: r.height },
+              'Basılı da tutabilirsin<small>Ne kadar uzun tutarsan yıldız o kadar büyür</small>'
+            ),
+          300
+        );
+      }
+
+      const ic = missBtn.querySelector('.act-ic')!.getBoundingClientRect();
+      void sendStarAction({
+        kind: 'miss',
+        data: { text: '', held: +held.toFixed(1) },
+        origin: { x: ic.left + ic.width / 2, y: ic.top + ic.height / 2 },
+      });
+    };
+    missBtn.addEventListener(
+      'touchstart',
+      (e) => {
+        e.preventDefault();
+      },
+      { passive: false }
+    );
+    missBtn.addEventListener('pointerdown', (e) => {
+      if (e.button > 0 || charge) return;
+      e.preventDefault();
+      try {
+        missBtn.setPointerCapture(e.pointerId);
+      } catch {
+        // Ignore
+      }
+      charge = { t0: performance.now() };
+      missBtn.classList.add('charging');
+      chargeLoop();
+    });
+    missBtn.addEventListener('pointerup', () => chargeEnd(false));
+    missBtn.addEventListener('pointercancel', () => {
+      if (charge && (performance.now() - charge.t0) / 1000 >= 0.35) {
+        chargeEnd(false);
+      } else {
+        chargeEnd(true);
+      }
+    });
+    missBtn.addEventListener('contextmenu', (e) => e.preventDefault());
+    missBtn.addEventListener('selectstart', (e) => e.preventDefault());
+
+    $('#btn-write').addEventListener('click', () => {
+      if (!currentMe) return;
+      composeCtrl?.open(currentMe);
+    });
+
+    const settingsSheet = $('#settings');
+    openSettingsFn = () => {
+      refreshUiStatus();
+      document.body.classList.add('sheet-open');
+      settingsSheet.classList.add('open');
+      setInert(settingsSheet, false);
+    };
+    closeSettingsFn = () => {
+      settingsSheet.classList.remove('open');
+      document.body.classList.remove('sheet-open');
+      setInert(settingsSheet, true);
+    };
+
+    $('#menu').addEventListener('click', () => openSettingsFn?.());
+    settingsSheet.addEventListener('click', (e) => {
+      if (e.target === settingsSheet) closeSettingsFn?.();
+    });
+
+    $('#s-push').addEventListener('click', async () => {
+      if (!currentMe) return;
+      const res = await subscribePushNotifications();
+      refreshUiStatus();
+      if (res.ok) {
+        showToast('Bildirimler açıldı', 'Yeni yıldızlarda haber alacaksın', PEOPLE[currentMe].color, PEOPLE[currentMe].sign);
+      } else {
+        showToast('Bildirim açılamadı', res.error, PEOPLE[currentMe].color, PEOPLE[currentMe].sign);
+      }
+    });
+
+    $('#s-lock').addEventListener('click', () => {
+      if (!currentMe) return;
+      if (hasPin()) {
+        clearPinAndBiometric();
+        refreshUiStatus();
+        showToast('Kilit kapatıldı', 'Uygulama artık şifre sormayacak', PEOPLE[currentMe].color, PEOPLE[currentMe].sign);
+      } else {
+        closeSettingsFn?.();
+        window.setTimeout(() => lock.show('set1'), 280);
+      }
+    });
+
+    $('#s-faceid').addEventListener('click', async () => {
+      if (!currentMe) return;
+      if (hasBiometric()) {
+        disableBiometric();
+        refreshUiStatus();
+        showToast('Face ID kapatıldı', '4 haneli PIN devam ediyor', PEOPLE[currentMe].color, PEOPLE[currentMe].sign);
+        return;
+      }
+      const res = await enrollBiometric(currentMe);
+      refreshUiStatus();
+      if (res.ok) {
+        showToast('Face ID açıldı', 'Kilit ekranında Face ID kullanabilirsin', PEOPLE[currentMe].color, PEOPLE[currentMe].sign);
+      } else {
+        showToast('Face ID açılamadı', res.error, PEOPLE[currentMe].color, PEOPLE[currentMe].sign);
+      }
+    });
+
+    const pushNudgeEl = $('#push-nudge');
+    const pushYesBtn = $('#push-yes') as HTMLButtonElement;
+    const pushLaterBtn = $('#push-later') as HTMLButtonElement;
+
+    $('#s-out').addEventListener('click', async () => {
+      closeSettingsFn?.();
+      pushNudgeEl.hidden = true;
+      unmountAppShell();
+      await clearActiveKey();
+      store.del(STORAGE_KEYS.me);
+      currentMe = null;
+      await signOutSupabase();
+      onboard.show();
+    });
+
+    // Gizli performans paneli: Ayarlar'da sürüm numarasına 5 kez dokununca açılır/kapanır
+    const perfHud = $('#perf-hud');
+    const verBtn = $('#s-ver');
+    let verTaps: number[] = [];
+
+    const renderPerfHud = () => {
+      if (perfHud.hidden || !skyEngine) return;
+      const st = skyEngine.getPerfStats();
+      const modeLabel =
+        st.mode === 'active' ? '60fps' : st.mode === 'idle' ? '25fps' : st.mode === 'quiet' ? '10fps' : 'durdu';
+      perfHud.textContent = `Son ${st.samples} kare · Ort ${st.avgMs} ms · En kötü ${st.maxMs} ms · ${st.fps} fps (${modeLabel})`;
+    };
+
+    const togglePerfHud = (show: boolean) => {
+      perfHud.hidden = !show;
+      window.clearInterval(perfTimer);
+      if (show) {
+        renderPerfHud();
+        perfTimer = window.setInterval(renderPerfHud, 400);
+      }
+    };
+
+    verBtn.addEventListener('click', () => {
+      const now = Date.now();
+      verTaps = verTaps.filter((t) => now - t < 2500);
+      verTaps.push(now);
+      if (verTaps.length >= 5) {
+        verTaps = [];
+        const nextShow = perfHud.hidden;
+        togglePerfHud(nextShow);
+        showToast(
+          nextShow ? 'Performans kutusu açıldı' : 'Performans kutusu kapatıldı',
+          'Son 120 kare ortalaması / en kötü süresi',
+          'gold',
+          '✦'
+        );
+      }
+    });
+    perfHud.addEventListener('click', () => togglePerfHud(false));
+
+    type PushPromptState = { dismissedAt?: number; askedCount?: number; done?: boolean };
+    const WEEK_MS = 7 * 86_400_000;
+
+    schedulePushNudgeFn = () => {
+      window.clearTimeout(pushNudgeTimer);
+      if (!appMounted || !currentMe || !document.body.classList.contains('awake')) return;
+      if (!isPushSupported() || getNotificationPermission() !== 'default') return;
+
+      const st = store.get<PushPromptState>(STORAGE_KEYS.pushPrompt, {});
+      if (st.done) return;
+      if (st.dismissedAt) {
+        if ((st.askedCount ?? 1) >= 2) return;
+        if (Date.now() - st.dismissedAt < WEEK_MS) return;
+      }
+
+      if (document.querySelector('.sheet.open, .modal.open, #lock:not(.gone)')) {
+        pushNudgeTimer = window.setTimeout(() => schedulePushNudgeFn?.(), 5000);
+        return;
+      }
+      pushNudgeEl.hidden = false;
+    };
+
+    pushYesBtn.addEventListener('click', async () => {
+      pushNudgeEl.hidden = true;
+      store.set<PushPromptState>(STORAGE_KEYS.pushPrompt, { done: true });
+      if (!currentMe) return;
+      const res = await subscribePushNotifications();
+      refreshUiStatus();
+      if (res.ok) {
+        showToast('Bildirimler açıldı', 'Yeni yıldızlarda haber alacaksın', PEOPLE[currentMe].color, PEOPLE[currentMe].sign);
+      } else {
+        showToast('Bildirim açılamadı', res.error, PEOPLE[currentMe].color, PEOPLE[currentMe].sign);
+      }
+    });
+
+    pushLaterBtn.addEventListener('click', () => {
+      pushNudgeEl.hidden = true;
+      const prev = store.get<PushPromptState>(STORAGE_KEYS.pushPrompt, {});
+      const nextCount = (prev.askedCount ?? 0) + 1;
+      store.set<PushPromptState>(STORAGE_KEYS.pushPrompt, {
+        dismissedAt: Date.now(),
+        askedCount: nextCount,
+        done: nextCount >= 2,
+      });
+    });
+
+    planeInterval = window.setInterval(() => {
+      if (canLaunchPlane() && Math.random() < 0.5) {
+        skyEngine?.launchPlane();
+      }
+    }, 300_000);
+  };
+
   async function enterApp(who: Who): Promise<void> {
+    clearEnterTimers();
     currentMe = who;
     store.set(STORAGE_KEYS.me, who);
+    mountAppShell();
     onboard.hide();
     refreshUiStatus();
     skyEngine?.resize();
@@ -907,32 +1089,36 @@ async function bootstrap(): Promise<void> {
       skyEngine?.centerPanorama();
     }
 
-    if (!maybeTimelapse(1200)) {
-      window.setTimeout(() => showGreeting(lock.isLocked()), 1100);
+    skyEngine?.triggerEnterReveal();
+    requestAnimationFrame(() => document.body.classList.add('awake'));
+
+    const compassEl = $('#compass');
+    if (!maybeTimelapse(1400)) {
+      enterTimers.push(window.setTimeout(() => showGreeting(lock.isLocked()), 1350));
     }
 
-    window.setTimeout(() => tryPlane(), 6500);
-    window.setTimeout(() => schedulePushNudge(), 12_000);
+    enterTimers.push(window.setTimeout(() => tryPlane(), 6500));
+    enterTimers.push(window.setTimeout(() => schedulePushNudgeFn?.(), 12_000));
 
     if (!store.get<number | null>(STORAGE_KEYS.pan, null)) {
-      window.setTimeout(() => {
-        if (!document.body.classList.contains('awake') || store.get(STORAGE_KEYS.pan, null) || !skyEngine) {
-          return;
-        }
-        store.set(STORAGE_KEYS.pan, 1);
-        const cr = compassEl.getBoundingClientRect();
-        showFloatNote(
-          { x: cr.left + cr.width / 2, y: cr.top, height: cr.height },
-          'Gökyüzünü kaydırabilirsin<small>Bir yıl boyunca yıldızlarımıza yer var</small>'
-        );
-        const startOx = skyEngine.getOx();
-        skyEngine.panTo(startOx + skyEngine.getSkyW() * 0.4, 1000, () => {
-          window.setTimeout(() => skyEngine?.panTo(startOx, 1000), 300);
-        });
-      }, 3200);
+      enterTimers.push(
+        window.setTimeout(() => {
+          if (!appMounted || !document.body.classList.contains('awake') || store.get(STORAGE_KEYS.pan, null) || !skyEngine) {
+            return;
+          }
+          store.set(STORAGE_KEYS.pan, 1);
+          const cr = compassEl.getBoundingClientRect();
+          showFloatNote(
+            { x: cr.left + cr.width / 2, y: cr.top, height: cr.height },
+            'Gökyüzünü kaydırabilirsin<small>Bir yıl boyunca yıldızlarımıza yer var</small>'
+          );
+          const startOx = skyEngine.getOx();
+          skyEngine.panTo(startOx + skyEngine.getSkyW() * 0.4, 1000, () => {
+            window.setTimeout(() => skyEngine?.panTo(startOx, 1000), 300);
+          });
+        }, 3200)
+      );
     }
-
-    requestAnimationFrame(() => document.body.classList.add('awake'));
   }
 
   onboard = initOnboard({
@@ -940,164 +1126,16 @@ async function bootstrap(): Promise<void> {
     onComplete: (who) => void enterApp(who),
   });
 
-  $('#menu').addEventListener('click', openSettings);
-  settingsSheet.addEventListener('click', (e) => {
-    if (e.target === settingsSheet) closeSettings();
-  });
-
-  $('#s-push').addEventListener('click', async () => {
-    if (!currentMe) return;
-    const res = await subscribePushNotifications();
-    refreshUiStatus();
-    if (res.ok) {
-      showToast('Bildirimler açıldı', 'Yeni yıldızlarda haber alacaksın', PEOPLE[currentMe].color, PEOPLE[currentMe].sign);
-    } else {
-      showToast('Bildirim açılamadı', res.error, PEOPLE[currentMe].color, PEOPLE[currentMe].sign);
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && appMounted) {
+      letterCtrl?.close();
+      composeCtrl?.close();
+      closeSettingsFn?.();
     }
   });
-
-  $('#s-lock').addEventListener('click', () => {
-    if (!currentMe) return;
-    if (hasPin()) {
-      clearPinAndBiometric();
-      refreshUiStatus();
-      showToast('Kilit kapatıldı', 'Uygulama artık şifre sormayacak', PEOPLE[currentMe].color, PEOPLE[currentMe].sign);
-    } else {
-      closeSettings();
-      window.setTimeout(() => lock.show('set1'), 280);
-    }
-  });
-
-  $('#s-faceid').addEventListener('click', async () => {
-    if (!currentMe) return;
-    if (hasBiometric()) {
-      disableBiometric();
-      refreshUiStatus();
-      showToast('Face ID kapatıldı', '4 haneli PIN devam ediyor', PEOPLE[currentMe].color, PEOPLE[currentMe].sign);
-      return;
-    }
-    const res = await enrollBiometric(currentMe);
-    refreshUiStatus();
-    if (res.ok) {
-      showToast('Face ID açıldı', 'Kilit ekranında Face ID kullanabilirsin', PEOPLE[currentMe].color, PEOPLE[currentMe].sign);
-    } else {
-      showToast('Face ID açılamadı', res.error, PEOPLE[currentMe].color, PEOPLE[currentMe].sign);
-    }
-  });
-
-  $('#s-out').addEventListener('click', async () => {
-    closeSettings();
-    pushNudgeEl.hidden = true;
-    window.clearTimeout(pushNudgeTimer);
-    window.clearTimeout(unlockCheckTimer);
-    unsubRealtime?.();
-    unsubRealtime = null;
-    await clearActiveKey();
-    store.del(STORAGE_KEYS.me);
-    currentMe = null;
-    await signOutSupabase();
-    onboard.show();
-  });
-
-  // Gizli performans paneli: Ayarlar'da sürüm numarasına 5 kez dokununca açılır/kapanır
-  const perfHud = $('#perf-hud');
-  const verBtn = $('#s-ver');
-  let verTaps: number[] = [];
-  let perfTimer = 0;
-
-  const renderPerfHud = () => {
-    if (perfHud.hidden || !skyEngine) return;
-    const st = skyEngine.getPerfStats();
-    const modeLabel =
-      st.mode === 'active' ? '60fps' : st.mode === 'idle' ? '25fps' : st.mode === 'quiet' ? '10fps' : 'durdu';
-    perfHud.textContent = `Son ${st.samples} kare · Ort ${st.avgMs} ms · En kötü ${st.maxMs} ms · ${st.fps} fps (${modeLabel})`;
-  };
-
-  const togglePerfHud = (show: boolean) => {
-    perfHud.hidden = !show;
-    window.clearInterval(perfTimer);
-    if (show) {
-      renderPerfHud();
-      perfTimer = window.setInterval(renderPerfHud, 400);
-    }
-  };
-
-  verBtn.addEventListener('click', () => {
-    const now = Date.now();
-    verTaps = verTaps.filter((t) => now - t < 2500);
-    verTaps.push(now);
-    if (verTaps.length >= 5) {
-      verTaps = [];
-      const nextShow = perfHud.hidden;
-      togglePerfHud(nextShow);
-      showToast(
-        nextShow ? 'Performans kutusu açıldı' : 'Performans kutusu kapatıldı',
-        'Son 120 kare ortalaması / en kötü süresi',
-        'gold',
-        '✦'
-      );
-    }
-  });
-  perfHud.addEventListener('click', () => togglePerfHud(false));
-
-  // İlk açılışta (~12 sn sonra) nazik bildirim izni kartı; "Şimdi değil" derse 1 hafta sonra bir kez daha sorar
-  const pushNudgeEl = $('#push-nudge');
-  const pushYesBtn = $('#push-yes') as HTMLButtonElement;
-  const pushLaterBtn = $('#push-later') as HTMLButtonElement;
-
-  type PushPromptState = { dismissedAt?: number; askedCount?: number; done?: boolean };
-  const WEEK_MS = 7 * 86_400_000;
-
-  function schedulePushNudge(): void {
-    window.clearTimeout(pushNudgeTimer);
-    if (!currentMe || !document.body.classList.contains('awake')) return;
-    if (!isPushSupported() || getNotificationPermission() !== 'default') return;
-
-    const st = store.get<PushPromptState>(STORAGE_KEYS.pushPrompt, {});
-    if (st.done) return;
-    if (st.dismissedAt) {
-      if ((st.askedCount ?? 1) >= 2) return;
-      if (Date.now() - st.dismissedAt < WEEK_MS) return;
-    }
-
-    if (document.querySelector('.sheet.open, .modal.open, #lock:not(.gone)')) {
-      pushNudgeTimer = window.setTimeout(schedulePushNudge, 5000);
-      return;
-    }
-    pushNudgeEl.hidden = false;
-  }
-
-  pushYesBtn.addEventListener('click', async () => {
-    pushNudgeEl.hidden = true;
-    store.set<PushPromptState>(STORAGE_KEYS.pushPrompt, { done: true });
-    if (!currentMe) return;
-    const res = await subscribePushNotifications();
-    refreshUiStatus();
-    if (res.ok) {
-      showToast('Bildirimler açıldı', 'Yeni yıldızlarda haber alacaksın', PEOPLE[currentMe].color, PEOPLE[currentMe].sign);
-    } else {
-      showToast('Bildirim açılamadı', res.error, PEOPLE[currentMe].color, PEOPLE[currentMe].sign);
-    }
-  });
-
-  pushLaterBtn.addEventListener('click', () => {
-    pushNudgeEl.hidden = true;
-    const prev = store.get<PushPromptState>(STORAGE_KEYS.pushPrompt, {});
-    const nextCount = (prev.askedCount ?? 0) + 1;
-    store.set<PushPromptState>(STORAGE_KEYS.pushPrompt, {
-      dismissedAt: Date.now(),
-      askedCount: nextCount,
-      done: nextCount >= 2,
-    });
-  });
-
-  window.setInterval(() => {
-    if (canLaunchPlane() && Math.random() < 0.5) {
-      skyEngine?.launchPlane();
-    }
-  }, 300_000);
 
   document.addEventListener('visibilitychange', () => {
+    if (!appMounted) return;
     if (document.hidden) {
       markSeen();
       return;
@@ -1113,8 +1151,12 @@ async function bootstrap(): Promise<void> {
       }
     }
   });
-  window.addEventListener('pagehide', markSeen);
-  window.setInterval(markSeen, 60_000);
+  window.addEventListener('pagehide', () => {
+    if (appMounted) markSeen();
+  });
+  window.setInterval(() => {
+    if (appMounted) markSeen();
+  }, 60_000);
 
   // Startup restoration
   const keyLoaded = await loadSavedKey();

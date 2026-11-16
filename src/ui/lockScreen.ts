@@ -10,7 +10,7 @@ import {
 } from '../lib/lock';
 import { PEOPLE } from '../lib/people';
 import type { Who } from '../types';
-import { $, $$ } from './dom';
+import { $, $$, setInert } from './dom';
 import { showToast } from './toast';
 
 export type LockMode = 'unlock' | 'set1' | 'set2';
@@ -55,7 +55,7 @@ export function initLockScreen(opts: {
 
   function hide(): void {
     lockEl.classList.add('gone');
-    lockEl.setAttribute('aria-hidden', 'true');
+    setInert(lockEl, true);
     mode = null;
     pinBuf = '';
     drawDots();
@@ -88,7 +88,7 @@ export function initLockScreen(opts: {
     faceBtn.hidden = !(nextMode === 'unlock' && hasBiometric());
 
     lockEl.classList.remove('gone');
-    lockEl.setAttribute('aria-hidden', 'false');
+    setInert(lockEl, false);
   }
 
   async function finishPin(): Promise<void> {

@@ -27,20 +27,30 @@ export function getSupabase(): SupabaseClient | null {
   return client;
 }
 
-export function translateAuthError(message: string): string {
+export function translateAuthError(message: string, status?: number): string {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return 'İnternet bağlantısı yok. Bağlantını kontrol et.';
+  }
   const lower = message.toLowerCase();
-  if (lower.includes('invalid login credentials')) return 'Şifre doğru değil, tekrar dene';
-  if (lower.includes('email not confirmed')) return 'E-posta adresi henüz doğrulanmamış.';
+  if (lower.includes('network') || lower.includes('fetch') || lower.includes('failed to fetch')) {
+    return 'İnternet bağlantısı yok. Bağlantını kontrol et.';
+  }
+  if (lower.includes('invalid login credentials') || lower.includes('invalid_credentials')) {
+    return 'Şifre doğru değil, tekrar dene';
+  }
+  if (lower.includes('email not confirmed')) {
+    return 'E-posta adresi henüz doğrulanmamış.';
+  }
   if (lower.includes('signups not allowed') || lower.includes('signup')) {
-    return 'Bu gökyüzü sadece Ham ham ve Beto için açık. Yeni kayıt kapalı.';
+    return 'Bu gökyüzü sadece Ham ham ve Beto için açık.';
   }
   if (lower.includes('rate limit') || lower.includes('too many requests')) {
     return 'Çok fazla deneme yapıldı. Biraz bekleyip tekrar dene.';
   }
-  if (lower.includes('network') || lower.includes('fetch')) {
-    return 'Bağlantı kurulamadı. İnternetini kontrol et.';
+  if ((status !== undefined && status >= 500) || lower.includes('timeout') || lower.includes('server')) {
+    return 'Sunucu şu an yanıt vermiyor. Biraz sonra tekrar dene.';
   }
-  return message;
+  return 'Sunucu hatası oluştu. Biraz sonra tekrar dene.';
 }
 
 export async function getSessionAndProfile(): Promise<{
@@ -78,10 +88,22 @@ export async function signInWithPassword(
 ): Promise<{ ok: true; profile: ProfileRow } | { ok: false; error: string }> {
   const sb = getSupabase();
   if (!sb) return { ok: false, error: 'Supabase bağlantısı ayarlanmamış.' };
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return { ok: false, error: 'İnternet bağlantısı yok. Bağlantını kontrol et.' };
+  }
 
-  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  let data: { user: { id: string } | null } = { user: null };
+  let error: { message?: string; status?: number } | null = null;
+  try {
+    const res = await sb.auth.signInWithPassword({ email, password });
+    data = res.data;
+    error = res.error;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'network error';
+    return { ok: false, error: translateAuthError(msg) };
+  }
   if (error || !data.user) {
-    return { ok: false, error: translateAuthError(error?.message || 'Giriş yapılamadı.') };
+    return { ok: false, error: translateAuthError(error?.message || '', error?.status) };
   }
 
   const { data: profile, error: profErr } = await sb

@@ -3,7 +3,29 @@ import { otherWho, PEOPLE } from '../lib/people';
 import { formatUnlockAccusative, getServerNowMs, type StarPayloadData } from '../lib/stars';
 import { STORAGE_KEYS, store } from '../lib/storage';
 import type { StarKind, Who } from '../types';
-import { $ } from './dom';
+import { $, setInert } from './dom';
+
+const schedLabelFmt = new Intl.DateTimeFormat('tr-TR', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+function formatTurkishPickerLabel(d: Date): string {
+  const parts = schedLabelFmt.formatToParts(d);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? '';
+  const day = get('day');
+  const month = get('month');
+  const year = get('year');
+  const hour = get('hour');
+  const minute = get('minute');
+  if (day && month && year && hour && minute) {
+    return `${day} ${month} ${year}, ${hour}:${minute}`;
+  }
+  return schedLabelFmt.format(d);
+}
 
 const CHIPS = ['Seni özledim', 'Günaydın', 'İyi geceler', 'Aklımdasın', 'Seni seviyorum'];
 const ICON_X =
@@ -104,6 +126,7 @@ export function initComposeSheet(opts: {
   const schedBox = $('#sched-box');
   const schedCancel = $('#sched-cancel') as HTMLButtonElement;
   const schedDt = $('#sched-dt') as HTMLInputElement;
+  const schedDtLabel = $('#sched-dt-label');
   const schedPresets = $('#sched-presets');
   const schedNote = $('#sched-note');
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -124,23 +147,24 @@ export function initComposeSheet(opts: {
     attErr.hidden = true;
   }
 
-  function clampUnlockDate(rawValue: string): Date {
-    const nowMs = getServerNowMs();
-    const minMs = nowMs + 60_000;
-    const parsed = rawValue ? new Date(rawValue).getTime() : NaN;
-    if (!Number.isFinite(parsed) || parsed < minMs) {
-      return new Date(nowMs + 5 * 60_000);
-    }
-    return new Date(parsed);
+  function getParsedScheduleMs(): number {
+    return schedDt.value ? new Date(schedDt.value).getTime() : NaN;
   }
 
-  function refreshScheduleUi(snapPast = false): void {
-    const minVal = toDatetimeLocalValue(getServerNowMs() + 60_000);
-    schedDt.min = minVal;
+  function isScheduleInvalid(): boolean {
+    if (!schedOn) return false;
+    const ms = getParsedScheduleMs();
+    return !Number.isFinite(ms) || ms < getServerNowMs() + 60_000;
+  }
+
+  function refreshScheduleUi(snapEmpty = false): void {
+    const minMs = getServerNowMs() + 60_000;
+    schedDt.min = toDatetimeLocalValue(minMs);
 
     attTimeBtn.classList.toggle('on', schedOn);
     attTimeBtn.setAttribute('aria-expanded', schedOn ? 'true' : 'false');
     schedBox.hidden = !schedOn;
+    document.body.classList.toggle('sched-open', schedOn);
     sendLbl.textContent = schedOn ? 'Zamana bırak' : 'Gökyüzüne bırak';
 
     schedPresets.querySelectorAll<HTMLButtonElement>('.sched-preset').forEach((btn) => {
@@ -148,22 +172,37 @@ export function initComposeSheet(opts: {
     });
 
     if (!schedOn) {
+      schedNote.classList.remove('err');
       schedNote.textContent = '';
+      schedDtLabel.textContent = '';
+      updateCount();
       return;
     }
 
-    if (snapPast || !schedDt.value) {
-      const clamped = clampUnlockDate(schedDt.value);
-      schedDt.value = toDatetimeLocalValue(clamped.getTime());
+    if (snapEmpty || !schedDt.value) {
+      schedDt.value = toDatetimeLocalValue(getServerNowMs() + 5 * 60_000);
     }
 
+    const parsedMs = getParsedScheduleMs();
+    const valid = Number.isFinite(parsedMs) && parsedMs >= minMs;
+    const displayDate = Number.isFinite(parsedMs) ? new Date(parsedMs) : new Date(minMs);
+    schedDtLabel.textContent = formatTurkishPickerLabel(displayDate);
+
+    if (!valid) {
+      schedNote.classList.add('err');
+      schedNote.textContent = 'Geçmiş bir tarih seçemezsin. En az 1 dakika sonrasını seç.';
+      updateCount();
+      return;
+    }
+
+    schedNote.classList.remove('err');
     const me = opts.getMe();
     const otherName = me ? PEOPLE[otherWho(me)].name : 'Karşı taraf';
-    const dt = clampUnlockDate(schedDt.value);
     schedNote.textContent = `${otherName} yıldızı görecek ama ${formatUnlockAccusative(
-      dt.toISOString(),
+      displayDate.toISOString(),
       'e'
     )} kadar açamayacak. O an bildirim düşecek.`;
+    updateCount();
   }
 
   function enableSchedule(preset: 'tomorrow' | 'week' | 'jan9' = 'tomorrow'): void {
@@ -181,7 +220,7 @@ export function initComposeSheet(opts: {
 
   function updateCount(): void {
     countEl.textContent = `${ta.value.length} / 600`;
-    sendBtn.disabled = Boolean(rec) || !(ta.value.trim() || att);
+    sendBtn.disabled = Boolean(rec) || !(ta.value.trim() || att) || isScheduleInvalid();
   }
 
   function clearAtt(): void {
@@ -442,7 +481,7 @@ export function initComposeSheet(opts: {
 
   schedDt.addEventListener('change', () => {
     activePreset = null;
-    refreshScheduleUi(true);
+    refreshScheduleUi(false);
   });
 
   schedDt.addEventListener('input', () => {
@@ -454,7 +493,9 @@ export function initComposeSheet(opts: {
     ta.blur();
     stopRec(true);
     sheet.classList.remove('open');
-    sheet.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('sheet-open');
+    document.body.classList.remove('sched-open');
+    setInert(sheet, true);
     window.setTimeout(() => {
       if (document.activeElement !== ta && !sheet.classList.contains('open')) {
         document.body.classList.remove('typing');
@@ -472,11 +513,11 @@ export function initComposeSheet(opts: {
     const me = opts.getMe();
     const text = ta.value.trim();
     const currentAtt = att;
-    if (!me || (!text && !currentAtt)) return;
+    if (!me || (!text && !currentAtt) || isScheduleInvalid()) return;
 
     let unlockAt: string | null = null;
     if (schedOn) {
-      unlockAt = clampUnlockDate(schedDt.value).toISOString();
+      unlockAt = new Date(getParsedScheduleMs()).toISOString();
     }
 
     const tr = ta.getBoundingClientRect();
@@ -580,8 +621,9 @@ export function initComposeSheet(opts: {
     hideErr();
     updateCount();
     document.body.classList.add('typing');
+    document.body.classList.add('sheet-open');
     sheet.classList.add('open');
-    sheet.setAttribute('aria-hidden', 'false');
+    setInert(sheet, false);
     ta.focus({ preventScroll: true });
   }
 
