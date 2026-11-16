@@ -297,8 +297,8 @@ export class PlaneController {
     ctx.quadraticCurveTo((tailX + ropeEndX) / 2, planeCy + 6, ropeEndX, y + this.bannerH - 2 + flagSwing);
     ctx.stroke();
 
-    // 2. Single-canvas cloth banner bent by traveling sine wave (1px HiDPI strips)
-    const sliceW = 1;
+    // 2. Single-canvas cloth banner bent by traveling sine wave (3px GPU-friendly strips)
+    const sliceW = 3;
     const s = this.bannerTexScale;
     const numSlices = Math.ceil(this.bannerW / sliceW);
 
@@ -331,10 +331,12 @@ export class PlaneController {
 
       // Cloth fold shadow on receding curve slopes
       const slope = Math.cos(phase);
-      if (slope > 0.05) {
+      if (slope > 0.12) {
         const foldAlpha = slope * (0.04 + far * 0.11);
-        ctx.fillStyle = `rgba(110, 30, 80, ${foldAlpha.toFixed(3)})`;
-        ctx.fillRect(flagX + sx, drawY, w + 0.4, dh);
+        if (foldAlpha > 0.025) {
+          ctx.fillStyle = `rgba(110, 30, 80, ${foldAlpha.toFixed(2)})`;
+          ctx.fillRect(flagX + sx, drawY, w + 0.4, dh);
+        }
       }
     }
 

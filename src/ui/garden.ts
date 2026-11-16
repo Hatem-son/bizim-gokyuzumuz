@@ -34,13 +34,37 @@ function zambakBloomSvg(cx: number, cy: number, scale: number, extra = ''): stri
       <circle cx="${(x - Math.cos(rad) * 0.7).toFixed(1)}" cy="${(y - Math.sin(rad) * 0.7).toFixed(1)}" r=".85" fill="#fff5c4"/>`;
   }
 
-  return `<g transform="translate(${cx} ${cy}) scale(${scale})" ${extra}><g class="bloom-breathe" style="--bd:${(
-    (cx % 7) * -0.45
-  ).toFixed(2)}s"><g transform="scale(1 .9)">${petals}<circle r="11" fill="url(#gZambakThroat)"/></g><g class="stamens">${stamens}<circle r="2.4" fill="#c7de8a"/><circle cx="-.6" cy="-.6" r=".8" fill="#f3fad4"/></g></g></g>`;
+  return `<g transform="translate(${cx} ${cy}) scale(${scale})" ${extra}><g transform="scale(1 .9)">${petals}<circle r="11" fill="url(#gZambakThroat)"/></g><g class="stamens">${stamens}<circle r="2.4" fill="#c7de8a"/><circle cx="-.6" cy="-.6" r=".8" fill="#f3fad4"/></g></g>`;
 }
 
-function gardenSvg(): string {
-  // Arka gece çayırı + pembe zambak / beyaz lilyumlar (y=264 alt taşma ile kenarsız görünüm)
+function meadowBackdropSvg(): string {
+  // Statik çayır ve ot katmanı (bir kez GPU önbelleğine alınır, kare başına yeniden çizim sıfır)
+  let g =
+    '<svg class="garden-meadow" viewBox="0 0 390 260" preserveAspectRatio="xMidYMax slice" aria-hidden="true">' +
+    '<defs><linearGradient id="gMeadowShade" x1="0" y1="0" x2="0" y2="1">' +
+    '<stop offset="0" stop-color="#0b2321" stop-opacity="0"/>' +
+    '<stop offset=".45" stop-color="#0a1e22" stop-opacity=".76"/>' +
+    '<stop offset="1" stop-color="#08171c" stop-opacity="1"/></linearGradient></defs>' +
+    '<path d="M-10 210 Q95 196 195 204 Q295 212 400 198 L400 265 L-10 265 Z" fill="url(#gMeadowShade)"/>';
+
+  for (let i = 0; i < 48; i++) {
+    const x = -6 + i * 8.5 + (i % 3) * 1.4;
+    const h = 48 + ((i * 37) % 58);
+    const d = i % 2 ? 1 : -1;
+    const lean = d * (6 + (i % 5) * 2.2);
+    const w = (1.6 + (i % 3) * 0.45).toFixed(1);
+    const color = i % 4 === 0 ? '#123d30' : i % 3 === 0 ? '#1a523b' : 'var(--leaf-1)';
+    const op = (0.58 + (i % 4) * 0.1).toFixed(2);
+    g += `<path d="M${x} 264 Q ${(x + lean * 0.45).toFixed(1)} ${(264 - h * 0.55).toFixed(
+      1
+    )} ${(x + lean).toFixed(1)} ${264 - h}" stroke="${color}" stroke-width="${w}" fill="none" stroke-linecap="round" opacity="${op}"/>`;
+  }
+
+  return g + '</svg>';
+}
+
+function gardenFlowersHtml(): string {
+  // Her zambak kendi küçük <svg> katmanında → CoreAnimation/GPU sadece rotate() kompozitler (60 fps)
   const back: [number, number, number, boolean][] = [
     [22, 124, 0.58, false],
     [98, 98, 0.5, true],
@@ -50,51 +74,34 @@ function gardenSvg(): string {
     [370, 122, 0.58, true],
   ];
 
-  let g =
-    '<svg class="garden" viewBox="0 0 390 260" preserveAspectRatio="xMidYMax slice" aria-hidden="true">' +
-    '<defs><linearGradient id="gMeadowShade" x1="0" y1="0" x2="0" y2="1">' +
-    '<stop offset="0" stop-color="#0b2321" stop-opacity="0"/>' +
-    '<stop offset=".45" stop-color="#0a1e22" stop-opacity=".76"/>' +
-    '<stop offset="1" stop-color="#08171c" stop-opacity="1"/></linearGradient></defs>' +
-    '<path d="M-10 210 Q95 196 195 204 Q295 212 400 198 L400 265 L-10 265 Z" fill="url(#gMeadowShade)"/>';
-
-  // Arka uzun çayır yaprakları — 3 hafif esinti katmanı halinde animasyonlu
-  const bladeLayers = ['', '', ''];
-  for (let i = 0; i < 48; i++) {
-    const x = -6 + i * 8.5 + (i % 3) * 1.4;
-    const h = 48 + ((i * 37) % 58);
-    const d = i % 2 ? 1 : -1;
-    const lean = d * (6 + (i % 5) * 2.2);
-    const w = (1.6 + (i % 3) * 0.45).toFixed(1);
-    const color = i % 4 === 0 ? '#123d30' : i % 3 === 0 ? '#1a523b' : 'var(--leaf-1)';
-    const op = (0.58 + (i % 4) * 0.1).toFixed(2);
-    bladeLayers[i % 3] += `<path d="M${x} 264 Q ${(x + lean * 0.45).toFixed(1)} ${(264 - h * 0.55).toFixed(
-      1
-    )} ${(x + lean).toFixed(1)} ${264 - h}" stroke="${color}" stroke-width="${w}" fill="none" stroke-linecap="round" opacity="${op}"/>`;
-  }
-  bladeLayers.forEach((paths, idx) => {
-    g += `<g class="blade-layer" style="--bd:${(-idx * 2.1).toFixed(1)}s">${paths}</g>`;
-  });
-
-  back.forEach(([x, y, sc, isWhite], i) => {
-    const d = i % 2 ? 1 : -1;
-    const flower = isWhite
-      ? zambakBloomSvg(x, y, sc, 'class="main-bloom"')
-      : lilyBloomSvg(x, y, sc, 'petal', 'stamens', 'class="main-bloom"');
-    g += `<g class="sway" style="--sd:${(-i * 1.3).toFixed(1)}s;transform-origin:${x}px 262px;--gd:${(
-      1.3 +
-      i * 0.28
-    ).toFixed(2)}s">
-      <path d="M${x + d * 4} 264 C ${x} 214, ${x - d * 6} ${y + 40}, ${x} ${y}" stroke="var(--leaf-1)" stroke-width="2" fill="none"/>
-      <path d="M${x + d * 2} ${(y + 240) / 2 + 20} C ${x + d * 22} ${(y + 240) / 2 + 6}, ${x + d * 30} ${
-        (y + 240) / 2 - 10
-      }, ${x + d * 34} ${(y + 240) / 2 - 26} C ${x + d * 20} ${(y + 240) / 2 - 12}, ${x + d * 10} ${
-        (y + 240) / 2
-      }, ${x + d * 2} ${(y + 240) / 2 + 10}Z" fill="url(#gLeaf)"/>
-      ${flower}</g>`;
-  });
-
-  return g + '</svg>';
+  return (
+    meadowBackdropSvg() +
+    back
+      .map(([x, y, sc, isWhite], i) => {
+        const d = i % 2 ? 1 : -1;
+        const stemH = 264 - y;
+        const leftPct = ((x / 390) * 100).toFixed(2);
+        const dur = (6.8 + (i % 3) * 0.8).toFixed(1);
+        const topPad = 48;
+        const vbH = stemH + topPad;
+        const flower = isWhite
+          ? zambakBloomSvg(0, -stemH, sc, 'class="main-bloom"')
+          : lilyBloomSvg(0, -stemH, sc, 'petal', 'stamens', 'class="main-bloom"');
+        const leafY = -(stemH * 0.48);
+        return `<svg class="flower-stem" style="left:${leftPct}%;height:${vbH}px;--sd:${(-i * 1.25).toFixed(
+          2
+        )}s;--dur:${dur}s" viewBox="-52 ${-(stemH + topPad)} 104 ${vbH}" aria-hidden="true">
+          <path d="M${d * 4} 0 C 0 -48, ${-d * 6} ${-stemH + 38}, 0 ${-stemH}" stroke="var(--leaf-1)" stroke-width="2" fill="none"/>
+          <path d="M${d * 2} ${(leafY + 12).toFixed(1)} C ${d * 22} ${(leafY - 2).toFixed(1)}, ${d * 30} ${(
+          leafY - 18
+        ).toFixed(1)}, ${d * 34} ${(leafY - 34).toFixed(1)} C ${d * 20} ${(leafY - 20).toFixed(1)}, ${d * 10} ${(
+          leafY - 8
+        ).toFixed(1)}, ${d * 2} ${(leafY + 2).toFixed(1)}Z" fill="url(#gLeaf)"/>
+          ${flower}
+        </svg>`;
+      })
+      .join('')
+  );
 }
 
 function foregroundGrassSvg(): string {
@@ -145,15 +152,8 @@ function sideLilySvg(side: 'l' | 'r'): string {
     <path d="M64 198 C 86 184, 102 162, 112 136 C 94 152, 78 168, 64 186Z" fill="url(#gLeaf)"/>
     <path d="M52 172 C 36 164, 26 150, 18 130 C 34 144, 45 154, 54 162Z" fill="url(#gLeaf)" opacity=".85"/>
     <g transform="translate(36 122) rotate(-12)"><g class="bud"><path d="M0 0 C 7 -8, 8 -26, 0 -40 C -8 -26, -7 -8, 0 0Z" fill="url(#gBud)"/><path d="M0 -3 L0 -36" stroke="rgba(255,255,255,.35)" stroke-width=".8"/></g></g>
-    <g class="bloom-breathe" style="--bd:-1.4s">${lilyBloomSvg(34, 114, 0.74, 'lpetal', 'stamens-late')}</g>
-    <g class="bloom-breathe" style="--bd:${big ? '-0.6s' : '-2.8s'}">${lilyBloomSvg(
-      78,
-      80,
-      big ? 1.08 : 0.96,
-      'petal',
-      'stamens',
-      'class="main-bloom"'
-    )}</g>
+    ${lilyBloomSvg(34, 114, 0.74, 'lpetal', 'stamens-late')}
+    ${lilyBloomSvg(78, 80, big ? 1.08 : 0.96, 'petal', 'stamens', 'class="main-bloom"')}
   </g></svg>`;
 }
 
@@ -212,7 +212,7 @@ export class GardenController {
   constructor(opts: {
     onRaspberryTap: (raspEl: Element) => void;
   }) {
-    $('#lilies').innerHTML = gardenSvg() + sideLilySvg('l') + sideLilySvg('r');
+    $('#lilies').innerHTML = gardenFlowersHtml() + sideLilySvg('l') + sideLilySvg('r');
     const grassFront = document.getElementById('grass-front');
     if (grassFront) grassFront.innerHTML = foregroundGrassSvg();
     const holder = $('#candle-holder');

@@ -92,10 +92,10 @@ function bandY(f: number): number {
   return 0.5 + 0.25 * Math.sin(f * Math.PI * 2 + 0.6) + 0.07 * Math.sin(f * Math.PI * 6 + 2);
 }
 
-const COLOR_HEX: Record<SkyColorKey, { core: string; mid: string; glow: string }> = {
-  blue: { core: '#eef5ff', mid: '#a8d4ff', glow: 'rgba(84,150,255,' },
-  pink: { core: '#fff2f8', mid: '#ffb3da', glow: 'rgba(255,92,172,' },
-  gold: { core: '#fff7e0', mid: '#ffd56e', glow: 'rgba(255,196,92,' },
+const COLOR_HEX: Record<SkyColorKey, { core: string; mid: string; glow: string; solid: string }> = {
+  blue: { core: '#eef5ff', mid: '#a8d4ff', glow: 'rgba(84,150,255,', solid: '#5496ff' },
+  pink: { core: '#fff2f8', mid: '#ffb3da', glow: 'rgba(255,92,172,', solid: '#ff5cac' },
+  gold: { core: '#fff7e0', mid: '#ffd56e', glow: 'rgba(255,196,92,', solid: '#ffc45c' },
 };
 
 export interface SkyEngineOptions {
@@ -165,10 +165,13 @@ export class SkyEngine {
   private worldW = 1600;
   private nebScale = 1;
 
-  // Panorama state
+  // Panorama state (tek birleşik 60fps rAF döngüsünde adımlanır)
   private ox = 0;
   private vx = 0;
-  private panRaf = 0;
+  private panJob:
+    | { kind: 'to'; from: number; to: number; t0: number; ms: number; done?: () => void }
+    | { kind: 'glide' }
+    | null = null;
   private drag: DragState | null = null;
   private compassTimer = 0;
 
@@ -277,6 +280,23 @@ export class SkyEngine {
   private fpsWindowStart = 0;
   private currentFps = 60;
   private currentMode: 'active' | 'idle' | 'quiet' | 'paused' = 'idle';
+  private lastThumbTx = '';
+  private readonly starMetaCache = new Map<string, { phase: number; twSpeed: number; unlockAtMs: number }>();
+  private lockEl: Element | null = null;
+  private letterModalEl: Element | null = null;
+  private composeEl: Element | null = null;
+  private settingsEl: Element | null = null;
+  private onboardEl: Element | null = null;
+  private readonly spriteBatch: {
+    x: number;
+    y: number;
+    scale: number;
+    scint: number;
+    dayDim: number;
+    colorKey: SkyColorKey;
+    wakeWave: number;
+    glintWave: number;
+  }[] = [];
   private readonly onAnyPointer = () => {
     this.markInteraction();
   };
@@ -293,6 +313,7 @@ export class SkyEngine {
     this.thumbEl = opts.compassThumb;
     this.tLabelEl = opts.travelLabelElement;
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this.refreshOverlayRefs();
 
     this.bakeStarSprites();
     this.bakeSunSprites();
@@ -408,9 +429,19 @@ export class SkyEngine {
     this.stars = stars;
     this.links = links;
     this.pairedIds = new Set<string>();
+    this.starMetaCache.clear();
     for (const [a, b] of links) {
       this.pairedIds.add(a.id);
       this.pairedIds.add(b.id);
+    }
+    for (const s of stars) {
+      let hash = 0;
+      for (let i = 0; i < s.id.length; i++) hash = (hash * 31 + s.id.charCodeAt(i)) | 0;
+      this.starMetaCache.set(s.id, {
+        phase: (Math.abs(hash) % 628) / 100,
+        twSpeed: 1.4 + (Math.abs(hash >> 4) % 12) / 10,
+        unlockAtMs: s.unlockAt ? Date.parse(s.unlockAt) : 0,
+      });
     }
   }
 
@@ -569,7 +600,11 @@ export class SkyEngine {
     this.ox = nextOx;
     const max = this.getMaxOx();
     const frac = max > 0 ? Math.max(0, Math.min(1, this.ox / max)) : 0.5;
-    this.thumbEl.style.transform = `translateX(${(frac * 300).toFixed(1)}%)`;
+    const tx = `translate3d(${(frac * 300).toFixed(1)}%, 0, 0)`;
+    if (tx !== this.lastThumbTx) {
+      this.lastThumbTx = tx;
+      this.thumbEl.style.transform = tx;
+    }
   }
 
   public centerPanorama(): void {
@@ -581,7 +616,6 @@ export class SkyEngine {
     this.boostMotion(ms + 200);
     const from = this.ox;
     const to = Math.max(0, Math.min(this.getMaxOx(), target));
-    const t0 = performance.now();
 
     if (this.reducedMotion || Math.abs(to - from) < 1) {
       this.setOx(to);
@@ -590,19 +624,7 @@ export class SkyEngine {
     }
 
     this.compassActive();
-    const step = (now: number) => {
-      const k = Math.min(1, (now - t0) / ms);
-      const ease = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
-      this.setOx(from + (to - from) * ease);
-      if (k < 1) {
-        this.panRaf = requestAnimationFrame(step);
-      } else {
-        this.panRaf = 0;
-        this.compassIdle();
-        done?.();
-      }
-    };
-    this.panRaf = requestAnimationFrame(step);
+    this.panJob = { kind: 'to', from, to, t0: performance.now(), ms, done };
   }
 
   public startTimelapse(fromH: number, deltaHours: number, delayMs = 900, keepEnd = false): void {
@@ -727,10 +749,7 @@ export class SkyEngine {
   };
 
   private stopPan(): void {
-    if (this.panRaf) {
-      cancelAnimationFrame(this.panRaf);
-      this.panRaf = 0;
-    }
+    this.panJob = null;
   }
 
   private compassActive(): void {
@@ -746,35 +765,43 @@ export class SkyEngine {
   }
 
   private glide(): void {
-    this.stopPan();
-    let last = performance.now();
-    const step = (now: number) => {
-      const dt = Math.min(34, now - last);
-      last = now;
-      const max = this.getMaxOx();
-      const tgt = this.ox < 0 ? 0 : this.ox > max ? max : null;
+    this.panJob = { kind: 'glide' };
+  }
 
-      if (tgt !== null) {
-        this.vx = this.vx * Math.exp(-0.022 * dt) + (tgt - this.ox) * 0.0003 * dt;
-      } else {
-        this.vx *= Math.exp(-dt / 340);
-      }
-
-      const nx = this.ox + this.vx * dt;
-      if (
-        (tgt !== null && Math.abs(this.vx) < 0.02 && Math.abs(tgt - nx) < 0.6) ||
-        (tgt === null && Math.abs(this.vx) < 0.008)
-      ) {
-        this.setOx(tgt !== null ? tgt : nx);
-        this.panRaf = 0;
+  private advancePan(now: number, dt: number): void {
+    const job = this.panJob;
+    if (!job) return;
+    if (job.kind === 'to') {
+      const k = Math.min(1, (now - job.t0) / job.ms);
+      const ease = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+      this.setOx(job.from + (job.to - job.from) * ease);
+      if (k >= 1) {
+        this.panJob = null;
         this.compassIdle();
-        return;
+        job.done?.();
       }
+      return;
+    }
 
-      this.setOx(nx);
-      this.panRaf = requestAnimationFrame(step);
-    };
-    this.panRaf = requestAnimationFrame(step);
+    const max = this.getMaxOx();
+    const tgt = this.ox < 0 ? 0 : this.ox > max ? max : null;
+    if (tgt !== null) {
+      this.vx = this.vx * Math.exp(-0.022 * dt) + (tgt - this.ox) * 0.0003 * dt;
+    } else {
+      this.vx *= Math.exp(-dt / 340);
+    }
+
+    const nx = this.ox + this.vx * dt;
+    if (
+      (tgt !== null && Math.abs(this.vx) < 0.02 && Math.abs(tgt - nx) < 0.6) ||
+      (tgt === null && Math.abs(this.vx) < 0.008)
+    ) {
+      this.setOx(tgt !== null ? tgt : nx);
+      this.panJob = null;
+      this.compassIdle();
+      return;
+    }
+    this.setOx(nx);
   }
 
   private tweenTravel(ms: number, ease: (k: number) => number, fn: (e: number) => void): Promise<boolean> {
@@ -1036,7 +1063,9 @@ export class SkyEngine {
       };
     });
 
-    this.skyEl.addEventListener('pointermove', (e) => {
+    this.skyEl.addEventListener(
+      'pointermove',
+      (e) => {
       if (!this.drag || e.pointerId !== this.drag.pointerId) return;
       if (this.trav.on) {
         this.travelMove(e);
@@ -1062,7 +1091,7 @@ export class SkyEngine {
       this.drag.v = this.drag.v * 0.55 + (-(e.clientX - this.drag.lastX) / dtt) * 0.45;
       this.drag.lastX = e.clientX;
       this.drag.lastT = now;
-    });
+    }, { passive: true });
 
     const endDrag = (e: PointerEvent, isCancel: boolean) => {
       window.clearTimeout(this.pressTimer);
@@ -1155,7 +1184,7 @@ export class SkyEngine {
     };
 
     document.addEventListener('pointerdown', this.onDocPointerDown);
-    document.addEventListener('pointermove', this.onDocPointerMove);
+    document.addEventListener('pointermove', this.onDocPointerMove, { passive: true });
     document.addEventListener('pointerup', this.onDocPointerUp);
     document.addEventListener('pointercancel', this.onDocPointerUp);
 
@@ -1361,6 +1390,7 @@ export class SkyEngine {
       if (x + sz > w) n.drawImage(this.dustSprite, x - w - sz * 0.5, y - sz * 0.5, sz, sz);
     }
     n.globalAlpha = 1;
+    this.nebPattern = this.cx.createPattern(this.nebCanvas, 'repeat-x');
   }
 
   private bakeSkyBackground(): void {
@@ -1662,24 +1692,24 @@ export class SkyEngine {
     if (this.links.length > 0 && linkFade > 0.02) {
       ctx.save();
       ctx.lineWidth = 1;
+      ctx.strokeStyle = '#ffdc93';
+      ctx.fillStyle = '#ffdc93';
+      const pulse = (0.65 + 0.35 * Math.sin(ts * 2.4)) * linkFade;
       for (const [a, b] of this.links) {
         if (this.hiddenStarIds.has(a.id) || this.hiddenStarIds.has(b.id)) continue;
         const pa = this.getStarScreenPos(a);
         const pb = this.getStarScreenPos(b);
         if (Math.max(pa.x, pb.x) < -20 || Math.min(pa.x, pb.x) > this.W + 20) continue;
 
-        ctx.strokeStyle = `rgba(255, 220, 147, ${(0.48 * linkFade).toFixed(3)})`;
+        ctx.globalAlpha = 0.48 * linkFade;
         ctx.beginPath();
         ctx.moveTo(pa.x, pa.y);
         ctx.lineTo(pb.x, pb.y);
         ctx.stroke();
 
-        const mx = (pa.x + pb.x) * 0.5;
-        const my = (pa.y + pb.y) * 0.5;
-        const pulse = (0.65 + 0.35 * Math.sin(ts * 2.4)) * linkFade;
-        ctx.fillStyle = `rgba(255, 220, 147, ${pulse.toFixed(2)})`;
+        ctx.globalAlpha = pulse;
         ctx.beginPath();
-        ctx.arc(mx, my, 2.2, 0, Math.PI * 2);
+        ctx.arc((pa.x + pb.x) * 0.5, (pa.y + pb.y) * 0.5, 2.2, 0, Math.PI * 2);
         ctx.fill();
       }
       ctx.restore();
@@ -1705,16 +1735,8 @@ export class SkyEngine {
       this.revealAt = 0;
     }
 
-    const spriteBatch: {
-      x: number;
-      y: number;
-      scale: number;
-      scint: number;
-      dayDim: number;
-      colorKey: SkyColorKey;
-      wakeWave: number;
-      glintWave: number;
-    }[] = [];
+    const spriteBatch = this.spriteBatch;
+    spriteBatch.length = 0;
 
     for (let idx = 0; idx < this.stars.length; idx++) {
       const s = this.stars[idx];
@@ -1755,10 +1777,9 @@ export class SkyEngine {
       const isPaired = this.pairedIds.has(s.id);
       const colorKey: SkyColorKey = isPaired ? 'gold' : s.from === 'hamham' ? 'blue' : 'pink';
 
-      let hash = 0;
-      for (let i = 0; i < s.id.length; i++) hash = (hash * 31 + s.id.charCodeAt(i)) | 0;
-      const phase = (Math.abs(hash) % 628) / 100;
-      const twSpeed = 1.4 + (Math.abs(hash >> 4) % 12) / 10;
+      const meta = this.starMetaCache.get(s.id);
+      const phase = meta?.phase ?? 0;
+      const twSpeed = meta?.twSpeed ?? 1.8;
 
       let bornScale = 1;
       const bAt = this.bornAt.get(s.id);
@@ -1782,7 +1803,7 @@ export class SkyEngine {
         }
       }
 
-      const isLocked = Boolean(s.unlockAt && Date.parse(s.unlockAt) > nowMs);
+      const isLocked = Boolean(meta && meta.unlockAtMs > nowMs);
       let wakeWave = 0;
       if (!isLocked) {
         const wAt = this.unlockWakeAt.get(s.id);
@@ -1812,11 +1833,13 @@ export class SkyEngine {
           (this.reducedMotion ? 0.32 : 0.16 + 0.26 * (0.5 + 0.5 * Math.sin(ts * 2.1 + phase))) *
           this.withoutAlpha;
         const auraR = s.size * 2.1;
-        ctx.strokeStyle = `${COLOR_HEX[colorKey].glow}${auraP.toFixed(2)})`;
+        ctx.globalAlpha = auraP;
+        ctx.strokeStyle = COLOR_HEX[colorKey].solid;
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.arc(x, y, auraR, 0, Math.PI * 2);
         ctx.stroke();
+        ctx.globalAlpha = 1;
       }
 
       // Locked timed-star visual: dashed ring + tiny gold padlock
@@ -1861,8 +1884,8 @@ export class SkyEngine {
       if (s.kind === 'photo') {
         const rad = s.size * 1.45;
         ctx.save();
-        ctx.globalAlpha = this.withoutAlpha * (isLocked ? 0.45 : 1);
-        ctx.strokeStyle = `${COLOR_HEX[colorKey].glow}${s.spent ? '0.16)' : '0.42)'}`;
+        ctx.globalAlpha = this.withoutAlpha * (isLocked ? 0.45 : 1) * (s.spent ? 0.16 : 0.42);
+        ctx.strokeStyle = COLOR_HEX[colorKey].solid;
         ctx.lineWidth = 0.9;
         if (s.once && !s.spent) {
           ctx.setLineDash([3, 3]);
@@ -1874,12 +1897,13 @@ export class SkyEngine {
       } else if (s.kind === 'voice' && !isLocked) {
         const wave = this.reducedMotion ? 0.5 : (ts * 0.4 + phase) % 1;
         const rad = s.size * (0.9 + wave * 1.5);
-        const alpha = (1 - wave) * 0.5 * this.withoutAlpha;
-        ctx.strokeStyle = `${COLOR_HEX[colorKey].glow}${alpha.toFixed(2)})`;
+        ctx.globalAlpha = (1 - wave) * 0.5 * this.withoutAlpha;
+        ctx.strokeStyle = COLOR_HEX[colorKey].solid;
         ctx.lineWidth = 0.9;
         ctx.beginPath();
         ctx.arc(x, y, rad, 0, Math.PI * 2);
         ctx.stroke();
+        ctx.globalAlpha = 1;
       }
 
       let glintWave = 0;
@@ -2064,10 +2088,11 @@ export class SkyEngine {
   }
 
   private drawFrame(t: number): void {
-    const dt = this.lastFrameT ? Math.min(50, t - this.lastFrameT) : 16.6;
+    const dt = this.lastFrameT ? Math.min(34, t - this.lastFrameT) : 16.6;
     this.lastFrameT = t;
     const ts = t / 1000;
 
+    this.advancePan(t, dt);
     this.syncSkyState(false);
 
     const skyW = this.getSkyW();
@@ -2283,11 +2308,24 @@ export class SkyEngine {
     ctx.fill();
   }
 
+  private refreshOverlayRefs(): void {
+    this.lockEl = document.getElementById('lock');
+    this.letterModalEl = document.getElementById('letter-modal');
+    this.composeEl = document.getElementById('compose');
+    this.settingsEl = document.getElementById('settings');
+    this.onboardEl = document.getElementById('onboard');
+  }
+
   private isMoonOverlayClosed(): boolean {
+    if (!this.composeEl || !this.settingsEl) this.refreshOverlayRefs();
     return (
       document.body.classList.contains('awake') &&
       !document.body.classList.contains('sheet-open') &&
-      !document.querySelector('.sheet.open, .modal.open, #lock:not(.gone), #onboard:not(.gone)')
+      !this.composeEl?.classList.contains('open') &&
+      !this.settingsEl?.classList.contains('open') &&
+      !this.letterModalEl?.classList.contains('open') &&
+      (!this.lockEl || this.lockEl.classList.contains('gone')) &&
+      (!this.onboardEl || this.onboardEl.classList.contains('gone'))
     );
   }
 
@@ -2295,7 +2333,7 @@ export class SkyEngine {
     if (now < this.boostUntil) return true;
     const moonTarget = this.isMoonOverlayClosed() ? 1 : 0;
     if (Math.abs(moonTarget - this.moonUiAlpha) > 0.02) return true;
-    if (this.drag !== null || this.panRaf !== 0 || this.timelapseActive || this.trav.on) return true;
+    if (this.drag !== null || this.panJob !== null || this.timelapseActive || this.trav.on) return true;
     if (this.planeCtrl.isActive()) return true;
     if (
       this.comets.length > 0 ||
@@ -2321,11 +2359,19 @@ export class SkyEngine {
 
   private isCompletelyBlocked(): boolean {
     if (document.hidden) return true;
-    return Boolean(document.querySelector('#lock:not(.gone), .modal.open'));
+    if (!this.lockEl) this.refreshOverlayRefs();
+    return Boolean(
+      (this.lockEl && !this.lockEl.classList.contains('gone')) ||
+        this.letterModalEl?.classList.contains('open')
+    );
   }
 
   private isQuietSheetOpen(): boolean {
-    return Boolean(document.querySelector('.sheet.open'));
+    if (!this.composeEl) this.refreshOverlayRefs();
+    return Boolean(
+      this.composeEl?.classList.contains('open') ||
+        this.settingsEl?.classList.contains('open')
+    );
   }
 
   private boostMotion(ms: number): void {
@@ -2380,8 +2426,8 @@ export class SkyEngine {
 
     this.currentMode = quiet ? 'quiet' : active ? 'active' : 'idle';
 
-    // Aktif kaydırma/yıldız animasyonunda 60 fps, boşta 30 fps (33 ms), 20 sn dokunulmazsa twinkle odaklı düşük döngü
-    const delay = quiet ? 100 : active ? 0 : this.deepIdle ? 66 : 33;
+    // Görünür ve engelsiz tüm durumlarda sabit 60 fps (rAF); yalnızca panel açıkken (quiet) tasarruf modu
+    const delay = quiet ? 100 : 0;
     if (delay === 0) {
       this.mainRaf = requestAnimationFrame(this.loopStep);
     } else {
@@ -2456,7 +2502,7 @@ export class SkyEngine {
 
   public destroy(): void {
     this.pauseLoop();
-    cancelAnimationFrame(this.panRaf);
+    this.panJob = null;
     cancelAnimationFrame(this.timelapseRaf);
     for (const id of this.resizeRafs) cancelAnimationFrame(id);
     this.resizeRafs = [];
