@@ -2403,7 +2403,7 @@ textarea:focus {
 
 .typing .sheet {
   align-items: flex-end;
-  padding: calc(env(safe-area-inset-top) + 16px) 0 max(calc(env(safe-area-inset-bottom) + 10px), calc(var(--kbpad, 0px) + 10px));
+  padding: calc(env(safe-area-inset-top) + 16px) 0 max(env(safe-area-inset-bottom), var(--kbpad, 0px));
 }
 
 .typing .sheet-card {
