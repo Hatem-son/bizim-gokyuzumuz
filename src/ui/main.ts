@@ -24,6 +24,8 @@ import { initUI, $, $$, h, toast, stagger, sleep, clearPageStack } from './ui';
 import { state, PEOPLE, Star, Kind, setMe, toUiWho, toDbWho } from './state';
 import { buildHome, buildForeground } from './home';
 import { openCompose } from './compose';
+import { openBoard, renderDrawing, Stroke } from './draw';
+import { encodeDrawingBytes, decodeDrawingBytes } from '../lib/drawCodec';
 import { openStar, openArchive, openSettings, openCountdown } from './pages';
 import { runAuth, runLock, applyPersona } from './auth';
 import { I } from './icons';
@@ -131,6 +133,11 @@ Object.assign(core, {
   openSettings,
   openCountdown,
   openStar: (st: Star) => void openStar(st),
+  openBoard: (existing?: unknown[] | null) => openBoard((existing as Stroke[] | null) ?? null),
+  renderDrawingPreview: (cvEl: HTMLCanvasElement, strokes: unknown[], upTo?: number) =>
+    renderDrawing(cvEl, strokes as Stroke[], 1, upTo ?? Infinity),
+  encodeDrawing: (strokes: unknown[]) => encodeDrawingBytes(strokes as Stroke[]),
+  decodeDrawing: (bytes: Uint8Array<ArrayBuffer>) => decodeDrawingBytes(bytes),
 });
 core.scrollX = (SKY_W - W) / 2;
 applyPersona();

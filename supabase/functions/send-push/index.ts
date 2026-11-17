@@ -76,7 +76,6 @@ const unlockFmt = new Intl.DateTimeFormat('tr-TR', {
 
 function formatUnlockLabel(iso: string): string {
   const txt = unlockFmt.format(new Date(iso));
-  // Türkçe saat/tarih bitişi: "9 Ocak 00:00" -> "9 Ocak, 00:00'te açılacak"
   const parts = txt.split(' ');
   if (parts.length >= 3) {
     const time = parts.pop()!;
@@ -131,7 +130,6 @@ async function processPendingUnlocks(
 
   let sentCount = 0;
   for (const row of dueStars as DueStarRow[]) {
-    // Atomik sahiplenme: iki eşzamanlı cron tetiklemesinde aynı bildirimin iki kez gitmesini önler
     const { data: claimed } = await admin
       .from('stars')
       .update({ unlock_push_sent: true })
@@ -192,7 +190,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const body = (await req.json().catch(() => ({}))) as PushRequestBody;
     const admin: any = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // pg_cron veya sunucu tarafından çağrılan zamanlı kilit açma kontrolü
     if (body.mode === 'check_unlocks') {
       if (jwt !== SUPABASE_SERVICE_ROLE_KEY) {
         return json({ error: 'Forbidden' }, 403, corsHeaders);
@@ -230,17 +227,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return json({ sent: false, reason: 'no_subscription' }, 200, corsHeaders);
     }
 
-    let title = `${senderName} seni düşündü`;
-    let subtitle =
-      body.kind === 'photo'
-        ? body.once
-          ? 'Tek seferlik bir fotoğraf gönderdi'
-          : 'Sana bir fotoğraf gönderdi'
-        : body.kind === 'voice'
-          ? 'Sana sesli bir yıldız bıraktı'
-          : 'Gökyüzüne yeni bir yıldız düştü';
+    // İçerik bildirimde asla yer almaz
+    let title = `${senderName} sana bir yıldız bıraktı`;
+    let subtitle = 'Gökyüzüne yeni bir yıldız düştü';
 
-    // Zamanlı yıldızda içerik bildirimde asla yer almaz, yalnızca kilit bilgisi gönderilir
+    if (body.kind === 'draw') {
+      title = `${senderName} sana bir çizim bıraktı`;
+    } else if (body.kind === 'photo') {
+      title = `${senderName} sana bir fotoğraf bıraktı`;
+      subtitle = body.once ? 'Tek seferlik bir fotoğraf gönderdi' : 'Gökyüzüne yeni bir yıldız düştü';
+    } else if (body.kind === 'voice') {
+      title = `${senderName} sana sesli bir yıldız bıraktı`;
+    }
+
     if (body.unlockAt) {
       title = `${senderName} sana kilitli bir yıldız bıraktı`;
       subtitle = formatUnlockLabel(body.unlockAt);
