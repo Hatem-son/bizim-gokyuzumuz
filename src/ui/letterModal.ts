@@ -1,6 +1,6 @@
 import { isStarHazel, pickHazelLine } from '../lib/hazel';
 import { HEART_PATH, lilyBloomSvg, raspberrySvg } from '../lib/illustrations';
-import { barsHtml, formatDuration } from '../lib/media';
+import { barsHtml, formatDuration } from '../lib/audioUi';
 import { PEOPLE } from '../lib/people';
 import {
   decryptStarPayload,

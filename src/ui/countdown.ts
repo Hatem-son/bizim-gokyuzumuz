@@ -1,4 +1,5 @@
 import { HEART_PATH, whiteZambakSvg, zambakBudSvg } from '../lib/illustrations';
+import { createRasterBank } from '../lib/rasterize';
 import { $ } from './dom';
 
 export const TARGET_DATE = new Date(2027, 0, 9, 0, 0, 0);
@@ -15,11 +16,16 @@ export class CountdownController {
   private readonly daysEl = $('#cd-days');
   private readonly timeEl = $('#cd-time');
   private readonly labelEl = $('#cd-label');
-  private readonly flowersEl = $('#cd-flowers');
+  private readonly ringEl = document.getElementById('cd-ring') as HTMLImageElement | null;
+  private readonly sprigEl = document.getElementById('cd-sprig') as HTMLImageElement | null;
+  private readonly sprig2El = document.getElementById('cd-sprig2') as HTMLImageElement | null;
+  private readonly raster = createRasterBank();
   private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   private builtDigits = false;
   private lastFlowerCount = -1;
+  private wreathGen = 0;
+  private destroyed = false;
   private timerId = 0;
 
   constructor() {
@@ -35,8 +41,20 @@ export class CountdownController {
       zambakBudSvg(52, 40, 0.56, 154) +
       `<g transform="translate(47 20) rotate(32)">${whiteZambakSvg(0, 0, 0.28, 'sp', 'sp-st')}</g>`;
 
-    $('#cd-sprig').innerHTML = sprigArc;
-    $('#cd-sprig2').innerHTML = `<g transform="rotate(180 32 32)">${sprigArc}</g>`;
+    void this.raster
+      .rasterize('0 0 64 64', 64, 64, sprigArc)
+      .then((pair) => {
+        if (this.destroyed) return;
+        if (this.sprigEl) {
+          this.raster.apply(this.sprigEl, pair);
+          this.sprigEl.classList.add('ready');
+        }
+        if (this.sprig2El) {
+          this.raster.apply(this.sprig2El, pair);
+          this.sprig2El.classList.add('ready');
+        }
+      })
+      .catch(() => undefined);
 
     this.tick();
     this.startTimer();
@@ -124,15 +142,21 @@ export class CountdownController {
         : '';
       const sc = isOpen ? 1 : isNext ? 0.86 : 0.74;
       const op = isOpen ? 1 : isNext ? 0.9 : 0.62;
-      flowers += `<g transform="translate(${x} ${y}) rotate(${(i * 30).toFixed(0)}) scale(${sc})" opacity="${op}"><g class="cdf ${
-        isOpen || isNext ? 'on' : 'rest'
-      }${isNext ? ' nextf' : ''}" style="--d:${(i * 0.06).toFixed(2)}s">${petals}${spots}<circle r="1.15" fill="${ctr}"/></g></g>`;
+      flowers += `<g transform="translate(${x} ${y}) rotate(${(i * 30).toFixed(0)}) scale(${sc})" opacity="${op}">${petals}${spots}<circle r="1.15" fill="${ctr}"/></g>`;
     }
 
-    this.flowersEl.innerHTML = `<defs>
-      <radialGradient id="gCdLily" cx=".5" cy="1" r="1"><stop offset="0" stop-color="#d63a74"/><stop offset=".55" stop-color="#ff95c0"/><stop offset="1" stop-color="#fff2f8"/></radialGradient>
-      <radialGradient id="gCdZambak" cx=".5" cy="1" r="1"><stop offset="0" stop-color="#f3e7b8"/><stop offset=".5" stop-color="#fffdf4"/><stop offset="1" stop-color="#ffffff"/></radialGradient>
-    </defs>${leaves}${flowers}`;
+    const extraDefs = `<radialGradient id="gCdLily" cx=".5" cy="1" r="1"><stop offset="0" stop-color="#d63a74"/><stop offset=".55" stop-color="#ff95c0"/><stop offset="1" stop-color="#fff2f8"/></radialGradient>
+      <radialGradient id="gCdZambak" cx=".5" cy="1" r="1"><stop offset="0" stop-color="#f3e7b8"/><stop offset=".5" stop-color="#fffdf4"/><stop offset="1" stop-color="#ffffff"/></radialGradient>`;
+    const inner = `<circle cx="28" cy="28" r="22" fill="rgba(255,255,255,.04)" stroke="rgba(255,255,255,.1)" stroke-width="1"/>${leaves}${flowers}`;
+    const gen = ++this.wreathGen;
+    void this.raster
+      .rasterize('-4 -4 64 64', 64, 64, inner, extraDefs)
+      .then((pair) => {
+        if (this.destroyed || gen !== this.wreathGen || !this.ringEl) return;
+        this.raster.apply(this.ringEl, pair);
+        this.ringEl.classList.add('ready');
+      })
+      .catch(() => undefined);
   }
 
   public tick = (): void => {
@@ -185,8 +209,10 @@ export class CountdownController {
   };
 
   public destroy(): void {
+    this.destroyed = true;
     window.clearInterval(this.timerId);
     this.timerId = 0;
+    this.raster.dispose();
     document.removeEventListener('visibilitychange', this.onVisibilityChange);
   }
 }

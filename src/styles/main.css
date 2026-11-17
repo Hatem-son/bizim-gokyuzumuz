@@ -195,7 +195,15 @@ body {
   overflow: hidden;
   height: calc(var(--app-h, 100vh) + 4px);
   transform-origin: 50% 42%;
-  will-change: transform, opacity;
+}
+
+.raster-img {
+  opacity: 0;
+  transition: opacity .14s ease;
+}
+
+.raster-img.ready {
+  opacity: 1;
 }
 
 body.dive-prep #scene {
@@ -301,7 +309,6 @@ body.dive-prep.dive-go .ground {
   margin-bottom: 14px;
   background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, .22), rgba(168, 212, 255, .07) 56%, transparent 74%);
   box-shadow: 0 0 0 1px rgba(214, 232, 255, .14);
-  will-change: transform, opacity;
   backface-visibility: hidden;
   animation: lsPulse 2.2s ease-in-out infinite;
 }
@@ -460,18 +467,18 @@ textarea:focus-visible {
   z-index: 0;
 }
 
-/* Performance rule: permanent on-screen glass uses crisp solid translucent fill (no continuous backdrop-filter) */
+/* Performance rule: permanent on-screen glass uses crisp solid translucent fill (no continuous backdrop-filter or blur shadows) */
 .solid-glass {
   background: linear-gradient(180deg, rgba(255, 255, 255, .13), rgba(255, 255, 255, .05)), rgba(8, 12, 34, .38);
   border: 1px solid var(--line);
-  box-shadow: inset 0 1px 0 var(--glass-hi), 0 10px 26px -14px rgba(0, 0, 0, .55);
+  box-shadow: inset 0 1px 0 var(--glass-hi);
 }
 
-/* Pop-up glass: solid translucent fill without costly GPU backdrop blur */
+/* Pop-up glass: solid translucent fill without costly GPU backdrop blur or blur shadows */
 .glass-pop {
   background: linear-gradient(180deg, rgba(255, 255, 255, .14), rgba(255, 255, 255, .04)), rgba(14, 18, 44, .78);
   border: 1px solid var(--line);
-  box-shadow: inset 0 1px 0 var(--glass-hi), 0 12px 30px -14px rgba(0, 0, 0, .55);
+  box-shadow: inset 0 1px 0 var(--glass-hi);
 }
 
 .medal {
@@ -485,7 +492,7 @@ textarea:focus-visible {
   line-height: 1;
   color: var(--c);
   background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, .26), rgba(255, 255, 255, .03) 70%);
-  box-shadow: inset 0 0 0 1px var(--c), 0 0 18px -4px var(--g);
+  box-shadow: inset 0 0 0 1px var(--c);
 }
 
 .medal.sm {
@@ -725,39 +732,10 @@ body:not(.awake) .compass {
 
 .cd-ring {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-}
-
-.cd-ring .track {
-  fill: rgba(255, 255, 255, .04);
-  stroke: rgba(255, 255, 255, .1);
-  stroke-width: 1;
-}
-
-.cdf {
-  transform-box: fill-box;
-  transform-origin: center;
-}
-
-.cdf.on,
-.cdf.rest {
-  animation: cdPop .8s var(--spring) both;
-  animation-delay: var(--d);
-}
-
-.cdf.nextf {
-  animation: cdPop .8s var(--spring) both, cdBud 2.6s ease-in-out 1.6s 3;
-}
-
-@keyframes cdPop {
-  from { transform: scale(0) rotate(-40deg); opacity: 0; }
-}
-
-@keyframes cdBud {
-  50% { transform: scale(1.12) rotate(6deg); }
+  inset: -4px;
+  width: 64px;
+  height: 64px;
+  pointer-events: none;
 }
 
 .cd-sprig,
@@ -765,29 +743,18 @@ body:not(.awake) .compass {
   position: absolute;
   width: 64px;
   height: 64px;
-  overflow: visible;
   pointer-events: none;
-  will-change: transform;
-  backface-visibility: hidden;
-  animation: cdSprigSway 9s ease-in-out infinite;
 }
 
 .cd-sprig {
   right: -13px;
   top: -11px;
-  transform-origin: 48% 52%;
 }
 
 .cd-sprig2 {
   left: -13px;
   bottom: -11px;
-  transform-origin: 52% 48%;
-  animation-delay: -4.5s;
-}
-
-@keyframes cdSprigSway {
-  0%, 100% { transform: rotate3d(0, 0, 1, -1.1deg); }
-  50% { transform: rotate3d(0, 0, 1, 1.1deg); }
+  transform: rotate(180deg);
 }
 
 .cd-days {
@@ -916,10 +883,8 @@ body:not(.awake) .floor-light {
   bottom: -16px;
   height: min(214px, 92%);
   width: auto;
-  overflow: visible;
+  aspect-ratio: 150 / 260;
   transform-origin: 45% 100%;
-  will-change: transform;
-  backface-visibility: hidden;
   animation: lilySway 7.2s ease-in-out infinite;
 }
 
@@ -951,11 +916,8 @@ body:not(.awake) .floor-light {
   bottom: -6px;
   width: 104px;
   margin-left: -52px;
-  overflow: visible;
   pointer-events: none;
   transform-origin: 50% 100%;
-  will-change: transform;
-  backface-visibility: hidden;
   animation: flowerSway var(--dur, 7.6s) ease-in-out var(--sd, 0s) infinite;
 }
 
@@ -966,59 +928,26 @@ body:not(.awake) .floor-light {
   bottom: 0;
   width: 100%;
   height: calc(100% + 20px);
+  object-fit: cover;
+  object-position: 50% 100%;
   transform: translate3d(0, 20px, 0);
-  overflow: visible;
   pointer-events: none;
 }
 
-.petal,
-.lpetal {
-  transform-box: fill-box;
-  transform-origin: 50% 100%;
-  transform: rotate(var(--r0)) scale(.08);
-  opacity: 0;
-}
-
-body.awake .petal {
-  animation: openPetal 1.8s var(--ease) calc(var(--i) * .12s + .5s) forwards;
-}
-
-.lily.opened .lpetal {
-  animation: openPetal 1.8s var(--ease) calc(var(--i) * .12s + .2s) forwards;
-}
-
-@keyframes openPetal {
-  55% { opacity: 1; }
-  to { transform: none; opacity: 1; }
-}
-
-.stamens,
-.stamens-late {
-  opacity: 0;
-  transition: opacity 1.2s ease 1.5s;
-}
-
-body.awake .stamens,
-.lily.opened .stamens-late {
-  opacity: 1;
-}
-
-.bud {
-  transform-box: fill-box;
-  transform-origin: 50% 100%;
-  transition: opacity .8s, transform .8s var(--ease);
-}
-
-.lily.opened .bud {
-  opacity: 0;
-  transform: scale(.4);
-}
-
-.candle {
-  display: block;
+.candle-wrap {
+  position: relative;
   width: 126px;
-  height: auto;
-  cursor: default;
+  aspect-ratio: 160 / 190;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.candle-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
   pointer-events: none;
   overflow: visible;
 }
@@ -1026,8 +955,6 @@ body.awake .stamens,
 .candle-flame {
   transform-box: fill-box;
   transform-origin: 50% 95%;
-  will-change: transform, opacity;
-  backface-visibility: hidden;
   opacity: 0;
 }
 
@@ -1081,13 +1008,18 @@ body.awake .candle-flame.flare {
 }
 
 .rasp {
+  position: absolute;
+  aspect-ratio: 28 / 32;
+  transform: translate(-50%, -53.125%);
   cursor: pointer;
   pointer-events: auto;
 }
 
 .rasp-in {
-  transform-box: fill-box;
-  transform-origin: 50% 100%;
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 85%;
 }
 
 .rasp-in.boing {
@@ -1111,25 +1043,17 @@ body.awake .candle-flame.flare {
 
 /* Pause background DOM animations when a sheet, modal, lock, or 20s deep-idle covers/quiets the view */
 body.quiet .lily,
-body.quiet .cdf,
+body.quiet .flower-stem,
 body.quiet .candle-flame,
 body.deep-idle .lily,
-body.deep-idle .cdf,
+body.deep-idle .flower-stem,
 body.deep-idle .candle-flame {
   animation-play-state: paused !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .petal,
-  .lpetal {
-    transform: none;
-    opacity: 1;
-  }
-  .lily {
-    animation: none !important;
-  }
-  body.awake .petal,
-  .lily.opened .lpetal {
+  .lily,
+  .flower-stem {
     animation: none !important;
   }
 }
@@ -1146,7 +1070,6 @@ body.deep-idle .candle-flame {
   color: var(--ink);
   background: var(--sheet);
   border: 1px solid var(--line);
-  box-shadow: 0 12px 30px -10px rgba(0, 0, 0, .5);
   max-width: 250px;
   width: max-content;
   pointer-events: none;
@@ -1279,7 +1202,7 @@ body:not(.awake) .act {
     radial-gradient(circle at 34% 24%, rgba(255, 255, 255, .52), transparent 55%),
     linear-gradient(150deg, var(--accent), var(--accent-strong));
   border-color: rgba(255, 255, 255, .45);
-  box-shadow: 0 12px 28px -10px var(--accent-strong), inset 0 1px 0 rgba(255, 255, 255, .6);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6);
 }
 
 .act.primary .act-ic svg {
@@ -1341,7 +1264,7 @@ body:not(.awake) .act {
   background:
     radial-gradient(circle at 30% 10%, rgba(255, 255, 255, .36), transparent 60%),
     linear-gradient(140deg, var(--accent-strong), var(--accent-strong));
-  box-shadow: 0 12px 28px -10px var(--accent-strong), inset 0 1px 0 rgba(255, 255, 255, .45);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .45);
   transition: opacity .25s, transform .2s var(--ease);
 }
 
@@ -1670,7 +1593,6 @@ body.kb-active #onboard .link-btn {
   touch-action: manipulation;
   -webkit-user-select: text;
   user-select: text;
-  box-shadow: inset 0 2px 10px rgba(0, 0, 0, .12);
 }
 
 .field input:focus {
@@ -1727,7 +1649,6 @@ body.kb-active #onboard .link-btn {
   width: max-content;
   background: var(--sheet);
   border: 1px solid var(--line);
-  box-shadow: 0 18px 44px -14px rgba(0, 0, 0, .65);
   transform: translate(-50%, -180%) scale(.9);
   opacity: 0;
   pointer-events: none;
@@ -1790,7 +1711,6 @@ body.kb-active #onboard .link-btn {
   background: linear-gradient(180deg, rgba(255, 255, 255, .04), rgba(0, 0, 0, .28)), var(--sheet);
   border: 1px solid var(--line);
   border-bottom: 0;
-  box-shadow: 0 -20px 60px -20px rgba(0, 0, 0, .5);
   transform: translateY(105%);
   transition: transform .44s var(--ease);
   display: flex;
@@ -2027,7 +1947,6 @@ body.kb-active #onboard .link-btn {
   border-radius: 22px;
   background: var(--sheet);
   border: 1px solid rgba(255, 220, 147, .38);
-  box-shadow: 0 18px 44px -14px rgba(0, 0, 0, .65);
   text-align: center;
   animation: fadeUp .45s var(--ease);
 }
@@ -2253,15 +2172,9 @@ body.kb-active #onboard .link-btn {
 /* Pause background DOM animations when a sheet, modal, lock, or 20s deep-idle covers/quiets the view */
 body.quiet .lily,
 body.quiet .flower-stem,
-body.quiet .cd-sprig,
-body.quiet .cd-sprig2,
-body.quiet .cdf,
 body.quiet .candle-flame,
 body.deep-idle .lily,
 body.deep-idle .flower-stem,
-body.deep-idle .cd-sprig,
-body.deep-idle .cd-sprig2,
-body.deep-idle .cdf,
 body.deep-idle .candle-flame {
   animation-play-state: paused !important;
 }
@@ -2269,8 +2182,6 @@ body.deep-idle .candle-flame {
 @media (prefers-reduced-motion: reduce) {
   .lily,
   .flower-stem,
-  .cd-sprig,
-  .cd-sprig2,
   .candle-flame,
   .candle-bow.bounce,
   .ls-orb,
@@ -2462,7 +2373,6 @@ textarea {
   outline: none;
   -webkit-user-select: text;
   user-select: text;
-  box-shadow: inset 0 2px 10px rgba(0, 0, 0, .12);
   transition: border-color .3s, background .3s;
 }
 
@@ -3118,7 +3028,6 @@ body.sched-open #compose .sched-dt-label {
     radial-gradient(90% 60% at 100% 100%, var(--paper-line), transparent 70%),
     var(--paper);
   box-shadow:
-    0 40px 90px -20px rgba(0, 0, 0, .7),
     inset 0 0 0 1px rgba(255, 255, 255, .7),
     inset 0 0 0 7px var(--paper),
     inset 0 0 0 8px var(--paper-line);
@@ -3290,7 +3199,7 @@ body.sched-open #compose .sched-dt-label {
   padding: 10px 10px 36px;
   background: #fffefc;
   border-radius: 3px;
-  box-shadow: 0 18px 34px -14px rgba(0, 0, 0, .45), 0 0 0 1px rgba(0, 0, 0, .04);
+  border: 1px solid rgba(0, 0, 0, .08);
   transform: rotate(-2deg);
   animation: polIn .9s var(--ease) .3s both;
 }

@@ -315,6 +315,7 @@ export class SkyEngine {
   private currentFps = 60;
   private currentMode: 'active' | 'idle' | 'quiet' | 'paused' = 'idle';
   private lastThumbTx = '';
+  private thumbDirty = true;
   private readonly starMetaCache = new Map<string, { phase: number; twSpeed: number; unlockAtMs: number }>();
   private lockEl: Element | null = null;
   private letterModalEl: Element | null = null;
@@ -332,7 +333,7 @@ export class SkyEngine {
     glintWave: number;
   }[] = [];
   private readonly onAnyPointer = () => {
-    this.markInteraction();
+    this.boostMotion(420);
   };
 
   constructor(opts: SkyEngineOptions) {
@@ -552,6 +553,7 @@ export class SkyEngine {
         unlockAtMs: s.unlockAt ? Date.parse(s.unlockAt) : 0,
       });
     }
+    this.boostMotion(300);
   }
 
   public hideStarTemporarily(id: string, hidden: boolean): void {
@@ -706,14 +708,9 @@ export class SkyEngine {
   }
 
   public setOx(nextOx: number): void {
+    if (nextOx === this.ox && !this.thumbDirty) return;
     this.ox = nextOx;
-    const max = this.getMaxOx();
-    const frac = max > 0 ? Math.max(0, Math.min(1, this.ox / max)) : 0.5;
-    const tx = `translate3d(${(frac * 300).toFixed(1)}%, 0, 0)`;
-    if (tx !== this.lastThumbTx) {
-      this.lastThumbTx = tx;
-      this.thumbEl.style.transform = tx;
-    }
+    this.thumbDirty = true;
   }
 
   public centerPanorama(): void {
@@ -813,12 +810,15 @@ export class SkyEngine {
   }
 
   public resize = (): void => {
-    this.DPR = Math.min(2, window.devicePixelRatio || 1);
     const host = this.cv.parentElement;
     const hostW = host?.clientWidth || window.innerWidth;
     const hostH = host?.clientHeight || window.innerHeight;
     this.W = Math.max(window.innerWidth, hostW);
     this.H = Math.max(window.innerHeight, hostH);
+    const rawDpr = Math.min(1.5, window.devicePixelRatio || 1);
+    const area = Math.max(1, this.W * this.H);
+    const maxDprForArea = Math.sqrt(2_500_000 / area);
+    this.DPR = Math.max(0.75, Math.min(rawDpr, maxDprForArea));
     this.cv.width = Math.floor(this.W * this.DPR);
     this.cv.height = Math.floor(this.H * this.DPR);
     this.cv.style.width = `${this.W}px`;
@@ -1967,6 +1967,7 @@ export class SkyEngine {
 
     const spriteBatch = this.spriteBatch;
     spriteBatch.length = 0;
+    let twinkleCount = 0;
 
     for (let idx = 0; idx < this.stars.length; idx++) {
       const s = this.stars[idx];
@@ -2055,11 +2056,13 @@ export class SkyEngine {
 
       const scale =
         (s.size / 8.5) * bornScale * goldScale * revealScale * (1 + 0.25 * heartBlend + wakeWave * 0.45);
-      const scint = this.reducedMotion || isLocked
-        ? 1
-        : 0.78 +
+      const canTwinkle = !this.reducedMotion && !isLocked && twinkleCount < 25;
+      if (canTwinkle) twinkleCount++;
+      const scint = canTwinkle
+        ? 0.78 +
           0.14 * Math.sin(ts * twSpeed + phase) +
-          0.08 * Math.sin(ts * (twSpeed * 2.37) + phase * 1.7);
+          0.08 * Math.sin(ts * (twSpeed * 2.37) + phase * 1.7)
+        : 1;
       const lockDim = isLocked ? 0.36 : 1;
       const dayDim = Math.max(0.45, 1 - 0.35 * this.currentDaylight) * this.withoutAlpha * lockDim * revealAlpha;
 
@@ -2335,6 +2338,16 @@ export class SkyEngine {
     const ts = t / 1000;
 
     this.advancePan(t, dt);
+    if (this.thumbDirty) {
+      this.thumbDirty = false;
+      const max = this.getMaxOx();
+      const frac = max > 0 ? Math.max(0, Math.min(1, this.ox / max)) : 0.5;
+      const tx = `translate3d(${(frac * 300).toFixed(1)}%, 0, 0)`;
+      if (tx !== this.lastThumbTx) {
+        this.lastThumbTx = tx;
+        this.thumbEl.style.transform = tx;
+      }
+    }
     this.syncSkyState(false);
 
     const skyW = this.getSkyW();
@@ -2384,7 +2397,8 @@ export class SkyEngine {
         let x = (((d.x - this.ox) % worldW) + worldW) % worldW;
         if (x > worldW - 8) x -= worldW;
         if (x < -4 || x > this.W + 4) continue;
-        const tw = this.reducedMotion ? 1 : 0.42 + 0.58 * (0.5 + 0.5 * Math.sin(ts * d.speed + d.phase));
+        const tw =
+          this.reducedMotion || this.deepIdle ? 1 : 0.42 + 0.58 * (0.5 + 0.5 * Math.sin(ts * d.speed + d.phase));
         const sz = 2.6 + d.r * 2.8;
         ctx.globalAlpha = dim * d.alpha * tw;
         ctx.drawImage(this.dustSprite, x - sz * 0.5, d.y - sz * 0.5, sz, sz);
@@ -2738,9 +2752,10 @@ export class SkyEngine {
     if (this.idleTimer) {
       window.clearTimeout(this.idleTimer);
       this.idleTimer = 0;
-      if (!this.mainRaf) {
-        this.mainRaf = requestAnimationFrame(this.loopStep);
-      }
+    }
+    if (!this.mainRaf) {
+      this.lastFrameT = 0;
+      this.mainRaf = requestAnimationFrame(this.loopStep);
     }
   }
 
@@ -2780,10 +2795,17 @@ export class SkyEngine {
       this.fpsWindowStart = t;
     }
 
+    if (shouldDeepIdle && !quiet && this.stars.length === 0) {
+      // 20 sn dokunulmadı ve gökyüzünde titreşecek yıldız yok: döngüyü sıfır CPU'da durdur
+      this.currentMode = 'paused';
+      this.currentFps = 0;
+      return;
+    }
+
     this.currentMode = quiet ? 'quiet' : active ? 'active' : 'idle';
 
-    // Görünür ve engelsiz tüm durumlarda sabit 60 fps (rAF); yalnızca panel açıkken (quiet) tasarruf modu
-    const delay = quiet ? 100 : 0;
+    // Hareket/kaydırma/animasyonda tam rAF (60/120 fps), durgun halde 30 fps, 20 sn derin durgunlukta ~6 fps hafif yıldız titreşimi, sheet açıkken ~8 fps
+    const delay = quiet ? 120 : active ? 0 : shouldDeepIdle ? 160 : 33;
     if (delay === 0) {
       this.mainRaf = requestAnimationFrame(this.loopStep);
     } else {

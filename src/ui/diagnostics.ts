@@ -177,6 +177,7 @@ export function createDiagnosticsController(
     const ch = canvas?.height ?? 0;
     const mpx = ((cw * ch) / 1_000_000).toFixed(2);
     const dpr = +(window.devicePixelRatio || 1).toFixed(2);
+    const canvasDpr = window.innerWidth > 0 && cw > 0 ? +(cw / window.innerWidth).toFixed(2) : dpr;
     const domCount = document.getElementsByTagName('*').length;
     const animCount = typeof document.getAnimations === 'function' ? document.getAnimations().length : 0;
     if (now - lastLayerSampleAt > 1200) {
@@ -204,10 +205,10 @@ export function createDiagnosticsController(
     const lines = [
       `Sürüm       : ${source.getVersion()}`,
       fpsLine,
-      `5s Ort Kare : ${avgFrameMs.toFixed(2)} ms (motor ${eng?.avgMs ?? 0} ms)`,
+      `5s Ort Kare : ${avgFrameMs.toFixed(2)} ms (motor ${eng?.fps ?? 0} fps · ${eng?.avgMs ?? 0} ms)`,
       `>16.7ms Kare: ${over167}/${n} (%${overPct})`,
       `Uzun Görev  : ${longTaskLine} (>50ms)`,
-      `Canvas      : ${cw}×${ch} (${mpx}M px) · DPR ${dpr}`,
+      `Canvas      : ${cw}×${ch} (${mpx}M px) · tuval DPR ${canvasDpr} (ekran ${dpr})`,
       `DOM / Katman: ${domCount} DOM · ~${promotedLayers} katman`,
       `Animasyon   : ${animCount} aktif`,
       `--app-h     : ${appH} (ekran ${window.innerWidth}×${window.innerHeight})`,

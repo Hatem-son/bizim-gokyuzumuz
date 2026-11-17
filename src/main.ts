@@ -1249,27 +1249,21 @@ async function bootstrap(): Promise<void> {
       onboard.show();
     });
 
-    // Geçici Teşhis satırı (Aşama 1.1) + sürüm numarasına 5 dokunuş (Aşama 1 bitiminde yalnızca 5 dokunuşla açılır)
+    // Teşhis paneli (yalnızca ayarlarda sürüm numarasına 5 kez dokunulunca açılır)
     const perfHud = $('#perf-hud');
     const verBtn = $('#s-ver');
-    const diagBtn = document.getElementById('s-diag');
     let verTaps: number[] = [];
 
     const ensureDiagnostics = async (): Promise<DiagnosticsController> => {
       if (diagCtrl) return diagCtrl;
       const { createDiagnosticsController } = await import('./ui/diagnostics');
       diagCtrl = createDiagnosticsController(perfHud, {
-        getVersion: () => verBtn.textContent || 'v1.2.6',
+        getVersion: () => verBtn.textContent || 'v1.2.7',
         getCanvas: () => document.getElementById('sky-canvas') as HTMLCanvasElement | null,
         getEngineStats: () => skyEngine?.getPerfStats() ?? null,
       });
       return diagCtrl;
     };
-
-    diagBtn?.addEventListener('click', () => {
-      closeSettingsFn?.();
-      void ensureDiagnostics().then((ctrl) => ctrl.open());
-    });
 
     verBtn.addEventListener('click', () => {
       const now = Date.now();
@@ -1350,6 +1344,7 @@ async function bootstrap(): Promise<void> {
     resetKeyboardRef?.();
     currentMe = who;
     store.set(STORAGE_KEYS.me, who);
+    applyTheme(who);
     mountAppShell();
     onboard.hide();
     refreshUiStatus();

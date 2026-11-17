@@ -1,4 +1,4 @@
-import { barsHtml, compressImage, formatDuration, peaksFromBytes } from '../lib/media';
+import { barsHtml, formatDuration } from '../lib/audioUi';
 import { otherWho, PEOPLE } from '../lib/people';
 import { formatUnlockAccusative, getServerNowMs, type StarPayloadData } from '../lib/stars';
 import { STORAGE_KEYS, store } from '../lib/storage';
@@ -402,6 +402,7 @@ export function initComposeSheet(opts: {
       const bytes = new Uint8Array(new ArrayBuffer(ab.byteLength));
       bytes.set(new Uint8Array(ab));
 
+      const { peaksFromBytes } = await import('../lib/media');
       const peaks = (await peaksFromBytes(bytes)) || session.lv.map((x) => +x.toFixed(2));
       att = {
         type: 'voice',
@@ -467,13 +468,17 @@ export function initComposeSheet(opts: {
     if (me) store.set(STORAGE_KEYS.draftPrefix + me, ta.value);
   });
 
-  attPhotoBtn.addEventListener('click', () => photoIn.click());
+  attPhotoBtn.addEventListener('click', () => {
+    void import('../lib/media');
+    photoIn.click();
+  });
   photoIn.addEventListener('change', async () => {
     const f = photoIn.files?.[0];
     photoIn.value = '';
     if (!f) return;
     hideErr();
     try {
+      const { compressImage } = await import('../lib/media');
       const compressed = await compressImage(f);
       att = { type: 'photo', once: false, ...compressed };
       renderAtt();
@@ -483,7 +488,10 @@ export function initComposeSheet(opts: {
     }
   });
 
-  attVoiceBtn.addEventListener('click', () => void startRec());
+  attVoiceBtn.addEventListener('click', () => {
+    void import('../lib/media');
+    void startRec();
+  });
 
   attTimeBtn.addEventListener('click', () => {
     if (schedOn) disableSchedule();

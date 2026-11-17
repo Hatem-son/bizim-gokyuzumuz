@@ -30,18 +30,15 @@
   <header class="top">
     <button class="countdown solid-glass" id="countdown" type="button" aria-label="9 Ocak'a geri sayım">
       <span class="cd-dial">
-        <svg class="cd-ring" viewBox="0 0 56 56" aria-hidden="true">
-          <circle class="track" cx="28" cy="28" r="22"/>
-          <g id="cd-flowers"></g>
-        </svg>
+        <img class="cd-ring raster-img" id="cd-ring" alt="" aria-hidden="true" draggable="false">
         <span class="cd-days"><b id="cd-days"></b><small>GÜN</small></span>
       </span>
       <span class="cd-text">
         <span class="cd-label" id="cd-label">9 Ocak'a</span>
         <span class="cd-time" id="cd-time"></span>
       </span>
-      <svg class="cd-sprig" id="cd-sprig" viewBox="0 0 64 64" aria-hidden="true"></svg>
-      <svg class="cd-sprig2" id="cd-sprig2" viewBox="0 0 64 64" aria-hidden="true"></svg>
+      <img class="cd-sprig raster-img" id="cd-sprig" alt="" aria-hidden="true" draggable="false">
+      <img class="cd-sprig2 raster-img" id="cd-sprig2" alt="" aria-hidden="true" draggable="false">
     </button>
     <button class="icon-btn solid-glass" id="menu" type="button" aria-label="Ayarlar">
       <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg>
@@ -246,16 +243,12 @@
           <span id="s-faceid-t">Face ID ile açılışı aç</span>
           <small id="s-faceid-s">PIN yanında Face ID / Touch ID kullan</small>
         </button>
-        <button class="set-item" id="s-diag" type="button">
-          <span>Teşhis</span>
-          <small>FPS, kare süresi, uzun görev ve ekran değerleri</small>
-        </button>
         <button class="set-item warn" id="s-out" type="button">
           <span>Çıkış yap</span>
           <small>Hesaptan ve gizli kelimeden çıkar, giriş ekranına döner</small>
         </button>
       </div>
-      <button class="set-ver" id="s-ver" type="button">Bizim Gökyüzümüz · v1.2.6</button>
+      <button class="set-ver" id="s-ver" type="button">Bizim Gökyüzümüz · v1.2.7</button>
     </div>
   </div>
   </template>
@@ -326,7 +319,7 @@
         <button class="link-btn" id="ob-wipe" type="button" hidden>Yerel doğrulamayı sıfırla ve yeniden kur</button>
         <button class="link-btn" id="back" type="button">Geri dön</button>
       </form>
-      <p class="ob-ver" id="ob-ver">v1.2.6</p>
+      <p class="ob-ver" id="ob-ver">v1.2.7</p>
     </div>
   </section>
 
