@@ -437,6 +437,7 @@ async function sendStarAction(params: {
       unlockAt: params.unlockAt,
     });
     animateStarArrival(star, params.kind === 'miss' ? 'streak' : 'rise', params.origin);
+    gardenCtrl?.triggerBowBounce();
     scheduleNextUnlockCheck();
 
     const other = PEOPLE[otherWho(currentMe)];

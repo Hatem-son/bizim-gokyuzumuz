@@ -186,3 +186,65 @@ export function zambakBudSvg(cx: number, cy: number, scale: number, angle = 0): 
   </g>`;
 }
 
+export interface PinkBowColors {
+  wing: string;
+  wingShade: string;
+  knot: string;
+  tail: string;
+  highlight: string;
+}
+
+export const PINK_BOW_COLORS: PinkBowColors = {
+  wing: '#f6b3c8',
+  wingShade: '#ec8fae',
+  knot: '#e57a9d',
+  tail: '#ec8fae',
+  highlight: '#ffd9e6',
+};
+
+export const PINK_BOW_PATHS = {
+  tails:
+    'M 17.2 15.2 C 13.4 18.8, 10.6 22.8, 11.1 25.8 C 11.7 26.8, 14.1 26.2, 15.8 24.1 C 17.1 22.5, 18.1 19.3, 19.1 16.4 Z M 22.8 15.2 C 26.6 18.8, 29.4 22.8, 28.9 25.8 C 28.3 26.8, 25.9 26.2, 24.2 24.1 C 22.9 22.5, 21.9 19.3, 20.9 16.4 Z',
+  leftWing: 'M 18 12.2 C 12.2 5.4, 3.8 4.4, 2.8 11.6 C 2.1 17.4, 8.2 20.8, 18 15.8 Z',
+  rightWing: 'M 22 12.2 C 27.8 5.4, 36.2 4.4, 37.2 11.6 C 37.9 17.4, 31.8 20.8, 22 15.8 Z',
+  innerShade:
+    'M 18 13.2 C 13.6 10.6, 8.4 11.2, 7.8 13.6 C 8 15.9, 13.4 17.1, 18 15.2 Z M 22 13.2 C 26.4 10.6, 31.6 11.2, 32.2 13.6 C 32 15.9, 26.6 17.1, 22 15.2 Z',
+  highlight: 'M 6.4 9.5 Q 10.6 7.5, 15.2 9.9 M 24.8 9.9 Q 29.4 7.5, 33.6 9.5',
+  knot: 'M 16.6 13.8 C 16.6 10.3, 23.4 10.3, 23.4 13.8 C 23.4 17.3, 16.6 17.3, 16.6 13.8 Z',
+} as const;
+
+export interface PinkBowProps {
+  size?: number;
+  rotate?: number;
+  x?: number;
+  y?: number;
+  id?: string;
+  className?: string;
+  colors?: Partial<PinkBowColors>;
+}
+
+/** Yeniden kullanılabilir sade pembe fiyonk SVG bileşeni (viewBox="0 0 40 28", maks. 6 path) */
+export function PinkBow(props: PinkBowProps = {}): string {
+  const size = props.size ?? 32;
+  const h = +(size * (28 / 40)).toFixed(2);
+  const c: PinkBowColors = { ...PINK_BOW_COLORS, ...props.colors };
+  const attrs = [
+    props.id ? `id="${props.id}"` : '',
+    props.className ? `class="${props.className}"` : '',
+    props.x !== undefined ? `x="${props.x}"` : '',
+    props.y !== undefined ? `y="${props.y}"` : '',
+    props.rotate ? `transform="rotate(${props.rotate})"` : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  return `<svg viewBox="0 0 40 28" width="${size}" height="${h}" aria-hidden="true" ${attrs}>
+    <path d="${PINK_BOW_PATHS.tails}" fill="${c.tail}"/>
+    <path d="${PINK_BOW_PATHS.leftWing}" fill="${c.wing}"/>
+    <path d="${PINK_BOW_PATHS.rightWing}" fill="${c.wing}"/>
+    <path d="${PINK_BOW_PATHS.innerShade}" fill="${c.wingShade}"/>
+    <path d="${PINK_BOW_PATHS.highlight}" fill="none" stroke="${c.highlight}" stroke-opacity=".7" stroke-width="1.15" stroke-linecap="round"/>
+    <path d="${PINK_BOW_PATHS.knot}" fill="${c.knot}"/>
+  </svg>`;
+}
+

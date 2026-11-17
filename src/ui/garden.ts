@@ -1,4 +1,4 @@
-import { HEART_PATH, lilyBloomSvg, raspberrySvg, whiteZambakSvg } from '../lib/illustrations';
+import { HEART_PATH, lilyBloomSvg, PinkBow, raspberrySvg, whiteZambakSvg } from '../lib/illustrations';
 import { journeyProgress, TARGET_DATE } from './countdown';
 import { $, $$ } from './dom';
 
@@ -197,6 +197,8 @@ function candleJarSvg(): string {
     <g transform="translate(74.4 135.2) scale(0.46)"><path class="jar-heart" d="${HEART_PATH}"/></g>
     <text x="96" y="147" text-anchor="middle" class="jar-label">H</text>
     ${raspberrySvg(48.5, 142, 0.28, '', false)}${raspberrySvg(111.5, 142, 0.28, '', false)}
+    <!-- Etiket bandının sağ üst köşesinde pembe fiyonk (≈ 1.15× bant yüksekliği genişlikte, -12° eğik) -->
+    <g transform="translate(105 121.5)"><g class="candle-bow" id="candle-bow" aria-hidden="true">${PinkBow({ size: 32, x: -16, y: -11.2 })}</g></g>
     <g id="wick-pos">
       <path d="M80 104 Q78.6 98 80.8 92.6" stroke="#2a1d1a" stroke-width="2" fill="none" stroke-linecap="round"/>
       <g class="candle-flame" id="candle-flame" aria-hidden="true">
@@ -225,6 +227,7 @@ export class GardenController {
   private waxTimer = 0;
   private wiggleTimer = 0;
   private flareTimer = 0;
+  private bowTimer = 0;
 
   constructor(opts: {
     onRaspberryTap: (raspEl: Element) => void;
@@ -303,6 +306,19 @@ export class GardenController {
     }, 900);
   }
 
+  public triggerBowBounce(): void {
+    if (this.reducedMotion) return;
+    const bow = document.getElementById('candle-bow');
+    if (!bow) return;
+    window.clearTimeout(this.bowTimer);
+    bow.classList.remove('bounce');
+    void bow.getBoundingClientRect();
+    bow.classList.add('bounce');
+    this.bowTimer = window.setTimeout(() => {
+      bow.classList.remove('bounce');
+    }, 420);
+  }
+
   public updateWax(): void {
     const pr = journeyProgress();
     const dy = +(26 * pr).toFixed(2);
@@ -369,6 +385,7 @@ export class GardenController {
     window.clearInterval(this.waxTimer);
     window.clearInterval(this.wiggleTimer);
     window.clearTimeout(this.flareTimer);
+    window.clearTimeout(this.bowTimer);
     this.waxTimer = 0;
     this.wiggleTimer = 0;
     document.removeEventListener('visibilitychange', this.onVisibilityChange);

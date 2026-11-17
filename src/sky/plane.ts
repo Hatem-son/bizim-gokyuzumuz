@@ -1,3 +1,4 @@
+import { PINK_BOW_COLORS, PINK_BOW_PATHS } from '../lib/illustrations';
 import { STORAGE_KEYS, store } from '../lib/storage';
 import type { Who } from '../types';
 
@@ -39,8 +40,11 @@ function pickPlaneText(who: Who): string {
 export class PlaneController {
   private readonly planeSprite = document.createElement('canvas');
   private readonly bannerCanvas = document.createElement('canvas');
+  private readonly bowSprite = document.createElement('canvas');
   private readonly planeTexScale = 4;
   private readonly bannerTexScale = 4;
+  private readonly bowW = 16;
+  private readonly bowH = 11.2;
 
   private active = false;
   private rev = false;
@@ -59,7 +63,37 @@ export class PlaneController {
 
   constructor() {
     this.bakePlaneSprite();
+    this.bakeBowSprite();
     void this.ensureFontsLoaded();
+  }
+
+  private bakeBowSprite(): void {
+    const s = this.planeTexScale;
+    this.bowSprite.width = 40 * s;
+    this.bowSprite.height = 28 * s;
+    const g = this.bowSprite.getContext('2d');
+    if (!g) return;
+    g.scale(s, s);
+    g.clearRect(0, 0, 40, 28);
+
+    const drawPath = (d: string, fill: string) => {
+      g.fillStyle = fill;
+      g.fill(new Path2D(d));
+    };
+    drawPath(PINK_BOW_PATHS.tails, PINK_BOW_COLORS.tail);
+    drawPath(PINK_BOW_PATHS.leftWing, PINK_BOW_COLORS.wing);
+    drawPath(PINK_BOW_PATHS.rightWing, PINK_BOW_COLORS.wing);
+    drawPath(PINK_BOW_PATHS.innerShade, PINK_BOW_COLORS.wingShade);
+
+    g.save();
+    g.strokeStyle = PINK_BOW_COLORS.highlight;
+    g.globalAlpha = 0.7;
+    g.lineWidth = 1.15;
+    g.lineCap = 'round';
+    g.stroke(new Path2D(PINK_BOW_PATHS.highlight));
+    g.restore();
+
+    drawPath(PINK_BOW_PATHS.knot, PINK_BOW_COLORS.knot);
   }
 
   private async ensureFontsLoaded(): Promise<void> {
@@ -384,6 +418,13 @@ export class PlaneController {
     ctx.moveTo(pts[0].x, pts[0].botY - 0.8);
     for (let i = 1; i <= steps; i++) ctx.lineTo(pts[i].x, pts[i].botY - 0.8);
     ctx.stroke();
+    ctx.restore();
+
+    // 2.5 Bayrağın ipe bağlandığı uçta küçük pembe fiyonk (tek parça hareket eder, bezle dalgalanmaz, bayrakla aynı alpha ile solar)
+    ctx.save();
+    ctx.translate(ropeEndX, y + this.bannerH / 2 + flagSwing);
+    ctx.rotate(this.rev ? -0.14 : 0.14);
+    ctx.drawImage(this.bowSprite, -this.bowW / 2, -this.bowH / 2, this.bowW, this.bowH);
     ctx.restore();
 
     // 3. Airplane + spinning propeller

@@ -1060,6 +1060,22 @@ body.awake .candle-flame.flare {
   stroke-width: 1.5;
 }
 
+.candle-bow {
+  transform-origin: 0 0;
+  transform: scale(1) rotate(-12deg);
+}
+
+.candle-bow.bounce {
+  will-change: transform;
+  animation: bowBounce 400ms var(--ease) both;
+}
+
+@keyframes bowBounce {
+  0% { transform: scale(1) rotate(-12deg); }
+  50% { transform: scale(1.12) rotate(-6deg); }
+  100% { transform: scale(1) rotate(-12deg); }
+}
+
 .rasp {
   cursor: pointer;
   pointer-events: auto;
@@ -2164,6 +2180,7 @@ body.deep-idle .candle-flame {
   .cd-sprig,
   .cd-sprig2,
   .candle-flame,
+  .candle-bow.bounce,
   .ls-orb,
   .ob h1,
   .ob > *,
