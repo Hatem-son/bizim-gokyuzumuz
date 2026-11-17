@@ -20,11 +20,11 @@ import { ART_CSS } from './art';
 import { LILY_CSS } from './lily';
 import { Wind } from './wind';
 import { core } from './core';
-import { initUI, $, $$, h, toast, stagger, sleep, clearPageStack } from './ui';
+import { initUI, $, $$, h, toast, stagger, sleep, clearPageStack, closeIsland, island } from './ui';
 import { state, PEOPLE, Star, Kind, setMe, toUiWho, toDbWho } from './state';
-import { buildHome, buildForeground } from './home';
+import { buildHome, buildForeground, showLive, sendHeart, partnerOnline } from './home';
 import { openCompose } from './compose';
-import { openBoard, renderDrawing, Stroke } from './draw';
+import { openBoard, openWatch, renderDrawing, Stroke, DrawLivePacket } from './draw';
 import { encodeDrawingBytes, decodeDrawingBytes } from '../lib/drawCodec';
 import { openStar, openArchive, openSettings, openCountdown } from './pages';
 import { runAuth, runLock, applyPersona } from './auth';
@@ -34,7 +34,8 @@ import { isSupabaseConfigured, getSessionFast, inferWhoFromEmail, signOutSupabas
 import { loadSavedKey, clearActiveKey } from '../lib/crypto';
 import { hasBiometric, BACKGROUND_LOCK_MS } from '../lib/lock';
 import { STORAGE_KEYS, store } from '../lib/storage';
-import { fetchAllStars, getServerNowMs } from '../lib/stars';
+import { fetchAllStars, getServerNowMs, subscribeStarsRealtime, markStarUnlockNotified } from '../lib/stars';
+import { PairRealtime } from '../lib/realtime';
 import { isStarHazel } from '../lib/hazel';
 import type { StarRecord } from '../types';
 
@@ -120,6 +121,30 @@ const plane = new Plane({
 });
 const tickPlane = schedulePlane(plane, () => engine.weather.kind !== 'thunder' && engine.weather.fog < 0.65);
 
+const pairRealtime = new PairRealtime({
+  onPartnerOnline: (online) => partnerOnline(online),
+  onPartnerActivity: (act) => {
+    if (!inHome) return;
+    if (act === 'idle') {
+      void closeIsland();
+      return;
+    }
+    if (act === 'drawing') {
+      showLive('drawing', { onWatch: () => openWatch() });
+      return;
+    }
+    showLive(act);
+  },
+  onPartnerHeart: () => {
+    if (!inHome) return;
+    partnerOnline(true);
+    sendHeart(true);
+    toast(`${PEOPLE[state.partner].name} sana bir kalp gönderdi · sen de mumuna dokun`, I.heartFill(14), 3400);
+  },
+});
+
+let stopStarsRealtime: (() => void) | null = null;
+
 Object.assign(core, {
   engine,
   fx,
@@ -138,6 +163,11 @@ Object.assign(core, {
     renderDrawing(cvEl, strokes as Stroke[], 1, upTo ?? Infinity),
   encodeDrawing: (strokes: unknown[]) => encodeDrawingBytes(strokes as Stroke[]),
   decodeDrawing: (bytes: Uint8Array<ArrayBuffer>) => decodeDrawingBytes(bytes),
+  sendDrawPacket: (pkt: DrawLivePacket) => void pairRealtime.sendDrawPacket(pkt),
+  onDrawPacket: (cb: (pkt: DrawLivePacket) => void) => pairRealtime.onDrawPacket(cb),
+  onSendHeart: () => pairRealtime.sendHeart(),
+  setMyLiveActivity: (act: 'writing' | 'sending' | 'drawing' | 'photo' | 'voice' | 'idle') =>
+    pairRealtime.setMyActivity(act),
 });
 core.scrollX = (SKY_W - W) / 2;
 applyPersona();
@@ -397,6 +427,48 @@ async function enterHome() {
     }, 300 + i * 90)
   );
   core.refreshHome();
+
+  // Özel Realtime kanalları ve yıldız INSERT/UPDATE aboneliği
+  pairRealtime.start(toDbWho(state.me));
+  stopStarsRealtime?.();
+  stopStarsRealtime = subscribeStarsRealtime(toDbWho(state.me), {
+    onInsert: (rec) => {
+      if (state.stars.some((s) => s.id === rec.id)) return;
+      const allRecs = [...(state.stars.map((s) => s.raw).filter(Boolean) as StarRecord[]), rec];
+      const stNew = mapRecordToStar(rec, allRecs, false);
+      state.stars.push(stNew);
+      if (stNew.from === state.partner) {
+        if (stNew.x < core.scrollX + 24 || stNew.x > core.scrollX + W - 24) {
+          core.scrollTo(stNew.x - W / 2, 550);
+        }
+        const screenSpot = { x: Math.max(36, Math.min(W - 36, stNew.x - core.scrollX)), y: stNew.y };
+        engine.busy(2600);
+        fx.incoming(screenSpot, {
+          now: performance.now(),
+          tint: PEOPLE[state.partner].color,
+          onSettle: () => {
+            stNew.visible = true;
+            stNew.arrivedAt = performance.now();
+          },
+        });
+        setTimeout(() => {
+          showLive('left', { star: stNew });
+          core.refreshHome();
+        }, 1250);
+      } else {
+        stNew.visible = true;
+        core.refreshHome();
+      }
+    },
+    onUpdate: (rec) => {
+      const ex = state.stars.find((s) => s.id === rec.id);
+      if (ex) {
+        ex.opened = Boolean(rec.openedAt);
+        ex.raw = rec;
+        core.refreshHome();
+      }
+    },
+  });
 }
 
 function drawLily(cnum: HTMLElement) {
@@ -470,12 +542,37 @@ async function boot(mode?: 'auth' | 'lock' | 'home') {
 }
 
 core.logout = async () => {
+  pairRealtime.stop();
+  stopStarsRealtime?.();
+  stopStarsRealtime = null;
   await signOutSupabase();
   await clearActiveKey();
   store.del(STORAGE_KEYS.me);
   state.stars = [];
   await boot('auth');
 };
+
+// Zamanlı yıldızların kilit açılma anı kontrolü (sekme açıkken)
+window.setInterval(() => {
+  if (document.hidden || !inHome) return;
+  const now = getServerNowMs();
+  for (const s of state.stars) {
+    if (s.from === state.partner && s.unlockAt && s.unlockAt <= now && s.raw && !s.raw.unlockNotified) {
+      void markStarUnlockNotified(s.raw);
+      const allRecs = state.stars.map((x) => x.raw).filter(Boolean) as StarRecord[];
+      s.hazel = s.raw.from === 'beto' && isStarHazel(s.raw, allRecs);
+      island({
+        avatar: I.starFill(18),
+        color: PEOPLE[state.partner].color,
+        title: `${PEOPLE[state.partner].of} yıldızı açıldı`,
+        sub: 'Şimdi okuyabilirsin',
+        action: { label: 'Aç', onClick: () => void openStar(s) },
+        ms: 5200,
+      });
+      core.refreshHome();
+    }
+  }
+}, 15_000);
 
 let hiddenAt = 0;
 document.addEventListener('visibilitychange', () => {
