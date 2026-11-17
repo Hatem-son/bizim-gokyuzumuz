@@ -1,3 +1,4 @@
+import { MOON_TINT } from '../config';
 import { isStarHazel } from '../lib/hazel';
 import type { StarRecord, Who } from '../types';
 import { PlaneController } from './plane';
@@ -442,7 +443,11 @@ export class SkyEngine {
   }
 
   public setWho(who: Who): void {
+    const changed = this.me !== who;
     this.me = who;
+    if (changed) {
+      this.bakeMoonSprite();
+    }
   }
 
   public setStarsData(stars: StarRecord[], links: [StarRecord, StarRecord][], allStarsOverride?: StarRecord[]): void {
@@ -1566,17 +1571,31 @@ export class SkyEngine {
     const c = size / 2;
     const r = 36; // ≈ 36px (180px alanda @2x → Güneşle uyumlu, belirgin kompakt boyut)
     const p = this.moonInfo.phase;
+    const tint = MOON_TINT[this.me];
+
+    // Sadece Beto'nun hesabında: ay çapının ≈1.8 katı yarıçapta çok hafif statik radyal halka (filtre/blur yok)
+    if (tint.hazelRingColor && tint.hazelRingAlpha > 0) {
+      const ringR = r * 2 * 1.8;
+      const hazelHalo = g.createRadialGradient(c, c, 0, c, c, ringR);
+      hazelHalo.addColorStop(0, `${tint.hazelRingColor} ${tint.hazelRingAlpha})`);
+      hazelHalo.addColorStop(0.45, `${tint.hazelRingColor} ${(tint.hazelRingAlpha * 0.42).toFixed(3)})`);
+      hazelHalo.addColorStop(1, `${tint.hazelRingColor} 0)`);
+      g.fillStyle = hazelHalo;
+      g.beginPath();
+      g.arc(c, c, ringR, 0, Math.PI * 2);
+      g.fill();
+    }
 
     // Parlak tarafın çevresinde gerçek ay ışığı parıltısı (gölgeli tarafta hale yok, blur/filtre yok)
     const dir = p < 0.5 ? 1 : -1;
     const illumFactor = Math.max(0.18, Math.abs(Math.sin(Math.PI * p)));
     const hx = c + dir * r * 0.32 * (1 - illumFactor * 0.6);
     const halo = g.createRadialGradient(hx, c, r * 0.15, hx, c, 156);
-    halo.addColorStop(0, 'rgba(255, 255, 255, 0.72)');
-    halo.addColorStop(0.16, 'rgba(232, 244, 255, 0.44)');
-    halo.addColorStop(0.38, 'rgba(204, 228, 255, 0.18)');
-    halo.addColorStop(0.68, 'rgba(180, 212, 255, 0.05)');
-    halo.addColorStop(1, 'rgba(170, 205, 255, 0)');
+    halo.addColorStop(0, tint.haloStops[0]);
+    halo.addColorStop(0.16, tint.haloStops[1]);
+    halo.addColorStop(0.38, tint.haloStops[2]);
+    halo.addColorStop(0.68, tint.haloStops[3]);
+    halo.addColorStop(1, tint.haloStops[4]);
     g.fillStyle = halo;
     g.fillRect(0, 0, size, size);
 
@@ -1599,14 +1618,14 @@ export class SkyEngine {
     g.clip(litPath);
 
     const moonGrad = g.createRadialGradient(c + dir * 7, c - 7, 2, c, c, r * 1.25);
-    moonGrad.addColorStop(0, '#ffffff');
-    moonGrad.addColorStop(0.65, '#f6f9ff');
-    moonGrad.addColorStop(1, '#e6effd');
+    moonGrad.addColorStop(0, tint.surfaceStops[0]);
+    moonGrad.addColorStop(0.6, tint.surfaceStops[1]);
+    moonGrad.addColorStop(1, tint.surfaceStops[2]);
     g.fillStyle = moonGrad;
     g.fillRect(c - r - 2, c - r - 2, r * 2 + 4, r * 2 + 4);
 
     // Çok hafif ay yüzeyi dokusu (yüzeyi karartmadan doğallık verir)
-    g.fillStyle = 'rgba(172, 194, 228, 0.11)';
+    g.fillStyle = tint.craterColor;
     const craters: [number, number, number][] = [
       [c - 8, c - 8, 6.2],
       [c + 10, c + 4, 6.8],
@@ -1621,9 +1640,9 @@ export class SkyEngine {
     }
     g.restore();
 
-    // Aydınlık yay üzerinde net gümüş-beyaz parıltı çizgisi
+    // Aydınlık yay üzerinde net parıltı çizgisi
     g.save();
-    g.strokeStyle = 'rgba(255, 255, 255, 0.96)';
+    g.strokeStyle = tint.rimStroke;
     g.lineWidth = 2;
     g.beginPath();
     if (p < 0.5) {
