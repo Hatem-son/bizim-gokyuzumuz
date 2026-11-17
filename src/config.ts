@@ -9,3 +9,6 @@ export const USER_EMAILS: Record<Who, string> = {
   beto: 'beto@gokyuzu.app',
 };
 
+/** Her ~HAZEL_EVERY yıldızdan biri ela yıldız olarak doğar */
+export const HAZEL_EVERY = 12;
+

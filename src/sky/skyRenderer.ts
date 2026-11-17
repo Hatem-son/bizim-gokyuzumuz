@@ -1,3 +1,4 @@
+import { isStarHazel } from '../lib/hazel';
 import type { StarRecord, Who } from '../types';
 import { PlaneController } from './plane';
 import {
@@ -12,7 +13,7 @@ import { buildTravelMonths, drawMonthCardOnCanvas, type TravelMonthItem } from '
 
 export const PANO = 4;
 
-export type SkyColorKey = 'blue' | 'pink' | 'gold';
+export type SkyColorKey = 'blue' | 'pink' | 'gold' | 'hazel';
 
 interface DustParticle {
   x: number;
@@ -109,6 +110,7 @@ const COLOR_HEX: Record<SkyColorKey, { core: string; mid: string; glow: string; 
   blue: { core: '#eef5ff', mid: '#a8d4ff', glow: 'rgba(84,150,255,', solid: '#5496ff' },
   pink: { core: '#fff2f8', mid: '#ffb3da', glow: 'rgba(255,92,172,', solid: '#ff5cac' },
   gold: { core: '#fff7e0', mid: '#ffd56e', glow: 'rgba(255,196,92,', solid: '#ffc45c' },
+  hazel: { core: '#f1c97a', mid: '#7a8a3a', glow: 'rgba(176,141,63,', solid: '#b08d3f' },
 };
 
 export interface SkyEngineOptions {
@@ -151,15 +153,18 @@ export class SkyEngine {
   private readonly sunLowCanvas = document.createElement('canvas');
   private readonly dustSprite = document.createElement('canvas');
   private readonly glintSprite = document.createElement('canvas');
+  private readonly hazelRaySprite = document.createElement('canvas');
   private readonly starHalos: Record<SkyColorKey, HTMLCanvasElement> = {
     blue: document.createElement('canvas'),
     pink: document.createElement('canvas'),
     gold: document.createElement('canvas'),
+    hazel: document.createElement('canvas'),
   };
   private readonly starCores: Record<SkyColorKey, HTMLCanvasElement> = {
     blue: document.createElement('canvas'),
     pink: document.createElement('canvas'),
     gold: document.createElement('canvas'),
+    hazel: document.createElement('canvas'),
   };
   private lastBakedSkyKey = '';
   private lastCssColsKey = '';
@@ -207,6 +212,7 @@ export class SkyEngine {
   private stars: StarRecord[] = [];
   private links: [StarRecord, StarRecord][] = [];
   private pairedIds = new Set<string>();
+  private hazelStarIds = new Set<string>();
   private hiddenStarIds = new Set<string>();
   private bornAt = new Map<string, number>();
   private shakeUntil = new Map<string, number>();
@@ -439,16 +445,21 @@ export class SkyEngine {
     this.me = who;
   }
 
-  public setStarsData(stars: StarRecord[], links: [StarRecord, StarRecord][]): void {
+  public setStarsData(stars: StarRecord[], links: [StarRecord, StarRecord][], allStarsOverride?: StarRecord[]): void {
     this.stars = stars;
     this.links = links;
     this.pairedIds = new Set<string>();
+    this.hazelStarIds = new Set<string>();
     this.starMetaCache.clear();
+    const allForOrder = allStarsOverride ?? this.opts.getAllStars?.() ?? stars;
     for (const [a, b] of links) {
       this.pairedIds.add(a.id);
       this.pairedIds.add(b.id);
     }
     for (const s of stars) {
+      if (isStarHazel(s, allForOrder)) {
+        this.hazelStarIds.add(s.id);
+      }
       let hash = 0;
       for (let i = 0; i < s.id.length; i++) hash = (hash * 31 + s.id.charCodeAt(i)) | 0;
       this.starMetaCache.set(s.id, {
@@ -1261,8 +1272,40 @@ export class SkyEngine {
       }
     }
 
+    // 2b. Ela yıldız için ince 4 kollu sıcak ışık (opaklık .5, sıfır filtre)
+    {
+      const hrs = 64;
+      this.hazelRaySprite.width = hrs;
+      this.hazelRaySprite.height = hrs;
+      const hrg = this.hazelRaySprite.getContext('2d');
+      if (hrg) {
+        const m = hrs / 2;
+        hrg.save();
+        hrg.translate(m, m);
+        for (let r = 0; r < 2; r++) {
+          const len = r === 0 ? 25 : 19;
+          const sg = hrg.createLinearGradient(-len, 0, len, 0);
+          sg.addColorStop(0, 'rgba(241,201,122,0)');
+          sg.addColorStop(0.32, 'rgba(241,201,122,0.62)');
+          sg.addColorStop(0.5, 'rgba(255,246,216,1)');
+          sg.addColorStop(0.68, 'rgba(241,201,122,0.62)');
+          sg.addColorStop(1, 'rgba(241,201,122,0)');
+          hrg.fillStyle = sg;
+          hrg.beginPath();
+          hrg.moveTo(-len, 0);
+          hrg.lineTo(0, -1.05);
+          hrg.lineTo(len, 0);
+          hrg.lineTo(0, 1.05);
+          hrg.closePath();
+          hrg.fill();
+          hrg.rotate(Math.PI / 2);
+        }
+        hrg.restore();
+      }
+    }
+
     // 3. Separate soft radial halo + crisp pinpoint core per star color (no constant crossbars)
-    const keys: SkyColorKey[] = ['blue', 'pink', 'gold'];
+    const keys: SkyColorKey[] = ['blue', 'pink', 'gold', 'hazel'];
     for (const key of keys) {
       const pal = COLOR_HEX[key];
 
@@ -1275,11 +1318,19 @@ export class SkyEngine {
       if (hg) {
         const mid = hs / 2;
         const halo = hg.createRadialGradient(mid, mid, 0, mid, mid, 58);
-        halo.addColorStop(0, `${pal.glow}0.62)`);
-        halo.addColorStop(0.22, `${pal.glow}0.32)`);
-        halo.addColorStop(0.5, `${pal.glow}0.10)`);
-        halo.addColorStop(0.8, `${pal.glow}0.02)`);
-        halo.addColorStop(1, `${pal.glow}0)`);
+        if (key === 'hazel') {
+          halo.addColorStop(0, 'rgba(241,201,122,0.55)');
+          halo.addColorStop(0.24, 'rgba(176,141,63,0.30)');
+          halo.addColorStop(0.52, 'rgba(122,138,58,0.12)');
+          halo.addColorStop(0.8, 'rgba(91,61,30,0.03)');
+          halo.addColorStop(1, 'rgba(91,61,30,0)');
+        } else {
+          halo.addColorStop(0, `${pal.glow}0.62)`);
+          halo.addColorStop(0.22, `${pal.glow}0.32)`);
+          halo.addColorStop(0.5, `${pal.glow}0.10)`);
+          halo.addColorStop(0.8, `${pal.glow}0.02)`);
+          halo.addColorStop(1, `${pal.glow}0)`);
+        }
         hg.fillStyle = halo;
         hg.fillRect(0, 0, hs, hs);
       }
@@ -1293,11 +1344,20 @@ export class SkyEngine {
       if (cg) {
         const mid = cs / 2;
         const core = cg.createRadialGradient(mid, mid, 0, mid, mid, 14);
-        core.addColorStop(0, '#ffffff');
-        core.addColorStop(0.26, '#ffffff');
-        core.addColorStop(0.48, pal.core);
-        core.addColorStop(0.75, pal.mid);
-        core.addColorStop(1, `${pal.glow}0)`);
+        if (key === 'hazel') {
+          core.addColorStop(0, '#f1c97a');
+          core.addColorStop(0.24, '#f1c97a');
+          core.addColorStop(0.42, '#b08d3f');
+          core.addColorStop(0.64, '#7a8a3a');
+          core.addColorStop(0.84, '#5b3d1e');
+          core.addColorStop(1, 'rgba(91,61,30,0)');
+        } else {
+          core.addColorStop(0, '#ffffff');
+          core.addColorStop(0.26, '#ffffff');
+          core.addColorStop(0.48, pal.core);
+          core.addColorStop(0.75, pal.mid);
+          core.addColorStop(1, `${pal.glow}0)`);
+        }
         cg.fillStyle = core;
         cg.beginPath();
         cg.arc(mid, mid, 14, 0, Math.PI * 2);
@@ -1791,11 +1851,18 @@ export class SkyEngine {
 
       const mine = s.from === this.me;
       const isPaired = this.pairedIds.has(s.id);
-      const colorKey: SkyColorKey = isPaired ? 'gold' : s.from === 'hamham' ? 'blue' : 'pink';
-
       const meta = this.starMetaCache.get(s.id);
       const phase = meta?.phase ?? 0;
       const twSpeed = meta?.twSpeed ?? 1.8;
+      const isLocked = Boolean(meta && meta.unlockAtMs > nowMs);
+      const colorKey: SkyColorKey =
+        !isLocked && this.hazelStarIds.has(s.id)
+          ? 'hazel'
+          : isPaired
+            ? 'gold'
+            : s.from === 'hamham'
+              ? 'blue'
+              : 'pink';
 
       let bornScale = 1;
       const bAt = this.bornAt.get(s.id);
@@ -1819,7 +1886,6 @@ export class SkyEngine {
         }
       }
 
-      const isLocked = Boolean(meta && meta.unlockAtMs > nowMs);
       let wakeWave = 0;
       if (!isLocked) {
         const wAt = this.unlockWakeAt.get(s.id);
@@ -1953,6 +2019,12 @@ export class SkyEngine {
         const coreSize = 18 * b.scale * (0.9 + 0.14 * b.scint);
         ctx.globalAlpha = (0.78 + 0.22 * b.scint) * b.dayDim;
         ctx.drawImage(this.starCores[b.colorKey], b.x - coreSize / 2, b.y - coreSize / 2, coreSize, coreSize);
+
+        if (b.colorKey === 'hazel') {
+          const rSize = 30 * b.scale * (0.9 + 0.12 * b.scint);
+          ctx.globalAlpha = 0.5 * (0.78 + 0.22 * b.scint) * b.dayDim;
+          ctx.drawImage(this.hazelRaySprite, b.x - rSize / 2, b.y - rSize / 2, rSize, rSize);
+        }
 
         if (b.glintWave > 0) {
           const gSize = 48 * b.scale * (0.35 + 0.65 * b.glintWave);

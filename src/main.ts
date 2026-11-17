@@ -11,6 +11,7 @@ import {
   isPlatformBiometricSupported,
 } from './lib/lock';
 import { otherWho, PEOPLE } from './lib/people';
+import { isStarHazel } from './lib/hazel';
 import {
   getNotificationPermission,
   isPushSupported,
@@ -114,6 +115,27 @@ function scheduleNextUnlockCheck(): void {
   }, delay);
 }
 
+const shownHazelPulseIds = new Set<string>();
+
+function spawnHazelPulse(x: number, y: number): void {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'hazel-ring-fx');
+  svg.setAttribute('viewBox', '0 0 48 48');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.style.left = `${Math.round(x)}px`;
+  svg.style.top = `${Math.round(y)}px`;
+  const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  circle.setAttribute('cx', '24');
+  circle.setAttribute('cy', '24');
+  circle.setAttribute('r', '10');
+  circle.setAttribute('fill', 'none');
+  circle.setAttribute('stroke', '#f1c97a');
+  circle.setAttribute('stroke-width', '1.2');
+  svg.appendChild(circle);
+  document.body.appendChild(svg);
+  window.setTimeout(() => svg.remove(), 650);
+}
+
 async function checkAndCelebrateUnlocks(isStartup: boolean): Promise<void> {
   if (!currentMe) {
     scheduleNextUnlockCheck();
@@ -140,6 +162,10 @@ async function checkAndCelebrateUnlocks(isStartup: boolean): Promise<void> {
         skyEngine.markStarUnlockWake(st.id);
         const pos = skyEngine.getStarScreenPos(st);
         skyEngine.spawnBurst(pos.x, pos.y, 'gold', true);
+        if (isStarHazel(st, stars) && !shownHazelPulseIds.has(st.id)) {
+          shownHazelPulseIds.add(st.id);
+          spawnHazelPulse(pos.x, pos.y);
+        }
       }
       syncSkyStars(st.id, !isStartup);
     }
@@ -242,7 +268,7 @@ function syncSkyStars(freshStarId?: string, announceMilestones = false): boolean
     pairedIds.add(a.id);
     pairedIds.add(b.id);
   }
-  skyEngine?.setStarsData(currentMonthStars, links);
+  skyEngine?.setStarsData(currentMonthStars, links, stars);
 
   const hint = $('#empty-hint');
   const hasAny = stars.length > 0;
@@ -362,6 +388,11 @@ function animateStarArrival(star: StarRecord, how: 'rise' | 'streak', origin?: {
       skyEngine.spawnBurst(target.x, target.y, color, true);
       skyEngine.triggerFlameFlare();
       gardenCtrl?.triggerFlameFlare();
+      const locked = Boolean(star.unlockAt && Date.parse(star.unlockAt) > getServerNowMs());
+      if (!locked && isStarHazel(star, stars) && !shownHazelPulseIds.has(star.id)) {
+        shownHazelPulseIds.add(star.id);
+        spawnHazelPulse(target.x, target.y);
+      }
       if (syncSkyStars(star.id, true)) {
         window.setTimeout(
           () => showToast('Aynı saatte düşündünüz', 'İki yıldız da sarıya döndü', 'gold', '♡'),

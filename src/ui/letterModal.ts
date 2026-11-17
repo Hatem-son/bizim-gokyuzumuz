@@ -1,3 +1,4 @@
+import { isStarHazel, pickHazelLine } from '../lib/hazel';
 import { HEART_PATH, lilyBloomSvg, raspberrySvg } from '../lib/illustrations';
 import { barsHtml, formatDuration } from '../lib/media';
 import { PEOPLE } from '../lib/people';
@@ -104,7 +105,8 @@ export function initLetterModal(opts: {
     data: StarPayloadData,
     url: string | null,
     allStars: StarRecord[],
-    isPaired: boolean
+    isPaired: boolean,
+    isLocked: boolean
   ): void {
     const orderNum = allStars.filter((x) => x.from === s.from && x.createdAt <= s.createdAt).length;
     $('#l-medal').textContent = PEOPLE[s.from].sign;
@@ -162,6 +164,17 @@ export function initLetterModal(opts: {
       .join('');
     lt.scrollTop = 0;
 
+    const hazelEl = document.getElementById('l-hazel');
+    if (hazelEl) {
+      if (!isLocked && isStarHazel(s, allStars)) {
+        hazelEl.textContent = pickHazelLine(s.from);
+        hazelEl.hidden = false;
+      } else {
+        hazelEl.textContent = '';
+        hazelEl.hidden = true;
+      }
+    }
+
     $('#l-date').textContent = fmtDateTime(s.createdAt);
     if (s.kind === 'voice' && url) {
       wirePlayer(url, data.dur || 0);
@@ -189,6 +202,7 @@ export function initLetterModal(opts: {
 
     let data: StarPayloadData = { text: '' };
     let url: string | null = null;
+    let isLocked = Boolean(star.unlockAt && Date.parse(star.unlockAt) > Date.now());
     try {
       data = await decryptStarPayload(star, me);
       if (star.hasMedia && !star.spent) {
@@ -199,6 +213,7 @@ export function initLetterModal(opts: {
       }
     } catch (err) {
       const locked = err instanceof Error && err.message === 'LOCKED';
+      if (locked) isLocked = true;
       data = {
         text: locked
           ? 'Bu yıldız henüz kilitli. Zamanı gelince açılacak.'
@@ -209,7 +224,7 @@ export function initLetterModal(opts: {
     current = { star, url, me };
     const firstTime = !star.openedAt;
 
-    fillLetter(star, data, url, allStars, isPaired);
+    fillLetter(star, data, url, allStars, isPaired, isLocked);
     card.getAnimations().forEach((a) => a.cancel());
     modal.classList.add('open');
     setInert(modal, false);
@@ -298,7 +313,7 @@ export function initLetterModal(opts: {
         ],
         { duration: 500, easing: 'cubic-bezier(.5,0,.75,0)', fill: 'forwards' }
       );
-      fillLetter(star, data, url, allStars, isPaired);
+      fillLetter(star, data, url, allStars, isPaired, isLocked);
     } else {
       const lr = card.getBoundingClientRect();
       card.style.transformOrigin = '50% 50%';

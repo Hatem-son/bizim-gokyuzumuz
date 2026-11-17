@@ -11,6 +11,7 @@ export const STORAGE_KEYS = {
   hint: 'gokyuzu.hint.v4',
   greet: 'gokyuzu.greet.v4',
   plane: 'gokyuzu.plane.v4',
+  hazel: 'gokyuzu.hazel.v4',
   draftPrefix: 'gokyuzu.draft.v4.',
   starsLocal: 'gokyuzu.stars.v4',
   pushPrompt: 'gokyuzu.pushPrompt.v4',
