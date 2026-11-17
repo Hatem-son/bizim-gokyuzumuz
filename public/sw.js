@@ -88,6 +88,7 @@ self.addEventListener('push', (event) => {
     title: 'Bizim Gökyüzümüz',
     body: 'Gökyüzüne yeni bir yıldız düştü',
     url: '/',
+    starId: '',
   };
   try {
     if (event.data) {
@@ -100,26 +101,41 @@ self.addEventListener('push', (event) => {
     }
   }
 
-  event.waitUntil(
+  const targetUrl =
+    payload.starId && (!payload.url || payload.url === '/')
+      ? `/?star=${encodeURIComponent(payload.starId)}`
+      : payload.url || '/';
+
+  const work = [
     self.registration.showNotification(payload.title, {
       body: payload.body,
       icon: '/icons/icon-192.png',
       badge: '/icons/icon-192.png',
       tag: 'bizim-gokyuzumuz-star',
       renotify: true,
-      data: { url: payload.url || '/' },
-    })
-  );
+      data: { url: targetUrl, starId: payload.starId || '' },
+    }),
+  ];
+
+  if (typeof self.navigator !== 'undefined' && typeof self.navigator.setAppBadge === 'function') {
+    work.push(Promise.resolve(self.navigator.setAppBadge()).catch(() => undefined));
+  }
+
+  event.waitUntil(Promise.all(work));
 });
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = (event.notification.data && event.notification.data.url) || '/';
+  const data = event.notification.data || {};
+  const targetUrl = data.url || '/';
+  const starId = data.starId || '';
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clients) => {
       for (const client of clients) {
         if ('focus' in client) {
-          return client.focus();
+          await client.focus();
+          client.postMessage({ type: 'notification-open', url: targetUrl, starId });
+          return;
         }
       }
       if (self.clients.openWindow) {

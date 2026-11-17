@@ -13,24 +13,34 @@ import {
 import { otherWho, PEOPLE } from './lib/people';
 import { isStarHazel } from './lib/hazel';
 import {
+  countQueuedStars,
+  enqueueEncryptedStar,
+  listQueuedStars,
+  removeQueuedStar,
+} from './lib/outbox';
+import {
   getNotificationPermission,
   isPushSupported,
   isVapidConfigured,
   subscribePushNotifications,
 } from './lib/push';
-import { registerServiceWorker } from './lib/pwa';
+import { isStandalonePwa, registerServiceWorker } from './lib/pwa';
 import {
-  createEncryptedStar,
+  clearStarsMetadataCache,
   fetchAllStars,
   formatTimeRemaining,
   formatUnlockAccusative,
   getServerNowMs,
+  isOfflineLikeError,
   isStarLocked,
+  lastStarsFetchError,
   markStarUnlockNotified,
+  OfflineNetworkError,
   placeStarPosition,
+  prepareEncryptedStar,
   saveLocalStarsSnapshot,
   subscribeStarsRealtime,
-  syncServerClock,
+  uploadPreparedStar,
   type StarPayloadData,
 } from './lib/stars';
 import { STORAGE_KEYS, store } from './lib/storage';
@@ -55,6 +65,7 @@ import { GardenController } from './ui/garden';
 import { initLetterModal, type LetterController } from './ui/letterModal';
 import { initLockScreen } from './ui/lockScreen';
 import { initOnboard } from './ui/onboard';
+import { attachSheetSwipe } from './ui/sheetSwipe';
 import { showToast } from './ui/toast';
 import {
   CandleWhiteHeartController,
@@ -87,8 +98,76 @@ let viewMonthK = monthIdx(new Date());
 let links: [StarRecord, StarRecord][] = [];
 let pairedIds = new Set<string>();
 let unsubRealtime: (() => void) | null = null;
+let detachSettingsSwipe: (() => void) | null = null;
 let unlockCheckTimer = 0;
 let pushNudgeTimer = 0;
+let a2hsTimer = 0;
+let flushingOutbox = false;
+let pendingOpenStarId: string | null = new URLSearchParams(window.location.search).get('star');
+
+function updateAppBadge(): void {
+  const nav = navigator as Navigator & {
+    setAppBadge?: (contents?: number) => Promise<void>;
+    clearAppBadge?: () => Promise<void>;
+  };
+  if (typeof nav.setAppBadge !== 'function') return;
+  if (!currentMe) {
+    void nav.clearAppBadge?.().catch(() => undefined);
+    return;
+  }
+  const unread = stars.filter((s) => s.from !== currentMe && !s.openedAt && !isStarLocked(s)).length;
+  if (unread > 0) {
+    void nav.setAppBadge(unread).catch(() => undefined);
+  } else {
+    void nav.clearAppBadge?.().catch(() => undefined);
+  }
+}
+
+async function updateNetworkBanner(syncing = false): Promise<void> {
+  const banner = document.getElementById('net-banner');
+  const txt = document.getElementById('net-banner-text');
+  const retry = document.getElementById('net-retry') as HTMLButtonElement | null;
+  if (!banner || !txt || !retry) return;
+
+  const queued = currentMe ? await countQueuedStars(currentMe) : 0;
+  const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+  const fetchErr = isSupabaseConfigured && lastStarsFetchError();
+
+  banner.classList.toggle('syncing', syncing && !offline);
+  if (syncing && !offline && queued > 0) {
+    txt.textContent = `Bağlantı geldi · ${queued} yıldız bırakılıyor…`;
+    retry.hidden = true;
+    banner.hidden = false;
+    return;
+  }
+
+  if (offline) {
+    txt.textContent =
+      queued > 0
+        ? `Çevrimdışı · ${queued} yıldız bağlantı gelince bırakılacak`
+        : 'Çevrimdışı · Yalnızca kayıtlı gökyüzü görünüyor';
+    retry.hidden = true;
+    banner.hidden = false;
+    return;
+  }
+
+  if (queued > 0) {
+    txt.textContent = `${queued} yıldız bağlantı bekliyor`;
+    retry.hidden = false;
+    banner.hidden = false;
+    return;
+  }
+
+  if (fetchErr && appMounted) {
+    txt.textContent = 'Gökyüzü güncellenemedi';
+    retry.hidden = false;
+    banner.hidden = false;
+    return;
+  }
+
+  banner.hidden = true;
+  retry.hidden = true;
+}
 
 function clearEnterTimers(): void {
   for (const id of enterTimers) window.clearTimeout(id);
@@ -285,6 +364,7 @@ function syncSkyStars(freshStarId?: string, announceMilestones = false): boolean
   hint.textContent = hasAny ? 'Bu ayın gökyüzü seni bekliyor' : 'Gökyüzümüz ilk yıldızı bekliyor';
 
   const milestoneRes = gardenCtrl?.syncMilestones(stars.length);
+  updateAppBadge();
   if (milestoneRes?.unlocked && announceMilestones) {
     const count = milestoneRes.unlocked;
     window.setTimeout(() => showToast('Bir lilyum daha açtı', `${count} yıldız oldu`, 'gold', '✿'), 3600);
@@ -571,21 +651,12 @@ async function sendStarAction(params: {
     existing: viewStars(),
   });
 
-  try {
-    const star = await createEncryptedStar({
-      from: currentMe,
-      kind: params.kind,
-      data: params.data,
-      pos,
-      mediaBytes: params.mediaBytes,
-      once: params.once,
-      unlockAt: params.unlockAt,
-    });
+  const handleSuccess = (star: StarRecord) => {
     animateStarArrival(star, params.kind === 'miss' ? 'streak' : 'rise', params.origin);
     gardenCtrl?.triggerBowBounce();
     scheduleNextUnlockCheck();
 
-    const other = PEOPLE[otherWho(currentMe)];
+    const other = PEOPLE[otherWho(currentMe!)];
     const msg = params.unlockAt
       ? ['Yıldızın kilitlendi', `${other.name}, ${formatUnlockAccusative(params.unlockAt, 'te')} açabilecek`]
       : params.kind === 'miss'
@@ -610,6 +681,50 @@ async function sendStarAction(params: {
         ),
       1300
     );
+  };
+
+  try {
+    const env = await prepareEncryptedStar({
+      from: currentMe,
+      kind: params.kind,
+      data: params.data,
+      pos,
+      mediaBytes: params.mediaBytes,
+      once: params.once,
+      unlockAt: params.unlockAt,
+    });
+
+    if (isSupabaseConfigured && typeof navigator !== 'undefined' && navigator.onLine === false) {
+      await enqueueEncryptedStar(env);
+      gardenCtrl?.triggerBowBounce();
+      void updateNetworkBanner();
+      showToast(
+        'Bağlantı gelince bırakılacak',
+        'Yıldızın cihazda şifreli olarak sırada bekliyor',
+        PEOPLE[currentMe].color,
+        PEOPLE[currentMe].sign
+      );
+      return;
+    }
+
+    try {
+      const star = await uploadPreparedStar(env);
+      handleSuccess(star);
+    } catch (uploadErr) {
+      if (isSupabaseConfigured && (uploadErr instanceof OfflineNetworkError || isOfflineLikeError(uploadErr))) {
+        await enqueueEncryptedStar(env);
+        gardenCtrl?.triggerBowBounce();
+        void updateNetworkBanner();
+        showToast(
+          'Bağlantı gelince bırakılacak',
+          'İnternet gelince yıldızın otomatik gönderilecek',
+          PEOPLE[currentMe].color,
+          PEOPLE[currentMe].sign
+        );
+        return;
+      }
+      throw uploadErr;
+    }
   } catch (err) {
     showToast(
       'Gönderilemedi',
@@ -617,6 +732,65 @@ async function sendStarAction(params: {
       PEOPLE[currentMe].color,
       PEOPLE[currentMe].sign
     );
+  }
+}
+
+async function flushOutbox(): Promise<void> {
+  if (flushingOutbox || !appMounted || !currentMe || !isSupabaseConfigured) {
+    await updateNetworkBanner();
+    return;
+  }
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    await updateNetworkBanner();
+    return;
+  }
+
+  flushingOutbox = true;
+  let sentCount = 0;
+
+  try {
+    const pending = await listQueuedStars(currentMe);
+    if (pending.length === 0) {
+      await updateNetworkBanner();
+      return;
+    }
+
+    await updateNetworkBanner(true);
+
+    for (const env of pending) {
+      try {
+        const star = await uploadPreparedStar(env);
+        await removeQueuedStar(env.id);
+        if (!stars.some((s) => s.id === star.id)) {
+          animateStarArrival(star, star.kind === 'miss' ? 'streak' : 'rise');
+        }
+        sentCount++;
+      } catch (err) {
+        if (err instanceof OfflineNetworkError || isOfflineLikeError(err)) {
+          break;
+        }
+        await removeQueuedStar(env.id);
+        showToast(
+          'Bekleyen yıldız gönderilemedi',
+          toFriendlyTurkishError(err, 'Tekrar denemek için yeniden gönder.'),
+          PEOPLE[currentMe].color,
+          PEOPLE[currentMe].sign
+        );
+      }
+    }
+  } finally {
+    flushingOutbox = false;
+    await updateNetworkBanner(false);
+    if (sentCount > 0 && currentMe) {
+      gardenCtrl?.triggerBowBounce();
+      scheduleNextUnlockCheck();
+      showToast(
+        sentCount > 1 ? `${sentCount} bekleyen yıldız bırakıldı` : 'Bekleyen yıldız bırakıldı',
+        `Artık ${PEOPLE[otherWho(currentMe)].gen} gökyüzünde`,
+        PEOPLE[currentMe].color,
+        PEOPLE[currentMe].sign
+      );
+    }
   }
 }
 
@@ -903,11 +1077,14 @@ async function bootstrap(): Promise<void> {
     hideCompassPopup();
     clearEnterTimers();
     window.clearTimeout(pushNudgeTimer);
+    window.clearTimeout(a2hsTimer);
     window.clearTimeout(unlockCheckTimer);
     window.clearTimeout(syncStatDelayTimer);
     window.clearInterval(planeInterval);
     diagCtrl?.destroy();
     diagCtrl = null;
+    detachSettingsSwipe?.();
+    detachSettingsSwipe = null;
     planeInterval = 0;
     syncStatDelayTimer = 0;
     pendingSyncHoldCount = null;
@@ -959,12 +1136,21 @@ async function bootstrap(): Promise<void> {
       if (syncHeartCheckPending) {
         window.setTimeout(() => checkSyncHeartMoment(), 550);
       }
+      if (currentMe) {
+        void syncOnWake(currentMe);
+      }
+      if (pendingOpenStarId) {
+        const sid = pendingOpenStarId;
+        window.setTimeout(() => openStarById(sid), 420);
+      }
     },
     onForgotReset: async () => {
       unmountAppShell();
       await clearActiveKey();
+      clearStarsMetadataCache();
       store.del(STORAGE_KEYS.me);
       currentMe = null;
+      updateAppBadge();
       await signOutSupabase();
       onboard.show();
     },
@@ -1173,6 +1359,7 @@ async function bootstrap(): Promise<void> {
     });
 
     const settingsSheet = $('#settings');
+    const settingsCard = settingsSheet.querySelector('.sheet-card') as HTMLElement;
     openSettingsFn = () => {
       hideCompassPopup();
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
@@ -1189,9 +1376,26 @@ async function bootstrap(): Promise<void> {
       setInert(settingsSheet, true);
     };
 
+    detachSettingsSwipe = attachSheetSwipe(settingsSheet, settingsCard, {
+      onClose: () => closeSettingsFn?.(),
+    });
+
     $('#menu').addEventListener('click', () => openSettingsFn?.());
     settingsSheet.addEventListener('click', (e) => {
       if (e.target === settingsSheet) closeSettingsFn?.();
+    });
+
+    const a2hsTipEl = document.getElementById('a2hs-tip');
+    const a2hsCloseBtn = document.getElementById('a2hs-close');
+    a2hsCloseBtn?.addEventListener('click', () => {
+      if (a2hsTipEl) a2hsTipEl.hidden = true;
+      store.set('gokyuzu.a2hsDismissed', 1);
+    });
+
+    const netRetryBtn = document.getElementById('net-retry');
+    netRetryBtn?.addEventListener('click', () => {
+      if (!currentMe) return;
+      void syncOnWake(currentMe);
     });
 
     $('#s-push').addEventListener('click', async () => {
@@ -1243,8 +1447,10 @@ async function bootstrap(): Promise<void> {
       pushNudgeEl.hidden = true;
       unmountAppShell();
       await clearActiveKey();
+      clearStarsMetadataCache();
       store.del(STORAGE_KEYS.me);
       currentMe = null;
+      updateAppBadge();
       await signOutSupabase();
       onboard.show();
     });
@@ -1338,6 +1544,95 @@ async function bootstrap(): Promise<void> {
     }
   };
 
+  const bindStarsRealtime = (who: Who) => {
+    unsubRealtime?.();
+    unsubRealtime = subscribeStarsRealtime(who, {
+      onInsert: (incoming) => {
+        if (incoming.from !== currentMe) {
+          receiveIncomingStar(incoming);
+        }
+      },
+      onUpdate: (updated) => {
+        const idx = stars.findIndex((s) => s.id === updated.id);
+        if (idx >= 0) {
+          stars[idx] = updated;
+          syncSkyStars();
+          void checkAndCelebrateUnlocks(false);
+        }
+      },
+    });
+  };
+
+  const openStarById = (starId: string) => {
+    if (!appMounted || !currentMe || !skyEngine || lock.isLocked()) {
+      pendingOpenStarId = starId;
+      return;
+    }
+    const targetStar = stars.find((s) => s.id === starId);
+    if (!targetStar) return;
+    pendingOpenStarId = null;
+
+    const targetMonth = starMonthIdx(targetStar);
+    if (targetMonth !== viewMonthK) {
+      viewMonthK = targetMonth;
+      syncSkyStars();
+    }
+    const worldW = skyEngine.getSkyW() * PANO;
+    const targetOx = Math.max(0, Math.min(skyEngine.getMaxOx(), (targetStar.x / 100) * worldW - skyEngine.getSkyW() / 2));
+    skyEngine.panTo(targetOx, 520, () => {
+      if (!skyEngine) return;
+      const pt = skyEngine.getStarScreenPos(targetStar);
+      void handleStarTap(targetStar, pt);
+    });
+    if (window.location.search.includes('star=')) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  };
+
+  const refreshStarsFromServer = async (who: Who) => {
+    if (!appMounted || currentMe !== who) return;
+    const latest = await fetchAllStars(who);
+    if (!appMounted || currentMe !== who) return;
+    if (latest.length > 0 || !lastStarsFetchError()) {
+      const existingIds = new Set(stars.map((s) => s.id));
+      stars = latest;
+      syncSkyStars();
+      void checkAndCelebrateUnlocks(false);
+      const freshIncoming = latest.find((s) => s.from !== who && !existingIds.has(s.id));
+      if (freshIncoming) {
+        skyEngine?.markStarBorn(freshIncoming.id);
+      }
+    }
+    void updateNetworkBanner();
+  };
+
+  const syncOnWake = async (who: Who) => {
+    setAppHeight();
+    skyEngine?.resize();
+    await flushOutbox();
+    await refreshStarsFromServer(who);
+    bindStarsRealtime(who);
+    if (pendingOpenStarId) {
+      openStarById(pendingOpenStarId);
+    }
+  };
+
+  const scheduleA2hsTip = () => {
+    window.clearTimeout(a2hsTimer);
+    if (isStandalonePwa() || store.get<number>('gokyuzu.a2hsDismissed', 0) === 1) return;
+    const delayMs = store.get<number | null>(STORAGE_KEYS.pan, null) ? 3400 : 6800;
+    a2hsTimer = window.setTimeout(() => {
+      const tip = document.getElementById('a2hs-tip');
+      const pushNudge = document.getElementById('push-nudge');
+      if (!tip || !appMounted || !document.body.classList.contains('awake')) return;
+      if (document.querySelector('.sheet.open, .modal.open, #lock:not(.gone)') || (pushNudge && !pushNudge.hidden)) {
+        a2hsTimer = window.setTimeout(scheduleA2hsTip, 4000);
+        return;
+      }
+      tip.hidden = false;
+    }, delayMs);
+  };
+
   async function enterApp(who: Who): Promise<void> {
     clearEnterTimers();
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
@@ -1361,24 +1656,11 @@ async function bootstrap(): Promise<void> {
 
     stars = await fetchAllStars(who);
     syncSkyStars();
+    void updateNetworkBanner();
+    void flushOutbox();
     void checkAndCelebrateUnlocks(true);
 
-    unsubRealtime?.();
-    unsubRealtime = subscribeStarsRealtime(who, {
-      onInsert: (incoming) => {
-        if (incoming.from !== currentMe) {
-          receiveIncomingStar(incoming);
-        }
-      },
-      onUpdate: (updated) => {
-        const idx = stars.findIndex((s) => s.id === updated.id);
-        if (idx >= 0) {
-          stars[idx] = updated;
-          syncSkyStars();
-          void checkAndCelebrateUnlocks(false);
-        }
-      },
-    });
+    bindStarsRealtime(who);
 
     const newest = stars.length > 0 ? stars[stars.length - 1] : null;
     if (newest && skyEngine) {
@@ -1401,6 +1683,10 @@ async function bootstrap(): Promise<void> {
       syncHeartCheckPending = true;
     } else {
       enterTimers.push(window.setTimeout(() => checkSyncHeartMoment(), 850));
+      if (pendingOpenStarId) {
+        const sid = pendingOpenStarId;
+        enterTimers.push(window.setTimeout(() => openStarById(sid), 1050));
+      }
     }
 
     const compassEl = $('#compass');
@@ -1410,6 +1696,7 @@ async function bootstrap(): Promise<void> {
 
     enterTimers.push(window.setTimeout(() => tryVehicle(), 6500));
     enterTimers.push(window.setTimeout(() => schedulePushNudgeFn?.(), 12_000));
+    scheduleA2hsTip();
 
     if (!store.get<number | null>(STORAGE_KEYS.pan, null)) {
       enterTimers.push(
@@ -1512,6 +1799,25 @@ async function bootstrap(): Promise<void> {
   };
   startGlobalTimers();
 
+  window.addEventListener('online', () => {
+    void updateNetworkBanner();
+    if (appMounted && currentMe && document.body.classList.contains('awake') && !lock.isLocked()) {
+      void syncOnWake(currentMe);
+    }
+  });
+  window.addEventListener('offline', () => {
+    void updateNetworkBanner();
+  });
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (event) => {
+      const msg = event.data as { type?: string; starId?: string } | null;
+      if (msg?.type === 'notification-open' && msg.starId) {
+        openStarById(msg.starId);
+      }
+    });
+  }
+
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
       hideCompassPopup();
@@ -1522,11 +1828,13 @@ async function bootstrap(): Promise<void> {
       return;
     }
     diagCtrl?.setHiddenPaused(false);
+    setAppHeight();
+    skyEngine?.resize();
     resetKeyboardRef?.();
     startGlobalTimers();
-    if (!appMounted) return;
+    if (!appMounted || !currentMe) return;
     if (document.body.classList.contains('awake') && !lock.isLocked()) {
-      void syncServerClock().then(() => checkAndCelebrateUnlocks(false));
+      void syncOnWake(currentMe);
       const lastSeen = store.get<number>(STORAGE_KEYS.seen, 0);
       if (!maybeTimelapse(700) && Date.now() - lastSeen > 20 * 60 * 1000) {
         window.setTimeout(() => showGreeting(lock.isLocked()), 600);
@@ -1534,6 +1842,13 @@ async function bootstrap(): Promise<void> {
       if (Date.now() - lastSeen > 20 * 60 * 1000) {
         window.setTimeout(() => tryVehicle(), 6500);
       }
+    }
+  });
+  window.addEventListener('pageshow', () => {
+    setAppHeight();
+    skyEngine?.resize();
+    if (appMounted && currentMe && document.body.classList.contains('awake') && !lock.isLocked()) {
+      void syncOnWake(currentMe);
     }
   });
   window.addEventListener('pagehide', () => {

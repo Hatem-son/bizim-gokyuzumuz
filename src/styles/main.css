@@ -160,9 +160,13 @@ body[data-me="beto"] {
 
 html {
   height: var(--app-h, 100vh);
-  background-color: var(--ground-bottom);
+  background-color: #03050e;
   margin: 0;
+  overscroll-behavior: none;
   touch-action: manipulation;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 body {
@@ -176,8 +180,24 @@ body {
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
+}
+
+img,
+svg,
+button {
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+input,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
 }
 
 #scene,
@@ -1652,7 +1672,7 @@ body.kb-active #onboard .link-btn {
   transform: translate(-50%, -180%) scale(.9);
   opacity: 0;
   pointer-events: none;
-  transition: transform .55s var(--spring), opacity .35s;
+  transition: transform .36s var(--ease), opacity .32s var(--ease);
 }
 
 .toast.show {
@@ -1688,12 +1708,12 @@ body.kb-active #onboard .link-btn {
   background: rgba(4, 2, 14, 0);
   pointer-events: none;
   visibility: visible;
-  transition: background .35s var(--ease), visibility 0s;
+  transition: background .34s var(--ease), visibility 0s;
 }
 
 .sheet:not(.open) {
   visibility: hidden;
-  transition: background .35s var(--ease), visibility 0s linear .48s;
+  transition: background .34s var(--ease), visibility 0s linear .38s;
 }
 
 .sheet.open {
@@ -1712,13 +1732,18 @@ body.kb-active #onboard .link-btn {
   border: 1px solid var(--line);
   border-bottom: 0;
   transform: translateY(105%);
-  transition: transform .44s var(--ease);
+  transition: transform .38s var(--ease);
   display: flex;
   flex-direction: column;
   gap: 14px;
   max-height: calc(var(--app-h, 100vh) - env(safe-area-inset-top) - 12px);
   overflow-y: auto;
   overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.sheet-card.swiping {
+  will-change: transform;
 }
 
 .sheet.open .sheet-card {
@@ -1726,17 +1751,20 @@ body.kb-active #onboard .link-btn {
 }
 
 .handle {
-  width: 40px;
+  width: 44px;
   height: 5px;
   border-radius: 5px;
   background: var(--line);
-  margin: 0 auto;
+  margin: 2px auto 4px;
+  touch-action: none;
+  cursor: grab;
 }
 
 .sheet-head {
   display: flex;
   align-items: center;
   gap: 12px;
+  touch-action: none;
 }
 
 .sheet-head .medal {
@@ -1938,9 +1966,10 @@ body.kb-active #onboard .link-btn {
 
 .push-nudge {
   position: fixed;
-  left: 50%;
+  left: 0;
+  right: 0;
   bottom: calc(36% + 14px);
-  transform: translateX(-50%);
+  margin: 0 auto;
   z-index: 24;
   width: min(calc(100% - 32px), 340px);
   padding: 16px 18px;
@@ -1948,7 +1977,167 @@ body.kb-active #onboard .link-btn {
   background: var(--sheet);
   border: 1px solid rgba(255, 220, 147, .38);
   text-align: center;
-  animation: fadeUp .45s var(--ease);
+  animation: fadeUp .34s var(--ease);
+}
+
+/* ---------- Network / Offline Banner & Standalone A2HS Tip ---------- */
+.net-banner {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: calc(env(safe-area-inset-top) + 88px);
+  margin: 0 auto;
+  z-index: 48;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: calc(100vw - 28px);
+  min-height: 36px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(14, 18, 44, .95);
+  border: 1px solid rgba(255, 220, 147, .36);
+  color: #edf3ff;
+  font-size: 12px;
+  font-weight: 800;
+  animation: fadeUp .3s var(--ease);
+}
+
+.net-banner[hidden] {
+  display: none;
+}
+
+.net-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  background: #ffdc93;
+}
+
+.net-banner.syncing .net-dot {
+  background: #8fb0ff;
+}
+
+.net-retry {
+  border: 1px solid rgba(255, 220, 147, .42);
+  background: rgba(255, 220, 147, .14);
+  color: #ffdc93;
+  border-radius: 999px;
+  min-height: 44px;
+  margin: -6px -6px -6px 0;
+  padding: 8px 14px;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.net-retry[hidden] {
+  display: none;
+}
+
+.a2hs-tip {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(env(safe-area-inset-bottom) + 178px);
+  margin: 0 auto;
+  z-index: 23;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(calc(100vw - 28px), 356px);
+  padding: 8px 8px 8px 14px;
+  border-radius: 20px;
+  background: rgba(12, 16, 40, .96);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  animation: fadeUp .34s var(--ease);
+}
+
+.a2hs-tip[hidden] {
+  display: none;
+}
+
+.a2hs-steps {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  color: var(--accent);
+}
+
+.a2hs-steps svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.a2hs-arrow {
+  font-size: 12px;
+  opacity: .72;
+}
+
+.a2hs-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.a2hs-copy strong {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.a2hs-copy span {
+  font-size: 11.5px;
+  color: var(--ink-soft);
+}
+
+.a2hs-close {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .08);
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.a2hs-close svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  fill: none;
+}
+
+.l-retry-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  margin-top: 12px;
+  padding: 10px 20px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--paper-accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
 }
 
 .push-nudge[hidden] {
@@ -2008,7 +2197,7 @@ body.kb-active #onboard .link-btn {
   background:
     radial-gradient(120% 50% at 50% 105%, var(--horizon), transparent 60%),
     linear-gradient(180deg, var(--sky-1), var(--sky-2) 60%, var(--ground-bottom));
-  transition: opacity .5s var(--ease), visibility .5s;
+  transition: opacity .36s var(--ease), visibility .36s;
 }
 
 #lock.gone {
@@ -2906,12 +3095,12 @@ body.sched-open #compose .sched-dt-label {
   background: rgba(4, 2, 14, 0);
   pointer-events: none;
   visibility: visible;
-  transition: background .45s var(--ease), visibility 0s;
+  transition: background .36s var(--ease), visibility 0s;
 }
 
 .modal:not(.open) {
   visibility: hidden;
-  transition: background .45s var(--ease), visibility 0s linear .45s;
+  transition: background .36s var(--ease), visibility 0s linear .36s;
 }
 
 .modal.open {

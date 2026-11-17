@@ -106,7 +106,14 @@ export function initLetterModal(opts: {
     url: string | null,
     allStars: StarRecord[],
     isPaired: boolean,
-    isLocked: boolean
+    isLocked: boolean,
+    retryParams?: {
+      star: StarRecord;
+      starPos: { x: number; y: number };
+      me: Who;
+      allStars: StarRecord[];
+      isPaired: boolean;
+    } | null
   ): void {
     const orderNum = allStars.filter((x) => x.from === s.from && x.createdAt <= s.createdAt).length;
     $('#l-medal').textContent = PEOPLE[s.from].sign;
@@ -122,7 +129,19 @@ export function initLetterModal(opts: {
     const mediaEl = $('#l-media');
     mediaEl.innerHTML = '';
 
-    if (miss) {
+    if (retryParams) {
+      mediaEl.innerHTML =
+        `<div class="spent-card"><b>Bağlantı kurulamadı</b><span>İnternetini kontrol edip yıldızı yeniden açabilirsin</span>` +
+        `<button class="l-retry-btn" id="l-retry" type="button">Tekrar dene</button></div>`;
+      const retryBtn = document.getElementById('l-retry');
+      if (retryBtn) {
+        retryBtn.onclick = () => {
+          modal.classList.remove('open');
+          setInert(modal, true);
+          void open(retryParams);
+        };
+      }
+    } else if (miss) {
       const n = Math.min(5, 1 + Math.floor((data.held || 0) / 0.6));
       const hearts = Array.from(
         { length: 5 },
@@ -204,6 +223,7 @@ export function initLetterModal(opts: {
       let data: StarPayloadData = { text: '' };
       let url: string | null = null;
       let isLocked = Boolean(star.unlockAt && Date.parse(star.unlockAt) > Date.now());
+      let loadFailed: 'none' | 'locked' | 'network' | 'decrypt' = 'none';
       try {
         data = await decryptStarPayload(star, me);
         if (star.hasMedia && !star.spent) {
@@ -213,26 +233,39 @@ export function initLetterModal(opts: {
           }
         }
       } catch (err) {
-        const locked = err instanceof Error && err.message === 'LOCKED';
-        if (locked) isLocked = true;
-        data = {
-          text: locked
-            ? 'Bu yıldız henüz kilitli. Zamanı gelince açılacak.'
-            : 'Bu yıldız açılamadı. Gizli kelime farklı olabilir.',
-        };
+        const msg = err instanceof Error ? err.message : '';
+        if (msg === 'LOCKED') {
+          isLocked = true;
+          loadFailed = 'locked';
+          data = { text: 'Bu yıldız henüz kilitli. Zamanı gelince açılacak.' };
+        } else if (msg === 'NETWORK') {
+          loadFailed = 'network';
+          data = { text: '' };
+        } else {
+          loadFailed = 'decrypt';
+          data = { text: 'Bu yıldız açılamadı. Gizli kelime farklı olabilir.' };
+        }
       }
 
       if (current?.url) URL.revokeObjectURL(current.url);
       current = { star, url, me };
-      const firstTime = !star.openedAt;
+      const firstTime = !star.openedAt && loadFailed === 'none';
 
-      fillLetter(star, data, url, allStars, isPaired, isLocked);
+      fillLetter(
+        star,
+        data,
+        url,
+        allStars,
+        isPaired,
+        isLocked,
+        loadFailed === 'network' ? params : null
+      );
       card.getAnimations().forEach((a) => a.cancel());
       modal.classList.add('open');
       setInert(modal, false);
 
       const color = PEOPLE[star.from].color;
-      if (!star.openedAt) {
+      if (loadFailed === 'none' && !star.openedAt) {
         star.openedAt = await markStarOpened(star);
         opts.onStarUpdated(star);
       }

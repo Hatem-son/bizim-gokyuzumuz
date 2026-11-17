@@ -32,10 +32,65 @@ interface DbStarRow {
 
 const LOCAL_MEDIA_PREFIX = 'gokyuzu.media.v4.';
 const LOCAL_SECRET_PREFIX = 'gokyuzu.secret.v5.';
+const STARS_CACHE_PREFIX = 'gokyuzu.starsCache.v1.';
 const localMediaMem: Record<string, string> = {};
 const localSecretMem: Record<string, string> = {};
 
 let serverClockOffsetMs = 0;
+let lastFetchFailed = false;
+
+export class OfflineNetworkError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'OfflineNetworkError';
+  }
+}
+
+export function isOfflineLikeError(err: unknown): boolean {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+  if (err instanceof OfflineNetworkError) return true;
+  const msg =
+    err instanceof Error
+      ? err.message
+      : typeof err === 'object' && err && 'message' in err
+        ? String((err as { message?: unknown }).message ?? '')
+        : '';
+  const lower = msg.toLowerCase();
+  return (
+    lower.includes('network') ||
+    lower.includes('failed to fetch') ||
+    lower.includes('load failed') ||
+    lower.includes('fetch') ||
+    lower.includes('timeout') ||
+    lower.includes('offline') ||
+    lower.includes('bağlantı') ||
+    lower.includes('internet')
+  );
+}
+
+export function lastStarsFetchError(): boolean {
+  return lastFetchFailed;
+}
+
+export function clearStarsMetadataCache(): void {
+  store.del(`${STARS_CACHE_PREFIX}hamham`);
+  store.del(`${STARS_CACHE_PREFIX}beto`);
+}
+
+export interface PreparedStarEnvelope {
+  id: string;
+  from: Who;
+  kind: StarKind;
+  x: number;
+  y: number;
+  size: number;
+  once: boolean;
+  hasMedia: boolean;
+  unlockAt: string | null;
+  sealedPayload: string;
+  sealedMedia: string | null;
+  queuedAt: number;
+}
 
 export function getServerNowMs(): number {
   return Date.now() + serverClockOffsetMs;
@@ -307,6 +362,10 @@ export async function fetchAllStars(me: Who): Promise<StarRecord[]> {
   }
 
   try {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      lastFetchFailed = true;
+      return store.get<StarRecord[]>(`${STARS_CACHE_PREFIX}${me}`, []);
+    }
     await syncServerClock();
     const sb = getSupabase()!;
     const whoMap = await getUserWhoMap();
@@ -316,11 +375,179 @@ export async function fetchAllStars(me: Who): Promise<StarRecord[]> {
       .order('created_at', { ascending: true });
 
     if (error || !data) {
-      return [];
+      lastFetchFailed = true;
+      return store.get<StarRecord[]>(`${STARS_CACHE_PREFIX}${me}`, []);
     }
-    return (data as DbStarRow[]).map((row) => mapDbRow(row, whoMap, me));
+    lastFetchFailed = false;
+    const mapped = (data as DbStarRow[]).map((row) => mapDbRow(row, whoMap, me));
+    store.set(`${STARS_CACHE_PREFIX}${me}`, mapped);
+    return mapped;
   } catch {
-    return [];
+    lastFetchFailed = true;
+    return store.get<StarRecord[]>(`${STARS_CACHE_PREFIX}${me}`, []);
+  }
+}
+
+export async function prepareEncryptedStar(params: {
+  from: Who;
+  kind: StarKind;
+  data: StarPayloadData;
+  pos: { x: number; y: number };
+  mediaBytes?: Uint8Array<ArrayBuffer>;
+  once?: boolean;
+  unlockAt?: string | null;
+}): Promise<PreparedStarEnvelope> {
+  const id = generateId();
+  const textLen = (params.data.text || '').length;
+  const size =
+    params.kind === 'miss'
+      ? +Math.min(10.5, 6.5 + (Math.min(3, params.data.held || 0) / 3) * 4).toFixed(1)
+      : params.kind === 'note'
+        ? +Math.min(10.5, 7.5 + textLen / 120).toFixed(1)
+        : 9;
+
+  const sealedPayload = await sealJSON(params.data);
+  const sealedMedia = params.mediaBytes ? await sealBytes(params.mediaBytes) : null;
+
+  return {
+    id,
+    from: params.from,
+    kind: params.kind,
+    x: +params.pos.x.toFixed(2),
+    y: +params.pos.y.toFixed(2),
+    size,
+    once: Boolean(params.once),
+    hasMedia: Boolean(sealedMedia),
+    unlockAt: params.unlockAt ?? null,
+    sealedPayload,
+    sealedMedia,
+    queuedAt: Date.now(),
+  };
+}
+
+export async function uploadPreparedStar(env: PreparedStarEnvelope): Promise<StarRecord> {
+  const sb = getSupabase();
+  if (!sb || !isSupabaseConfigured) {
+    const localStar: StarRecord = {
+      id: env.id,
+      fromUser: env.from,
+      from: env.from,
+      kind: env.kind,
+      x: env.x,
+      y: env.y,
+      size: env.size,
+      once: env.once,
+      spent: false,
+      hasMedia: env.hasMedia,
+      createdAt: new Date().toISOString(),
+      openedAt: null,
+      unlockAt: env.unlockAt,
+      unlockNotified: false,
+      unlockPushSent: false,
+    };
+    putLocalSecret(env.id, env.sealedPayload);
+    if (env.sealedMedia) putLocalMedia(env.id, env.sealedMedia);
+    const list = store.get<StarRecord[]>(STORAGE_KEYS.starsLocal, []);
+    list.push(localStar);
+    store.set(STORAGE_KEYS.starsLocal, list);
+    return localStar;
+  }
+
+  try {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      throw new OfflineNetworkError('İnternet bağlantısı yok.');
+    }
+
+    const { data: userRes, error: authErr } = await sb.auth.getUser();
+    if (authErr && isOfflineLikeError(authErr)) {
+      throw new OfflineNetworkError('İnternet bağlantısı kurulamadı.');
+    }
+    const uid = userRes.user?.id;
+    if (!uid) throw new Error('Oturum açık değil.');
+
+    if (env.sealedMedia) {
+      const blob = new Blob([env.sealedMedia], { type: 'text/plain;charset=utf-8' });
+      const { error: uploadErr } = await sb.storage.from('media').upload(env.id, blob, {
+        contentType: 'text/plain',
+        upsert: false,
+      });
+      if (uploadErr && !/already exists|duplicate/i.test(uploadErr.message || '')) {
+        if (isOfflineLikeError(uploadErr)) {
+          throw new OfflineNetworkError('Şifreli medya çevrimdışı nedeniyle gönderilemedi.');
+        }
+        throw new Error('Şifreli medya yüklenemedi.');
+      }
+    }
+
+    const { data: inserted, error: insertErr } = await sb
+      .from('stars')
+      .insert({
+        id: env.id,
+        from_user: uid,
+        kind: env.kind,
+        x: env.x,
+        y: env.y,
+        size: env.size,
+        once: env.once,
+        spent: false,
+        has_media: env.hasMedia,
+        unlock_at: env.unlockAt,
+        unlock_notified: false,
+        unlock_push_sent: false,
+      })
+      .select('id, from_user, kind, x, y, size, once, spent, has_media, created_at, opened_at, unlock_at, unlock_notified, unlock_push_sent')
+      .single();
+
+    if (insertErr || !inserted) {
+      if (env.sealedMedia) {
+        await sb.storage.from('media').remove([env.id]).catch(() => undefined);
+      }
+      if (isOfflineLikeError(insertErr)) {
+        throw new OfflineNetworkError('Bağlantı nedeniyle yıldız gönderilemedi.');
+      }
+      throw new Error('Yıldız kaydedilemedi.');
+    }
+
+    const { error: secretErr } = await sb.from('star_secrets').insert({
+      star_id: env.id,
+      payload: env.sealedPayload,
+      media_path: env.sealedMedia ? env.id : null,
+      once: env.once,
+    });
+
+    if (secretErr) {
+      try {
+        await sb.from('stars').delete().eq('id', env.id);
+      } catch {
+        // Ignore cleanup errors
+      }
+      if (env.sealedMedia) {
+        await sb.storage.from('media').remove([env.id]).catch(() => undefined);
+      }
+      if (isOfflineLikeError(secretErr)) {
+        throw new OfflineNetworkError('Bağlantı nedeniyle yıldız içeriği gönderilemedi.');
+      }
+      throw new Error('Şifreli yıldız içeriği kaydedilemedi.');
+    }
+
+    const whoMap = await getUserWhoMap();
+    const star = mapDbRow(inserted as DbStarRow, whoMap, env.from);
+
+    void triggerPushNotification({
+      sender: env.from,
+      kind: env.kind,
+      once: env.once,
+      unlockAt: env.unlockAt,
+    });
+
+    return star;
+  } catch (err) {
+    if (err instanceof OfflineNetworkError || isOfflineLikeError(err)) {
+      throw new OfflineNetworkError(
+        toFriendlyTurkishError(err, 'Bağlantı kurulamadı. İnternet gelince gönderilecek.')
+      );
+    }
+    throw new Error(toFriendlyTurkishError(err, 'Yıldız şu an gönderilemedi, tekrar dene.'));
   }
 }
 
@@ -333,125 +560,8 @@ export async function createEncryptedStar(params: {
   once?: boolean;
   unlockAt?: string | null;
 }): Promise<StarRecord> {
-  const id = generateId();
-  const textLen = (params.data.text || '').length;
-  const size =
-    params.kind === 'miss'
-      ? +Math.min(10.5, 6.5 + (Math.min(3, params.data.held || 0) / 3) * 4).toFixed(1)
-      : params.kind === 'note'
-        ? +Math.min(10.5, 7.5 + textLen / 120).toFixed(1)
-        : 9;
-
-  const sealedPayload = await sealJSON(params.data);
-  let sealedMedia: string | null = null;
-  if (params.mediaBytes) {
-    sealedMedia = await sealBytes(params.mediaBytes);
-  }
-
-  const unlockAt = params.unlockAt ?? null;
-  const sb = getSupabase();
-  if (!sb || !isSupabaseConfigured) {
-    const localStar: StarRecord = {
-      id,
-      fromUser: params.from,
-      from: params.from,
-      kind: params.kind,
-      x: +params.pos.x.toFixed(2),
-      y: +params.pos.y.toFixed(2),
-      size,
-      once: Boolean(params.once),
-      spent: false,
-      hasMedia: Boolean(sealedMedia),
-      createdAt: new Date().toISOString(),
-      openedAt: null,
-      unlockAt,
-      unlockNotified: false,
-      unlockPushSent: false,
-    };
-    putLocalSecret(id, sealedPayload);
-    if (sealedMedia) putLocalMedia(id, sealedMedia);
-    const list = store.get<StarRecord[]>(STORAGE_KEYS.starsLocal, []);
-    list.push(localStar);
-    store.set(STORAGE_KEYS.starsLocal, list);
-    return localStar;
-  }
-
-  try {
-    const { data: userRes } = await sb.auth.getUser();
-    const uid = userRes.user?.id;
-    if (!uid) throw new Error('Oturum açık değil.');
-
-    if (sealedMedia) {
-      const blob = new Blob([sealedMedia], { type: 'text/plain;charset=utf-8' });
-      const { error: uploadErr } = await sb.storage.from('media').upload(id, blob, {
-        contentType: 'text/plain',
-        upsert: false,
-      });
-      if (uploadErr) {
-        throw new Error('Şifreli medya yüklenemedi.');
-      }
-    }
-
-    const { data: inserted, error: insertErr } = await sb
-      .from('stars')
-      .insert({
-        id,
-        from_user: uid,
-        kind: params.kind,
-        x: +params.pos.x.toFixed(2),
-        y: +params.pos.y.toFixed(2),
-        size,
-        once: Boolean(params.once),
-        spent: false,
-        has_media: Boolean(sealedMedia),
-        unlock_at: unlockAt,
-        unlock_notified: false,
-        unlock_push_sent: false,
-      })
-      .select('id, from_user, kind, x, y, size, once, spent, has_media, created_at, opened_at, unlock_at, unlock_notified, unlock_push_sent')
-      .single();
-
-    if (insertErr || !inserted) {
-      if (sealedMedia) {
-        await sb.storage.from('media').remove([id]).catch(() => undefined);
-      }
-      throw new Error('Yıldız kaydedilemedi.');
-    }
-
-    const { error: secretErr } = await sb.from('star_secrets').insert({
-      star_id: id,
-      payload: sealedPayload,
-      media_path: sealedMedia ? id : null,
-      once: Boolean(params.once),
-    });
-
-    if (secretErr) {
-      try {
-        await sb.from('stars').delete().eq('id', id);
-      } catch {
-        // Ignore cleanup errors
-      }
-      if (sealedMedia) {
-        await sb.storage.from('media').remove([id]).catch(() => undefined);
-      }
-      throw new Error('Şifreli yıldız içeriği kaydedilemedi.');
-    }
-
-    const whoMap = await getUserWhoMap();
-    const star = mapDbRow(inserted as DbStarRow, whoMap, params.from);
-
-    // Karşı tarafa hemen push bildirimi gönder (arka planda; içerik gitmez)
-    void triggerPushNotification({
-      sender: params.from,
-      kind: params.kind,
-      once: Boolean(params.once),
-      unlockAt,
-    });
-
-    return star;
-  } catch (err) {
-    throw new Error(toFriendlyTurkishError(err, 'Yıldız şu an gönderilemedi, tekrar dene.'));
-  }
+  const env = await prepareEncryptedStar(params);
+  return uploadPreparedStar(env);
 }
 
 async function fetchStarSecret(
@@ -467,6 +577,10 @@ async function fetchStarSecret(
     return { payload, mediaPath: star.hasMedia ? star.id : null };
   }
 
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    throw new Error('NETWORK');
+  }
+
   const sb = getSupabase()!;
   try {
     const { data, error } = await sb
@@ -475,10 +589,16 @@ async function fetchStarSecret(
       .eq('star_id', star.id)
       .maybeSingle();
 
-    if (error || !data) return null;
+    if (error) {
+      if (isOfflineLikeError(error)) throw new Error('NETWORK');
+      return null;
+    }
+    if (!data) return null;
     const row = data as { payload: string; media_path: string | null };
     return { payload: row.payload, mediaPath: row.media_path };
-  } catch {
+  } catch (err) {
+    if (err instanceof Error && err.message === 'NETWORK') throw err;
+    if (isOfflineLikeError(err)) throw new Error('NETWORK');
     return null;
   }
 }
@@ -638,8 +758,10 @@ export function subscribeStarsRealtime(
 
   const sb = getSupabase()!;
   let channel: RealtimeChannel | null = null;
+  let cancelled = false;
 
   void getUserWhoMap().then((whoMap) => {
+    if (cancelled) return;
     channel = sb
       .channel('bizim-gokyuzumuz-stars')
       .on(
@@ -664,8 +786,10 @@ export function subscribeStarsRealtime(
   });
 
   return () => {
+    cancelled = true;
     if (channel) {
       void sb.removeChannel(channel);
+      channel = null;
     }
   };
 }

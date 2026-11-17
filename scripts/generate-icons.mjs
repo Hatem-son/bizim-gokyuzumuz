@@ -2,10 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 
-const OUT_DIR = path.resolve('public/icons');
-fs.mkdirSync(OUT_DIR, { recursive: true });
+const ICON_DIR = path.resolve('public/icons');
+const SPLASH_DIR = path.resolve('public/splash');
+fs.mkdirSync(ICON_DIR, { recursive: true });
+fs.mkdirSync(SPLASH_DIR, { recursive: true });
 
-// Precompute CRC32 table for valid PNG encoding
 const crcTable = new Uint32Array(256);
 for (let n = 0; n < 256; n++) {
   let c = n;
@@ -38,8 +39,8 @@ function encodePNG(width, height, rgba) {
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0);
   ihdr.writeUInt32BE(height, 4);
-  ihdr[8] = 8; // bit depth
-  ihdr[9] = 6; // RGBA
+  ihdr[8] = 8;
+  ihdr[9] = 6;
   ihdr[10] = 0;
   ihdr[11] = 0;
   ihdr[12] = 0;
@@ -47,7 +48,7 @@ function encodePNG(width, height, rgba) {
   const stride = width * 4 + 1;
   const raw = Buffer.alloc(stride * height);
   for (let y = 0; y < height; y++) {
-    raw[y * stride] = 0; // filter: None
+    raw[y * stride] = 0;
     rgba.copy(raw, y * stride + 1, y * width * 4, (y + 1) * width * 4);
   }
   const compressed = zlib.deflateSync(raw, { level: 9 });
@@ -91,79 +92,104 @@ function mulberry32(seed) {
   };
 }
 
-function renderIcon(size, maskable) {
-  const buf = Buffer.alloc(size * size * 4);
-  const cTop = [3, 5, 14];      // #03050e
-  const cMid = [8, 18, 43];     // #08122b
-  const cBot = [20, 36, 74];    // subtle deep horizon #14244a
+function paintNightSky(buf, width, height, bottomColor = [20, 36, 74], dustCount = Math.round(Math.min(width, height) * 0.14)) {
+  const cTop = [3, 5, 14];    // #03050e
+  const cMid = [8, 18, 43];   // #08122b
 
-  // 1. Deep night sky gradient background
-  for (let y = 0; y < size; y++) {
-    const ny = y / (size - 1);
-    const col = ny < 0.56 ? mixRGB(cTop, cMid, ny / 0.56) : mixRGB(cMid, cBot, (ny - 0.56) / 0.44);
-    for (let x = 0; x < size; x++) {
-      const idx = (y * size + x) * 4;
-      buf[idx] = Math.round(col[0]);
-      buf[idx + 1] = Math.round(col[1]);
-      buf[idx + 2] = Math.round(col[2]);
-      buf[idx + 3] = 255;
+  // Satır bazlı gradient hesapla, ardından ilk satırı doldurup Buffer.copy ile satırlara yay
+  const row = Buffer.alloc(width * 4);
+  for (let y = 0; y < height; y++) {
+    const ny = height > 1 ? y / (height - 1) : 0;
+    const col = ny < 0.56 ? mixRGB(cTop, cMid, ny / 0.56) : mixRGB(cMid, bottomColor, (ny - 0.56) / 0.44);
+    const r = Math.round(col[0]);
+    const g = Math.round(col[1]);
+    const b = Math.round(col[2]);
+    for (let x = 0; x < width; x++) {
+      const idx = x * 4;
+      row[idx] = r;
+      row[idx + 1] = g;
+      row[idx + 2] = b;
+      row[idx + 3] = 255;
     }
+    row.copy(buf, y * width * 4);
   }
 
-  // 2. Very faint quiet background dust specks (so it feels like a real night sky, never noisy)
   const rnd = mulberry32(2027);
-  const dustCount = Math.round(size * 0.14);
   for (let i = 0; i < dustCount; i++) {
-    const dx = rnd() * size;
-    const dy = rnd() * size;
-    const dr = Math.max(0.6, size * (0.0018 + rnd() * 0.0018));
+    const dx = rnd() * width;
+    const dy = rnd() * height;
+    const dr = Math.max(0.6, Math.min(width, height) * (0.0018 + rnd() * 0.0018));
     const alpha = 0.08 + rnd() * 0.16;
     const minX = Math.max(0, Math.floor(dx - dr - 1));
-    const maxX = Math.min(size - 1, Math.ceil(dx + dr + 1));
+    const maxX = Math.min(width - 1, Math.ceil(dx + dr + 1));
     const minY = Math.max(0, Math.floor(dy - dr - 1));
-    const maxY = Math.min(size - 1, Math.ceil(dy + dr + 1));
+    const maxY = Math.min(height - 1, Math.ceil(dy + dr + 1));
     for (let y = minY; y <= maxY; y++) {
       for (let x = minX; x <= maxX; x++) {
         const d = Math.hypot(x - dx, y - dy);
         if (d < dr + 0.8) {
           const w = Math.max(0, 1 - d / (dr + 0.8));
-          blendPixel(buf, (y * size + x) * 4, 226, 236, 255, alpha * w * w);
+          blendPixel(buf, (y * width + x) * 4, 226, 236, 255, alpha * w * w);
+        }
+      }
+    }
+  }
+}
+
+function paintTwinStars(buf, width, height, centerYFrac, spreadFrac, starScale, withOrb = false) {
+  const ref = Math.min(width, height);
+  const cxMid = width * 0.5;
+  const cyMid = height * centerYFrac;
+
+  if (withOrb) {
+    const orbR = ref * 0.11;
+    const minX = Math.max(0, Math.floor(cxMid - orbR));
+    const maxX = Math.min(width - 1, Math.ceil(cxMid + orbR));
+    const minY = Math.max(0, Math.floor(cyMid - orbR));
+    const maxY = Math.min(height - 1, Math.ceil(cyMid + orbR));
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const dist = Math.hypot(x - cxMid, y - cyMid);
+        if (dist > orbR) continue;
+        const n = dist / orbR;
+        const idx = (y * width + x) * 4;
+        const soft = Math.pow(1 - n, 2.2) * 0.14;
+        addGlow(buf, idx, 168, 212, 255, soft);
+        const rimDist = Math.abs(dist - orbR * 0.82);
+        if (rimDist < 1.6) {
+          addGlow(buf, idx, 214, 232, 255, (1 - rimDist / 1.6) * 0.12);
         }
       }
     }
   }
 
-  // 3. Two small, understated stars side by side: blue (Ham ham) & pink (Beto)
-  // Maskable icons need extra inner padding for safe zone; standard icons match cleanly too.
-  const spread = maskable ? 0.085 : 0.095;
-  const starScale = maskable ? 0.88 : 1.0;
   const stars = [
     {
-      cx: size * (0.5 - spread),
-      cy: size * 0.515,
-      coreR: size * 0.015 * starScale,
-      haloR: size * 0.13 * starScale,
-      spikeL: size * 0.056 * starScale,
-      tint: [168, 212, 255],   // #a8d4ff
-      glow: [84, 150, 255],    // #5496ff
+      cx: cxMid - ref * spreadFrac,
+      cy: cyMid + ref * 0.015,
+      coreR: ref * 0.015 * starScale,
+      haloR: ref * 0.13 * starScale,
+      spikeL: ref * 0.056 * starScale,
+      tint: [168, 212, 255],
+      glow: [84, 150, 255],
     },
     {
-      cx: size * (0.5 + spread),
-      cy: size * 0.485,
-      coreR: size * 0.0145 * starScale,
-      haloR: size * 0.125 * starScale,
-      spikeL: size * 0.054 * starScale,
-      tint: [255, 179, 218],   // #ffb3da
-      glow: [255, 92, 172],    // #ff5cac
+      cx: cxMid + ref * spreadFrac,
+      cy: cyMid - ref * 0.015,
+      coreR: ref * 0.0145 * starScale,
+      haloR: ref * 0.125 * starScale,
+      spikeL: ref * 0.054 * starScale,
+      tint: [255, 179, 218],
+      glow: [255, 92, 172],
     },
   ];
 
   for (const s of stars) {
     const rad = Math.ceil(s.haloR);
     const minX = Math.max(0, Math.floor(s.cx - rad));
-    const maxX = Math.min(size - 1, Math.ceil(s.cx + rad));
+    const maxX = Math.min(width - 1, Math.ceil(s.cx + rad));
     const minY = Math.max(0, Math.floor(s.cy - rad));
-    const maxY = Math.min(size - 1, Math.ceil(s.cy + rad));
+    const maxY = Math.min(height - 1, Math.ceil(s.cy + rad));
 
     for (let y = minY; y <= maxY; y++) {
       const dy = y - s.cy;
@@ -174,46 +200,55 @@ function renderIcon(size, maskable) {
         const dist = Math.hypot(dx, dy);
         if (dist > s.haloR) continue;
 
-        const idx = (y * size + x) * 4;
-
-        // Soft outer halo
+        const idx = (y * width + x) * 4;
         const hNorm = dist / s.haloR;
-        const haloAlpha = Math.pow(1 - hNorm, 3.1) * 0.34;
-        addGlow(buf, idx, s.glow[0], s.glow[1], s.glow[2], haloAlpha);
+        addGlow(buf, idx, s.glow[0], s.glow[1], s.glow[2], Math.pow(1 - hNorm, 3.1) * 0.34);
 
-        // Subtle 4-pointed star flare spikes (thin & delicate)
-        const spikeThickness = Math.max(0.9, size * 0.0042);
+        const spikeThickness = Math.max(0.9, ref * 0.0042);
         if (adx < s.spikeL && ady < spikeThickness * 2.4) {
           const sx = 1 - adx / s.spikeL;
           const sy = Math.exp(-Math.pow(ady / spikeThickness, 2));
-          const sa = Math.pow(sx, 1.8) * sy * 0.55;
-          addGlow(buf, idx, s.tint[0], s.tint[1], s.tint[2], sa);
+          addGlow(buf, idx, s.tint[0], s.tint[1], s.tint[2], Math.pow(sx, 1.8) * sy * 0.55);
         }
         if (ady < s.spikeL * 0.88 && adx < spikeThickness * 2.4) {
           const sy = 1 - ady / (s.spikeL * 0.88);
           const sx = Math.exp(-Math.pow(adx / spikeThickness, 2));
-          const sa = Math.pow(sy, 1.8) * sx * 0.52;
-          addGlow(buf, idx, s.tint[0], s.tint[1], s.tint[2], sa);
+          addGlow(buf, idx, s.tint[0], s.tint[1], s.tint[2], Math.pow(sy, 1.8) * sx * 0.52);
         }
 
-        // Bright white-tinted star core
         if (dist < s.coreR * 2.4) {
           const cNorm = dist / (s.coreR * 2.4);
           const coreA = Math.exp(-cNorm * cNorm * 3.6);
           const mixToWhite = Math.exp(-cNorm * cNorm * 7.5);
-          const cr = lerp(s.tint[0], 255, mixToWhite);
-          const cg = lerp(s.tint[1], 255, mixToWhite);
-          const cb = lerp(s.tint[2], 255, mixToWhite);
-          blendPixel(buf, idx, cr, cg, cb, coreA);
+          blendPixel(
+            buf,
+            idx,
+            lerp(s.tint[0], 255, mixToWhite),
+            lerp(s.tint[1], 255, mixToWhite),
+            lerp(s.tint[2], 255, mixToWhite),
+            coreA
+          );
         }
       }
     }
   }
+}
 
+function renderIcon(size, maskable) {
+  const buf = Buffer.alloc(size * size * 4);
+  paintNightSky(buf, size, size, [20, 36, 74], Math.round(size * 0.14));
+  paintTwinStars(buf, size, size, 0.5, maskable ? 0.085 : 0.095, maskable ? 0.88 : 1.0, false);
   return encodePNG(size, size, buf);
 }
 
-const targets = [
+function renderSplash(width, height) {
+  const buf = Buffer.alloc(width * height * 4);
+  paintNightSky(buf, width, height, [8, 23, 28], Math.round(Math.min(width, height) * 0.18));
+  paintTwinStars(buf, width, height, 0.45, 0.055, 0.65, true);
+  return encodePNG(width, height, buf);
+}
+
+const iconTargets = [
   { name: 'icon-180.png', size: 180, maskable: false },
   { name: 'icon-192.png', size: 192, maskable: false },
   { name: 'icon-512.png', size: 512, maskable: false },
@@ -222,9 +257,28 @@ const targets = [
   { name: 'favicon-64.png', size: 64, maskable: false },
 ];
 
-for (const t of targets) {
+for (const t of iconTargets) {
   const png = renderIcon(t.size, t.maskable);
-  fs.writeFileSync(path.join(OUT_DIR, t.name), png);
-  console.log(`Generated ${t.name} (${png.length} bytes)`);
+  fs.writeFileSync(path.join(ICON_DIR, t.name), png);
+  console.log(`Generated icon ${t.name} (${png.length} bytes)`);
 }
 
+const splashTargets = [
+  [750, 1334],
+  [1125, 2436],
+  [828, 1792],
+  [1242, 2688],
+  [1170, 2532],
+  [1284, 2778],
+  [1179, 2556],
+  [1290, 2796],
+  [1206, 2622],
+  [1320, 2868],
+];
+
+for (const [w, h] of splashTargets) {
+  const name = `splash-${w}x${h}.png`;
+  const png = renderSplash(w, h);
+  fs.writeFileSync(path.join(SPLASH_DIR, name), png);
+  console.log(`Generated splash ${name} (${png.length} bytes)`);
+}

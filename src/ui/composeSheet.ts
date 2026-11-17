@@ -4,6 +4,7 @@ import { formatUnlockAccusative, getServerNowMs, type StarPayloadData } from '..
 import { STORAGE_KEYS, store } from '../lib/storage';
 import type { StarKind, Who } from '../types';
 import { $, setInert } from './dom';
+import { attachSheetSwipe } from './sheetSwipe';
 
 const schedLabelFmt = new Intl.DateTimeFormat('tr-TR', {
   day: 'numeric',
@@ -627,17 +628,16 @@ export function initComposeSheet(opts: {
     );
   });
 
+  const detachSwipe = attachSheetSwipe(sheet, form, {
+    onClose: close,
+  });
+
   sheet.addEventListener(
     'touchmove',
     (e) => {
-      const target = e.target as Element | null;
-      if (target && ta.contains(target) && ta.scrollHeight > ta.clientHeight) {
-        return;
+      if (e.target === sheet) {
+        e.preventDefault();
       }
-      if (target?.closest('#chips')) {
-        return;
-      }
-      e.preventDefault();
     },
     { passive: false }
   );
@@ -668,6 +668,7 @@ export function initComposeSheet(opts: {
   }
 
   function destroy(): void {
+    detachSwipe();
     stopRec(true);
     clearAtt();
     close();
