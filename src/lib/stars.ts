@@ -7,6 +7,7 @@ import { getSupabase, isSupabaseConfigured, toFriendlyTurkishError } from './sup
 
 export interface StarPayloadData {
   text: string;
+  caption?: string;
   held?: number;
   mime?: string;
   dur?: number;

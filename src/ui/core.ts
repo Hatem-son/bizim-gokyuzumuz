@@ -31,6 +31,11 @@ export const core = {
   openSettings: () => {},
   openCountdown: () => {},
   openStar: (_st: Star) => {},
+  openBoard: async (_existing?: unknown[] | null): Promise<unknown[] | null> => null,
+  renderDrawingPreview: (_cv: HTMLCanvasElement, _strokes: unknown[]) => {},
+  encodeDrawing: async (_strokes: unknown[]): Promise<Uint8Array<ArrayBuffer>> => new Uint8Array(new ArrayBuffer(0)),
+  decodeDrawing: async (_bytes: Uint8Array<ArrayBuffer>): Promise<unknown[]> => [],
   onSendHeart: () => {},
+  onOutboxChange: () => {},
   setMyLiveActivity: (_act: 'writing' | 'sending' | 'drawing' | 'photo' | 'voice' | 'idle') => {},
 };
