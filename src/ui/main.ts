@@ -54,6 +54,13 @@ import type { StarRecord } from '../types';
 void registerServiceWorker();
 
 const app = document.getElementById('app')!;
+// Geçiş animasyonu (translateX) sırasında odaklanan öğelerin kapsayıcıyı kaydırmasını engelle
+app.addEventListener('scroll', () => {
+  if (app.scrollLeft || app.scrollTop) app.scrollTo(0, 0);
+});
+window.addEventListener('scroll', () => {
+  if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
+});
 const st = document.createElement('style');
 st.textContent = ART_CSS + PALM_CSS + LILY_CSS + '@keyframes spin{to{transform:rotate(360deg)}}';
 document.head.appendChild(st);

@@ -46,6 +46,7 @@ html, body {
   height: var(--app-h, 100lvh);
   min-height: 100lvh;
   overflow: hidden;
+  overflow: clip;
   overscroll-behavior: none;
   background: var(--sky-bottom, #05070d);
   color: var(--text);
@@ -63,6 +64,7 @@ svg { display: block; }
   height: var(--app-h, 100lvh);
   min-height: 100lvh;
   overflow: hidden;
+  overflow: clip;
   background: var(--sky-bottom, #05070d);
   -webkit-user-select: none;
   user-select: none;
