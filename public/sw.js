@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gokyuzu-shell-v3';
+const CACHE_NAME = 'gokyuzu-shell-v6';
 const SHELL_URLS = [
   '/',
   '/index.html',
@@ -7,14 +7,6 @@ const SHELL_URLS = [
   '/icons/icon-192.png',
   '/icons/icon-512.png',
   '/icons/favicon-64.png',
-  '/fonts/great-vibes-latin.woff2',
-  '/fonts/great-vibes-latin-ext.woff2',
-  '/fonts/cormorant-garamond-latin.woff2',
-  '/fonts/cormorant-garamond-latin-ext.woff2',
-  '/fonts/cormorant-garamond-italic-latin.woff2',
-  '/fonts/cormorant-garamond-italic-latin-ext.woff2',
-  '/fonts/nunito-latin.woff2',
-  '/fonts/nunito-latin-ext.woff2',
 ];
 
 self.addEventListener('install', (event) => {
@@ -48,10 +40,8 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
-  // Never cache Supabase API, Realtime, Storage, or external font/API requests aggressively as shell
   if (url.origin !== self.location.origin) return;
 
-  // HTML shell requests: ALWAYS network-first bypassing HTTP cache, offline fallback only
   if (request.mode === 'navigate' || url.pathname === '/' || url.pathname === '/index.html') {
     event.respondWith(
       fetch(new Request(request, { cache: 'no-store' }))
@@ -67,7 +57,6 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static assets: cache first, network fallback & update
   event.respondWith(
     caches.match(request).then((cached) => {
       if (cached) return cached;
@@ -82,7 +71,6 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Web Push handler (iOS 16.4+ standalone PWA & modern browsers)
 self.addEventListener('push', (event) => {
   let payload = {
     title: 'Bizim Gökyüzümüz',
@@ -144,4 +132,3 @@ self.addEventListener('notificationclick', (event) => {
     })
   );
 });
-

@@ -1,6 +1,6 @@
 export type Who = 'hamham' | 'beto';
 
-export type StarKind = 'note' | 'miss' | 'photo' | 'voice';
+export type StarKind = 'note' | 'miss' | 'text' | 'photo' | 'voice' | 'draw';
 
 export interface PersonMeta {
   who: Who;
@@ -52,4 +52,3 @@ export interface ProfileRow {
   who: Who;
   push_subscription: Record<string, unknown> | null;
 }
-

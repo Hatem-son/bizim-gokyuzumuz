@@ -11,13 +11,11 @@ export const STORAGE_KEYS = {
   hint: 'gokyuzu.hint.v4',
   greet: 'gokyuzu.greet.v4',
   plane: 'gokyuzu.plane.v4',
-  boat: 'gokyuzu.boat.v4',
-  vehicle: 'gokyuzu.vehicle.v4',
-  compass: 'gokyuzu.compass.v4',
   hazel: 'gokyuzu.hazel.v4',
   draftPrefix: 'gokyuzu.draft.v4.',
   starsLocal: 'gokyuzu.stars.v4',
   pushPrompt: 'gokyuzu.pushPrompt.v4',
+  settings: 'gokyuzu.settings.v6',
 } as const;
 
 export const store = {
@@ -49,4 +47,3 @@ export const store = {
     }
   },
 };
-

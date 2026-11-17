@@ -1,299 +1,174 @@
-export interface DiagnosticsDataSource {
-  getVersion: () => string;
-  getCanvas: () => HTMLCanvasElement | null;
-  getEngineStats: () => {
-    avgMs: number;
-    maxMs: number;
-    fps: number;
-    mode: 'active' | 'idle' | 'quiet' | 'paused';
-    samples: number;
-  } | null;
+// Teşhis menüsü (Ayarlar -> Sürüm satırına 5 dokunuş):
+// FPS, yavaş kare oranı (%), uzun görevler, worker süreleri, saat kaydırıcısı, "Günü 24 sn'de oynat", hava önizleme.
+import { h, $, openSheet } from './ui';
+import { core } from './core';
+import { Weather, WeatherKind, kindFromCode, KIND_TR } from '../gokyuzu/weather';
+
+const PRE: Record<WeatherKind, [number, number, number, number, number, number]> = {
+  clear: [0, 0, 0.1, 15000, 0, 18],
+  partly: [2, 35, 0.2, 15000, 0, 16],
+  cloudy: [3, 70, 0.3, 12000, 0, 13],
+  overcast: [3, 98, 0.3, 9000, 0, 11],
+  fog: [45, 60, 0.05, 400, 0, 9],
+  drizzle: [53, 90, 0.2, 6000, 0.25, 10],
+  rain: [63, 95, 0.35, 5000, 0.6, 9],
+  heavyRain: [65, 100, 0.6, 2500, 0.95, 8],
+  showers: [81, 80, 0.45, 6000, 0.6, 10],
+  snow: [73, 95, 0.15, 3000, 0.55, 1],
+  heavySnow: [75, 100, 0.4, 900, 0.9, -2],
+  sleet: [67, 100, 0.3, 3000, 0.55, 2],
+  thunder: [95, 100, 0.7, 3000, 0.95, 11],
+};
+
+export function applyWeatherPreview(kind: WeatherKind, ms = 2500) {
+  const [code, cloud, wind, vis, precip, temp] = PRE[kind];
+  const wx: Weather = {
+    kind: kindFromCode(code, cloud / 100),
+    cloud: cloud / 100,
+    precip,
+    wind,
+    windSign: -1,
+    fog: vis < 1000 ? 0.85 : 0,
+    temp,
+    ts: Date.now(),
+  };
+  core.engine.setWeather(wx, ms);
+  core.weatherRenderer.setWeather(wx);
 }
 
-export interface DiagnosticsController {
-  open: () => void;
-  close: () => void;
-  toggle: () => boolean;
-  isOpen: () => boolean;
-  setHiddenPaused: (hidden: boolean) => void;
-  destroy: () => void;
-}
-
-interface FrameSample {
-  t: number;
-  dt: number;
-  mode: string;
-}
-
-const WINDOW_MS = 5000;
-
-function readCssLength(varName: string): string {
-  const raw = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
-  return raw || '0px';
-}
-
-function measurePromotedLayers(): number {
-  let count = 0;
-  const all = document.querySelectorAll('#scene, #scene > *, #ground > *, #ui > *, #app-root > *');
-  for (const el of all) {
-    const cs = getComputedStyle(el);
-    if (cs.display === 'none' || cs.visibility === 'hidden') continue;
-    const wc = cs.willChange && cs.willChange !== 'auto';
-    const tf = cs.transform && cs.transform !== 'none';
-    if (wc || tf) count++;
+export function setTimeHour(hh: number | null, retargetMs = 500) {
+  if (hh === null) {
+    core.engine.timeOverride = null;
+    core.engine.retarget(retargetMs);
+    return;
   }
-  const animEls = new Set<Element>();
-  if (typeof document.getAnimations === 'function') {
-    for (const anim of document.getAnimations()) {
-      const target = (anim.effect as KeyframeEffect | null)?.target;
-      if (target instanceof Element) animEls.add(target);
-    }
-  }
-  return count + animEls.size;
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setTime(d.getTime() + hh * 3600_000);
+  core.engine.timeOverride = d;
+  core.engine.retarget(retargetMs);
 }
 
-async function copyTextToClipboard(text: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    // Yedek kopyalama yoluna geç
-  }
-  try {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.setAttribute('readonly', 'true');
-    ta.style.position = 'fixed';
-    ta.style.left = '-9999px';
-    document.body.appendChild(ta);
-    ta.select();
-    const ok = document.execCommand('copy');
-    ta.remove();
-    return ok;
-  } catch {
-    return false;
-  }
-}
-
-export function createDiagnosticsController(
-  host: HTMLElement,
-  source: DiagnosticsDataSource
-): DiagnosticsController {
-  let active = false;
-  let pausedByHidden = false;
-  let rafId = 0;
-  let uiTimer = 0;
-  let lastT = 0;
-  let samples: FrameSample[] = [];
-  let longTasksSupported = false;
-  let longTaskCount = 0;
-  let longTaskObserver: PerformanceObserver | null = null;
-  let promotedLayers = 0;
-  let lastLayerSampleAt = 0;
-  let lastSnapshotText = '';
-  let copyResetTimer = 0;
-
-  host.innerHTML = `<div class="diag-head">
-      <strong class="diag-title">Teşhis</strong>
-      <button class="diag-x" id="diag-close" type="button" aria-label="Teşhisi kapat">✕</button>
+export function openDiagnostics() {
+  const curDate = core.engine.now();
+  const curHour = curDate.getHours() + curDate.getMinutes() / 60;
+  const c = h(`<div data-nodrag>
+    <div class="row-flex" style="margin-bottom:6px">
+      <div class="h2">Teşhis</div>
+      <span class="grow"></span>
+      <button type="button" class="chip" data-reset style="height:36px;min-height:36px">Sıfırla</button>
     </div>
-    <pre class="diag-body" id="diag-body"></pre>
-    <p class="diag-hint" id="diag-hint" hidden></p>
-    <div class="diag-actions">
-      <button class="diag-copy" id="diag-copy" type="button">Kopyala</button>
-    </div>`;
+    <div class="diag-grid">
+      <div class="diag-cell"><span class="small">FPS</span><b data-fps>—</b></div>
+      <div class="diag-cell"><span class="small">Yavaş kare</span><b data-slow>0.0%</b></div>
+      <div class="diag-cell"><span class="small">Uzun görev</span><b data-lt>0</b></div>
+      <div class="diag-cell"><span class="small">Worker (atmo/bulut)</span><b data-wk>—</b></div>
+    </div>
+    <div class="eyebrow" style="margin:14px 2px 8px">Saat: <span data-hlbl>${core.engine.timeOverride ? fmtH(curHour) : 'şimdi'}</span></div>
+    <input type="range" min="0" max="23.99" step="0.05" value="${curHour.toFixed(2)}" data-hour style="width:100%">
+    <div class="row-flex" style="margin-top:8px">
+      <button type="button" class="chip grow" data-day24 style="justify-content:center">Günü 24 sn'de oynat</button>
+      <button type="button" class="chip" data-now>Gerçek saat</button>
+    </div>
+    <div class="eyebrow" style="margin:14px 2px 8px">Hava önizleme</div>
+    <select class="diag-sel" data-wx>
+      ${(Object.keys(PRE) as WeatherKind[]).map((k) => `<option value="${k}" ${core.engine.weather.kind === k ? 'selected' : ''}>${KIND_TR[k]}</option>`).join('')}
+    </select>
+    <div class="row-flex" style="margin-top:10px">
+      <button type="button" class="chip grow" data-plane style="justify-content:center">Uçak</button>
+      <button type="button" class="chip grow" data-meteor style="justify-content:center">Meteor</button>
+    </div>
+  </div>`);
 
-  const bodyEl = host.querySelector('#diag-body') as HTMLPreElement;
-  const hintEl = host.querySelector('#diag-hint') as HTMLParagraphElement;
-  const copyBtn = host.querySelector('#diag-copy') as HTMLButtonElement;
-  const closeBtn = host.querySelector('#diag-close') as HTMLButtonElement;
+  let dayRaf = 0;
+  const stopDayPlay = () => { if (dayRaf) { cancelAnimationFrame(dayRaf); dayRaf = 0; } };
 
-  const startLongTaskObserver = () => {
-    if (longTaskObserver || typeof PerformanceObserver === 'undefined') return;
-    try {
-      const supported = PerformanceObserver.supportedEntryTypes ?? [];
-      if (!supported.includes('longtask')) {
-        longTasksSupported = false;
-        return;
-      }
-      longTasksSupported = true;
-      longTaskObserver = new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) {
-          if (entry.duration > 50) longTaskCount++;
-        }
-      });
-      longTaskObserver.observe({ entryTypes: ['longtask'] });
-    } catch {
-      longTasksSupported = false;
-    }
+  const s = openSheet(c, {
+    onClose: () => {
+      stopDayPlay();
+      clearInterval(iv);
+    },
+  });
+  void s;
+
+  const updateMetrics = () => {
+    if (document.hidden || !c.isConnected) return;
+    const st = core.engine.stats;
+    const slowPct = st.frames > 0 ? ((st.slow / st.frames) * 100).toFixed(1) : '0.0';
+    $('[data-fps]', c).textContent = `${st.fps || 60}${core.engine.lowPower ? ' (DG)' : ''}`;
+    $('[data-slow]', c).textContent = `${slowPct}%`;
+    $('[data-lt]', c).textContent = String(st.longTasks);
+    const tm = core.worker.timings;
+    $('[data-wk]', c).textContent = `${tm.atmo || 0} / ${tm.clouds || 0} ms`;
   };
+  updateMetrics();
+  const iv = window.setInterval(updateMetrics, 500);
 
-  const stopLongTaskObserver = () => {
-    longTaskObserver?.disconnect();
-    longTaskObserver = null;
-  };
-
-  const rafStep = (now: number) => {
-    rafId = 0;
-    if (!active || pausedByHidden || document.hidden) return;
-    if (lastT > 0) {
-      const dt = now - lastT;
-      if (dt > 0 && dt < 2000) {
-        const mode = source.getEngineStats()?.mode ?? 'active';
-        samples.push({ t: now, dt, mode });
-      }
-    }
-    lastT = now;
-    const cutoff = now - WINDOW_MS;
-    while (samples.length > 0 && samples[0].t < cutoff) {
-      samples.shift();
-    }
-    rafId = requestAnimationFrame(rafStep);
-  };
-
-  const renderSnapshot = () => {
-    if (!active) return;
-    const now = performance.now();
-    const cutoff = now - WINDOW_MS;
-    samples = samples.filter((s) => s.t >= cutoff);
-
-    const n = samples.length;
-    const sumDt = samples.reduce((acc, s) => acc + s.dt, 0);
-    const avgFrameMs = n > 0 ? sumDt / n : 0;
-    const over167 = samples.filter((s) => s.dt > 16.7).length;
-    const overPct = n > 0 ? Math.round((over167 / n) * 100) : 0;
-
-    // Son 5 kare ortalamasından anlık FPS
-    const tail = samples.slice(-8);
-    const tailAvg = tail.length > 0 ? tail.reduce((a, s) => a + s.dt, 0) / tail.length : 0;
-    const instantFps = tailAvg > 0 ? Math.round(1000 / tailAvg) : (source.getEngineStats()?.fps ?? 0);
-    const avg5sFps = avgFrameMs > 0 ? Math.round(1000 / avgFrameMs) : instantFps;
-
-    const eng = source.getEngineStats();
-    const canvas = source.getCanvas();
-    const cw = canvas?.width ?? 0;
-    const ch = canvas?.height ?? 0;
-    const mpx = ((cw * ch) / 1_000_000).toFixed(2);
-    const dpr = +(window.devicePixelRatio || 1).toFixed(2);
-    const canvasDpr = window.innerWidth > 0 && cw > 0 ? +(cw / window.innerWidth).toFixed(2) : dpr;
-    const domCount = document.getElementsByTagName('*').length;
-    const animCount = typeof document.getAnimations === 'function' ? document.getAnimations().length : 0;
-    if (now - lastLayerSampleAt > 1200) {
-      promotedLayers = measurePromotedLayers();
-      lastLayerSampleAt = now;
-    }
-    const appH = readCssLength('--app-h') || `${window.innerHeight}px`;
-    const safeTop = readCssLength('--sat');
-    const safeRight = readCssLength('--sar');
-    const safeBot = readCssLength('--sab');
-    const safeLeft = readCssLength('--sal');
-
-    // Düşük Güç Modu algılama: yeterli örnekte fps 27-32 bandında sabitlenirse uyar
-    const lowPowerLocked = n >= 28 && avg5sFps >= 27 && avg5sFps <= 32 && over167 / Math.max(1, n) > 0.7;
-    const fpsLine = lowPowerLocked
-      ? `Anlık FPS   : fps 30'a sabit (5s ort ${avg5sFps} fps)`
-      : `Anlık FPS   : ${instantFps} fps (5s ort ${avg5sFps} · ${eng?.mode ?? 'active'})`;
-
-    hintEl.hidden = !lowPowerLocked;
-    if (lowPowerLocked) {
-      hintEl.textContent = 'İpucu: Düşük Güç Modu açık olabilir (iOS 30 fps sınırlar).';
-    }
-
-    const longTaskLine = longTasksSupported ? String(longTaskCount) : 'desteklenmiyor (Safari)';
-    const lines = [
-      `Sürüm       : ${source.getVersion()}`,
-      fpsLine,
-      `5s Ort Kare : ${avgFrameMs.toFixed(2)} ms (motor ${eng?.fps ?? 0} fps · ${eng?.avgMs ?? 0} ms)`,
-      `>16.7ms Kare: ${over167}/${n} (%${overPct})`,
-      `Uzun Görev  : ${longTaskLine} (>50ms)`,
-      `Canvas      : ${cw}×${ch} (${mpx}M px) · tuval DPR ${canvasDpr} (ekran ${dpr})`,
-      `DOM / Katman: ${domCount} DOM · ~${promotedLayers} katman`,
-      `Animasyon   : ${animCount} aktif`,
-      `--app-h     : ${appH} (ekran ${window.innerWidth}×${window.innerHeight})`,
-      `Güvenli Alan: üst ${safeTop} / sağ ${safeRight} / alt ${safeBot} / sol ${safeLeft}`,
-    ];
-    if (lowPowerLocked) {
-      lines.push('Not         : Düşük Güç Modu açık olabilir (fps 30\'a sabit)');
-    }
-
-    lastSnapshotText = lines.join('\n');
-    bodyEl.textContent = lastSnapshotText;
-  };
-
-  const stopLoops = () => {
-    cancelAnimationFrame(rafId);
-    rafId = 0;
-    window.clearInterval(uiTimer);
-    uiTimer = 0;
-    lastT = 0;
-  };
-
-  const startLoops = () => {
-    if (!active || pausedByHidden || document.hidden) return;
-    if (!rafId) rafId = requestAnimationFrame(rafStep);
-    if (!uiTimer) uiTimer = window.setInterval(renderSnapshot, 350);
-  };
-
-  const open = () => {
-    if (active) return;
-    active = true;
-    samples = [];
-    longTaskCount = 0;
-    lastT = 0;
-    host.hidden = false;
-    startLongTaskObserver();
-    renderSnapshot();
-    startLoops();
-  };
-
-  const close = () => {
-    if (!active) return;
-    active = false;
-    host.hidden = true;
-    stopLoops();
-    stopLongTaskObserver();
-  };
-
-  closeBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    close();
+  const hourEl = $<HTMLInputElement>('[data-hour]', c);
+  const hLbl = $('[data-hlbl]', c);
+  hourEl.addEventListener('input', () => {
+    stopDayPlay();
+    const hh = +hourEl.value;
+    hLbl.textContent = fmtH(hh);
+    setTimeHour(hh, 500);
+    core.engine.busy(400);
   });
 
-  copyBtn.addEventListener('click', async (e) => {
-    e.stopPropagation();
-    renderSnapshot();
-    const ok = await copyTextToClipboard(lastSnapshotText);
-    window.clearTimeout(copyResetTimer);
-    copyBtn.textContent = ok ? 'Kopyalandı ✓' : 'Kopyalanamadı';
-    copyResetTimer = window.setTimeout(() => {
-      copyBtn.textContent = 'Kopyala';
-    }, 1500);
+  $('[data-now]', c).addEventListener('click', () => {
+    stopDayPlay();
+    setTimeHour(null, 1000);
+    const n = new Date();
+    hourEl.value = String(n.getHours() + n.getMinutes() / 60);
+    hLbl.textContent = 'şimdi';
   });
 
-  return {
-    open,
-    close,
-    toggle: () => {
-      if (active) {
-        close();
-        return false;
+  $('[data-day24]', c).addEventListener('click', () => {
+    stopDayPlay();
+    const t0 = performance.now();
+    let lastRetarget = 0;
+    const step = (now: number) => {
+      if (!c.isConnected || document.hidden) { stopDayPlay(); return; }
+      const p = Math.min(1, (now - t0) / 24_000);
+      const hh = (p * 24) % 24;
+      hourEl.value = hh.toFixed(2);
+      hLbl.textContent = fmtH(hh);
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      d.setTime(d.getTime() + hh * 3600_000);
+      core.engine.timeOverride = d;
+      if (now - lastRetarget > 450) {
+        lastRetarget = now;
+        core.engine.retarget(450);
       }
-      open();
-      return true;
-    },
-    isOpen: () => active,
-    setHiddenPaused: (hidden: boolean) => {
-      pausedByHidden = hidden;
-      if (hidden) stopLoops();
-      else if (active) startLoops();
-    },
-    destroy: () => {
-      window.clearTimeout(copyResetTimer);
-      close();
-      host.innerHTML = '';
-    },
-  };
+      core.engine.busy(250);
+      if (p < 1) dayRaf = requestAnimationFrame(step);
+      else dayRaf = 0;
+    };
+    dayRaf = requestAnimationFrame(step);
+  });
+
+  $<HTMLSelectElement>('[data-wx]', c).addEventListener('change', (e) => {
+    applyWeatherPreview((e.target as HTMLSelectElement).value as WeatherKind);
+  });
+
+  $('[data-reset]', c).addEventListener('click', () => {
+    core.engine.resetStats();
+    updateMetrics();
+  });
+
+  $('[data-plane]', c).addEventListener('click', () => {
+    void core.plane?.launch();
+    core.engine.busy(2000);
+  });
+
+  $('[data-meteor]', c).addEventListener('click', () => {
+    core.fx.decorative(performance.now());
+    core.engine.busy(1200);
+  });
 }
 
+function fmtH(hh: number) {
+  const h2 = Math.floor(hh) % 24;
+  const m2 = Math.floor((hh % 1) * 60);
+  return `${String(h2).padStart(2, '0')}:${String(m2).padStart(2, '0')}`;
+}

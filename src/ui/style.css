@@ -1,0 +1,271 @@
+/* ============================================================
+   Bizim Gökyüzümüz — Tasarım sistemi (v8 -> v6.0.x)
+   Dil: sinematik gökyüzü + cam paneller (blur YOK, sahte cam) + editoryal serif
+   ============================================================ */
+:root {
+  /* renk */
+  --ink: #070a16;
+  --night: #0b1022;
+  --glass: rgba(14, 18, 38, .72);
+  --glass-strong: rgba(12, 15, 32, .9);
+  --glass-line: rgba(255, 255, 255, .09);
+  --glass-hi: rgba(255, 255, 255, .14);
+  --text: #f3f1ec;
+  --text-2: rgba(243, 241, 236, .68);
+  --text-3: rgba(243, 241, 236, .42);
+  --paper: #f5eee1;
+  --paper-2: #ece2cf;
+  --paper-ink: #1c1f36;
+  --paper-ink-2: #5a5568;
+  --gold: #f1cf94;
+  --ham: #9db6ff;
+  --beto: #ffadcc;
+  --me: var(--ham);
+  --partner: var(--beto);
+  --danger: #ff8f8f;
+  --ok: #9fe0c0;
+
+  /* yazı */
+  --serif: "Cormorant Garamond", "Times New Roman", serif;
+  --sans: "Inter", -apple-system, system-ui, sans-serif;
+
+  /* ölçü */
+  --r-s: 12px; --r-m: 18px; --r-l: 26px; --r-xl: 34px;
+
+  /* hareket */
+  --e-out: cubic-bezier(.22, .8, .24, 1);
+  --e-io: cubic-bezier(.45, 0, .2, 1);
+  --e-spring: cubic-bezier(.3, 1.3, .45, 1);
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: var(--app-h, 100svh);
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: var(--sky-bottom, #05070d);
+  color: var(--text);
+  font-family: var(--sans);
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+input, textarea { font: inherit; color: inherit; }
+svg { display: block; }
+
+/* ---------- tam ekran PWA uygulama çerçevesi ---------- */
+#app {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: var(--app-h, 100svh);
+  overflow: hidden;
+  background: var(--sky-bottom, #05070d);
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none;
+  font-size: 15px;
+  line-height: 1.4;
+  letter-spacing: -.005em;
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --island-top: 11px;
+}
+#app input, #app textarea { -webkit-user-select: text; user-select: text; touch-action: manipulation; }
+.layer { position: absolute; inset: 0; }
+canvas { position: absolute; left: 0; top: 0; pointer-events: none; }
+
+/* ---------- sahte cam (blur yok: iPhone akıcılığı) ---------- */
+.glass {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,0) 40%),
+    var(--glass);
+  border: 1px solid var(--glass-line);
+  box-shadow: inset 0 1px 0 var(--glass-hi), 0 10px 30px rgba(0,0,0,.18);
+}
+.glass-strong {
+  background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,0) 30%), var(--glass-strong);
+  border: 1px solid var(--glass-line);
+  box-shadow: inset 0 1px 0 var(--glass-hi);
+}
+
+/* ---------- kişiye özel tema: Beto pembe/ahududu, Ham ham ay mavisi/altın ---------- */
+#app[data-me="beto"] {
+  --accent: #ff8db5; --accent-2: #ffc1d6; --btn-a: #fff3f7; --btn-b: #ffc9dc; --btn-ink: #3d1228;
+  --chip-on: #ffd6e4; --toggle-on: #ff8db5; --seg-thumb: #ffe2ec;
+  --glass: rgba(30, 14, 30, .74); --glass-strong: rgba(26, 11, 25, .92); --glass-line: rgba(255, 190, 215, .14); --glass-hi: rgba(255, 210, 228, .18);
+  --line: #ffc6da; --line-fill: rgba(255, 160, 195, .10); --petal-fill: rgba(255, 185, 210, .14); --petal-fill-2: rgba(255, 205, 222, .22); --anther: #ff6f9c;
+  --eyebrow: #ffc1d6;
+}
+#app[data-me="ham"] {
+  --accent: #9db6ff; --accent-2: #c9d7ff; --btn-a: #f4f7ff; --btn-b: #cfdcff; --btn-ink: #0f1b3d;
+  --chip-on: #dbe5ff; --toggle-on: #8faaf6; --seg-thumb: #e4ebff;
+  --glass: rgba(12, 17, 38, .74); --glass-strong: rgba(10, 13, 30, .92); --glass-line: rgba(190, 210, 255, .12); --glass-hi: rgba(210, 225, 255, .16);
+  --line: #ecd6a8; --line-fill: rgba(240, 215, 165, .08); --petal-fill: rgba(255, 238, 210, .10); --petal-fill-2: rgba(255, 244, 222, .16); --anther: #d79a52;
+  --eyebrow: #c9d7ff;
+}
+
+/* ---------- yazı biçimleri ---------- */
+.eyebrow { font: 600 10.5px/1 var(--sans); letter-spacing: .2em; text-transform: uppercase; color: var(--eyebrow, var(--text-2)); }
+.display { font: italic 600 40px/1 var(--serif); letter-spacing: -.01em; }
+.title { font: italic 600 30px/1.05 var(--serif); letter-spacing: -.005em; }
+.h2 { font: italic 600 23px/1.15 var(--serif); }
+.body { font: 400 15px/1.45 var(--sans); color: var(--text-2); }
+.small { font: 500 12.5px/1.35 var(--sans); color: var(--text-3); }
+.num { font-variant-numeric: lining-nums tabular-nums; }
+.display, .title, .h2, .letter, .cd b, .cd-ring b, .stats b { font-variant-numeric: lining-nums; }
+
+/* ---------- düğmeler (en az 44x44 dokunma alanı) ---------- */
+.btn {
+  min-height: 44px; height: 52px; padding: 0 22px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+  font: 600 15px/1 var(--sans); letter-spacing: -.01em; transition: transform .16s var(--e-out), opacity .2s;
+}
+.btn:active { transform: scale(.965); }
+.btn-primary { background: linear-gradient(180deg, var(--btn-a), var(--btn-b)); color: var(--btn-ink); box-shadow: 0 8px 24px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.9); }
+.btn-ghost { color: var(--text); }
+
+.btn[disabled] { opacity: .38; pointer-events: none; }
+.btn-block { width: 100%; }
+.icon-btn { width: 44px; height: 44px; min-width: 44px; min-height: 44px; border-radius: 50%; display: grid; place-items: center; transition: transform .16s var(--e-out); }
+.icon-btn:active { transform: scale(.9); }
+.chip {
+  min-height: 44px; height: 44px; padding: 0 15px; border-radius: 999px; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+  font: 500 13.5px/1 var(--sans); color: var(--text); border: 1px solid var(--glass-line); background: rgba(255,255,255,.05);
+  transition: transform .16s var(--e-out), opacity .2s;
+}
+.chip:active { transform: scale(.95); }
+.chip.on { background: var(--chip-on); color: var(--btn-ink); border-color: transparent; }
+
+/* ---------- alan ---------- */
+.field { position: relative; }
+.field input, .field textarea {
+  width: 100%; border-radius: var(--r-m); border: 1px solid var(--glass-line); background: rgba(255,255,255,.05);
+  padding: 16px 18px; font-size: 16px; outline: none;
+}
+.field input:focus, .field textarea:focus { border-color: rgba(255,255,255,.32); background: rgba(255,255,255,.08); }
+.field input::placeholder, .field textarea::placeholder { color: var(--text-3); }
+.field .hint { margin: 8px 4px 0; }
+.field.error input { border-color: rgba(255,143,143,.7); }
+
+/* ---------- ekran ve sayfa ---------- */
+.screen { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.page {
+  position: absolute; inset: 0; z-index: 30; display: flex; flex-direction: column;
+  background: linear-gradient(180deg, rgba(8,11,24,.96), rgba(6,8,18,.985));
+}
+.page-head { padding: calc(var(--safe-t) + 6px) 12px 6px; display: flex; align-items: center; gap: 4px; min-height: 52px; }
+.page-head .title { padding: 0 8px; }
+.page-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y; padding: 6px 20px calc(var(--safe-b) + 30px); }
+.page-body::-webkit-scrollbar { display: none; }
+
+/* ---------- alt sayfa (sheet) + klavye uyumu ---------- */
+.backdrop { position: absolute; inset: 0; z-index: 40; background: rgba(3,4,10,.55); opacity: 0; }
+.sheet {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 41; border-radius: var(--r-xl) var(--r-xl) 0 0;
+  padding: 10px 20px calc(var(--safe-b) + 18px); max-height: calc(100% - var(--safe-t) - 10px);
+  display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain;
+}
+@media (min-width: 540px) {
+  .sheet { max-width: 460px; margin: 0 auto; }
+}
+.sheet .grab { width: 38px; height: 5px; border-radius: 3px; background: rgba(255,255,255,.22); margin: 0 auto 12px; flex: none; }
+.sheet.kb { border-radius: var(--r-l); }
+
+html.kb-open .sheet {
+  bottom: var(--kb, 0px);
+  max-height: calc(var(--vv-h, 100%) - var(--safe-t) - 8px);
+  padding-bottom: 12px;
+  border-radius: 24px;
+  margin-left: 6px;
+  margin-right: 6px;
+}
+html.kb-open .sheet .lockline { display: none; }
+html.kb-open .sheet .write { height: 104px; overflow-y: auto; touch-action: pan-y; }
+html.kb-open .auth {
+  padding-top: calc(var(--safe-t) + 8px);
+  padding-bottom: calc(var(--kb, 0px) + 12px);
+}
+html.kb-open .auth .brand { margin-top: 8px; }
+html.kb-open .auth .brand .display { font-size: 32px; }
+html.kb-open .auth .brand .sub { display: none; }
+
+/* ---------- liste satırı ---------- */
+.row { display: flex; align-items: center; gap: 14px; min-height: 56px; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,.06); }
+.row:last-child { border-bottom: 0; }
+.group { border-radius: var(--r-m); padding: 2px 16px; background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.06); }
+.group-title { margin: 22px 4px 8px; }
+
+/* ---------- anahtar (toggle) ---------- */
+.toggle { width: 50px; height: 30px; border-radius: 15px; background: rgba(255,255,255,.16); position: relative; flex: none; }
+.toggle::after { content: ""; position: absolute; left: 3px; top: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,.3); transition: transform .3s var(--e-spring); }
+.toggle.on { background: var(--toggle-on); }
+.toggle.on::after { transform: translateX(20px); background: #fff; }
+
+/* ---------- segment ---------- */
+.seg { display: flex; padding: 3px; border-radius: 14px; background: rgba(255,255,255,.06); position: relative; }
+.seg button { flex: 1; min-height: 40px; height: 40px; border-radius: 11px; font: 500 13px/1 var(--sans); color: var(--text-2); position: relative; z-index: 1; }
+.seg button.on { color: var(--btn-ink); }
+.seg .thumb { position: absolute; top: 3px; bottom: 3px; left: 3px; border-radius: 11px; background: var(--seg-thumb); transition: transform .35s var(--e-out); }
+
+/* ---------- mektup (açılan yıldız) ---------- */
+.letter {
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(255,255,255,.55), rgba(255,255,255,0) 60%),
+    linear-gradient(180deg, var(--paper), var(--paper-2));
+  color: var(--paper-ink); border-radius: 22px; padding: 26px 24px 22px; position: relative;
+  box-shadow: 0 30px 60px rgba(0,0,0,.45), 0 1px 0 rgba(255,255,255,.7) inset;
+}
+.letter.from-beto { --paper: #fdf1f4; --paper-2: #f6dde5; --paper-ink: #3b1729; --paper-ink-2: #8a5a6e; }
+.letter.from-ham { --paper: #f6f2e8; --paper-2: #e8e1d0; --paper-ink: #1a2240; --paper-ink-2: #5d6278; }
+.letter .from { font: italic 600 26px/1 var(--serif); }
+.letter .mini-seal { position: absolute; right: 18px; top: 18px; }
+.letter .meta { font: 500 11px/1 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--paper-ink-2); }
+.letter .text { font: 500 21px/1.45 var(--serif); margin: 18px 0 6px; white-space: pre-wrap; }
+.polaroid { background: #fffdf8; padding: 10px 10px 34px; border-radius: 4px; box-shadow: 0 10px 24px rgba(30,20,10,.18); transform: rotate(-1.2deg); margin: 18px 6px 4px; position: relative; }
+.polaroid img, .polaroid .ph { width: 100%; aspect-ratio: 4/5; object-fit: cover; border-radius: 2px; display: block; }
+.polaroid figcaption { position: absolute; left: 0; right: 0; bottom: 8px; text-align: center; font: italic 500 17px/1 var(--serif); color: var(--paper-ink); }
+
+/* ---------- toast ---------- */
+.toast { position: absolute; left: 50%; bottom: calc(var(--safe-b) + 92px); z-index: 80; transform: translateX(-50%); max-width: calc(100% - 32px);
+  padding: 11px 16px 11px 13px; border-radius: 999px; display: flex; align-items: center; gap: 9px; white-space: nowrap; font: 500 13.5px/1 var(--sans); }
+
+/* ---------- canlı gösterge ---------- */
+.live { position: absolute; left: 18px; z-index: 12; height: 30px; padding: 0 12px 0 9px; border-radius: 999px; display: flex; align-items: center; gap: 8px;
+  font: 500 12.5px/1 var(--sans); color: var(--text); opacity: 0; transform: translateY(-6px); pointer-events: none; }
+.live.on { opacity: 1; transform: none; transition: opacity .32s var(--e-out), transform .32s var(--e-out); pointer-events: auto; }
+.live .dot { width: 8px; height: 8px; position: relative; }
+.live .dot::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--partner); animation: breathe 1.6s ease-in-out infinite; }
+.live .watch { margin-left: 4px; padding: 5px 9px; border-radius: 999px; background: rgba(255,255,255,.9); color: #171a2e; font-weight: 600; font-size: 11.5px; }
+@keyframes breathe { 0%, 100% { opacity: .45; transform: scale(.85); } 50% { opacity: 1; transform: scale(1.1); } }
+
+/* ---------- yardımcılar ---------- */
+.row-flex { display: flex; align-items: center; gap: 10px; }
+.grow { flex: 1; }
+.center { text-align: center; }
+.hide { display: none !important; }
+.press { transition: transform .16s var(--e-out); }
+.press:active { transform: scale(.97); }
+.shake { animation: shake .42s var(--e-out); }
+@keyframes shake { 20% { transform: translateX(-7px); } 40% { transform: translateX(6px); } 60% { transform: translateX(-4px); } 80% { transform: translateX(2px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .12s !important; }
+}
+
+/* ---------- zarf + mühür ---------- */
+.env-wrap { position: relative; }
+.env-wrap .letter { position: relative; }
+.env { position: absolute; left: 0; right: 0; top: 0; height: 220px; }
+.env.beto { --env: #f7d4df; --env-2: #eebccb; --env-3: #fbe3ea; }
+.env.ham { --env: #ece6d8; --env-2: #ddd4c1; --env-3: #f4efe4; }
+.seal { position: absolute; left: 50%; top: 96px; width: 58px; height: 58px; margin-left: -29px; z-index: 6; display: grid; place-items: center; }
+.env .back { z-index: 0; } .env .front { z-index: 3; } .env .flap { z-index: 4; }
+.env svg { position: absolute; left: 0; right: 0; width: 100%; }
+.env svg.back, .env svg.front { top: 0; height: 220px; } .env svg.flap { top: 0; height: 130px; transform-origin: 50% 0; }
+.env-wrap .letter { z-index: 1; }
+.seal svg.wax { position: absolute; inset: 0; }
+.seal .emb { position: relative; color: rgba(0,0,0,.28); }
+.seal .half { position: absolute; inset: 0; }
