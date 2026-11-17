@@ -1,0 +1,191 @@
+// Ana ekran: gökyüzü + lilyumla süslü sayaç + çentik bildirimleri + kumsalda palmiyeler ve ikimizin mumu + alt menü.
+import { h, $, toast, island } from './ui';
+import { I, SIGN } from './icons';
+import { jarSVG, raspberry } from './art';
+import { lilyBloom } from './lily';
+import { palmSVG } from './palm';
+import { state, PEOPLE, untilParts, Star } from './state';
+import { core } from './core';
+import { KIND_TR } from '../gokyuzu/weather';
+import { getServerNowMs } from '../lib/stars';
+import { updateAppBadge } from '../lib/pwa';
+
+let homeTickId = 0;
+
+export function buildHome(): HTMLElement {
+  clearInterval(homeTickId);
+  const el = h(`<div class="screen home" style="z-index:8">
+    <div class="scrim-top"></div><div class="scrim-bot"></div>
+    <header class="home-top">
+      <button type="button" class="counter press" aria-label="9 Ocak'a kalan süre">
+        <div class="eyebrow">9 Ocak'a</div>
+        <div class="cnum"><b class="num" data-days>0</b><i>gün</i><span class="lz-main">${lilyBloom(42, 18, 'sway')}</span><span class="lz-small">${lilyBloom(20, -34)}</span></div>
+        <div class="csub" data-hm></div>
+      </button>
+      <div class="top-r">
+        <button type="button" class="pill glass press" data-count aria-label="Yıldızlarımız">${I.starFill(13)}<span class="num" data-n></span></button>
+        <button type="button" class="pill glass press hide" data-wx aria-label="Hava durumu"></button>
+      </div>
+    </header>
+    <nav class="dock glass" aria-label="Ana menü">
+      <button type="button" class="icon-btn" data-arch aria-label="Yıldızlarımız">${I.archive(22)}<span class="badge hide"></span></button>
+      <button type="button" class="btn btn-primary send" data-send>${state.me === 'beto' ? `<span class="rb">${raspberry(12)}</span>` : I.star(18)}<span>Yıldız bırak</span></button>
+      <button type="button" class="icon-btn" data-set aria-label="Ayarlar">${I.gear(22)}</button>
+    </nav>
+  </div>`);
+  core.homeEl = el;
+
+  $('[data-send]', el).addEventListener('click', () => core.openCompose());
+  $('[data-arch]', el).addEventListener('click', () => core.openArchive());
+  $('[data-count]', el).addEventListener('click', () => core.openArchive());
+  $('[data-set]', el).addEventListener('click', () => core.openSettings());
+  $('.counter', el).addEventListener('click', () => core.openCountdown());
+  $('[data-wx]', el).addEventListener('click', () => {
+    const w = core.engine.weather;
+    const place = state.settings.weather === 'city' && state.settings.city ? state.settings.city : 'Konumum';
+    toast(`${place} · ${KIND_TR[w.kind]}${isNaN(w.temp) ? '' : ` · ${Math.round(w.temp)}°`}`, wxIcon(w.kind));
+  });
+
+  const tick = () => {
+    if (document.hidden || !el.isConnected) return;
+    const p = untilParts(state.meetDate.getTime());
+    $('[data-days]', el).textContent = String(p.d);
+    $('[data-hm]', el).textContent = `${p.h} saat · ${String(p.m).padStart(2, '0')} dakika`;
+  };
+  tick();
+  homeTickId = window.setInterval(tick, 15_000);
+  core.refreshHome = () => refresh(el);
+  refresh(el);
+  return el;
+}
+
+/** Kumsal ön planı: palmiyeler + fenerler (gökyüzüyle birlikte kayar). main.ts her karede translateX verir. */
+export function buildForeground(skyW: number, H: number, shoreY: number): HTMLElement {
+  const mid = skyW / 2;
+  const fg = h(`<div class="scene-fg" style="width:${skyW}px"></div>`);
+  fg.insertAdjacentHTML('beforeend', `<div style="position:absolute;left:${mid - 215}px;top:${H - 470}px">${palmSVG({ seed: 3, base: { x: 18, y: 470 }, top: { x: 120, y: 92 }, bend: -46, trunkW: 15, fronds: 12, frondLen: 132, w: 300, h: 470 })}</div>`);
+  fg.insertAdjacentHTML('beforeend', `<div style="position:absolute;left:${mid + 100}px;top:${H - 360}px">${palmSVG({ seed: 9, base: { x: 160, y: 360 }, top: { x: 92, y: 120 }, bend: 34, trunkW: 11, fronds: 10, frondLen: 98, w: 220, h: 360 })}</div>`);
+  fg.insertAdjacentHTML('beforeend', `<div style="position:absolute;left:${mid - 420}px;top:${shoreY - 150}px;opacity:.85;transform:scale(.55);transform-origin:bottom left">${palmSVG({ seed: 21, base: { x: 60, y: 300 }, top: { x: 110, y: 70 }, bend: -20, trunkW: 12, fronds: 10, frondLen: 100, w: 240, h: 300 })}</div>`);
+  fg.insertAdjacentHTML('beforeend', `<div style="position:absolute;left:${mid + 290}px;top:${shoreY - 120}px;opacity:.85;transform:scale(.5);transform-origin:bottom left">${palmSVG({ seed: 33, base: { x: 120, y: 300 }, top: { x: 80, y: 60 }, bend: 24, trunkW: 12, fronds: 10, frondLen: 100, w: 240, h: 300 })}</div>`);
+  const me = state.me, pa = state.partner;
+  const lantern = (who: typeof me, x: number, y: number, rope: number, cls: string) => {
+    const l = h(`<div class="lantern ${cls}" style="left:${x}px;top:${y}px">
+      <div class="swing">
+        <svg class="rope" width="40" height="${rope + 14}" viewBox="-20 0 40 ${rope + 14}"><path d="M0 0 L0 ${rope}" stroke="var(--rope)" stroke-width="1"/>
+          <path d="M-13 ${rope + 13} Q0 ${rope - 9} 13 ${rope + 13}" stroke="var(--rope)" stroke-width="1.2" fill="none"/><circle cx="0" cy="${rope}" r="1.6" fill="var(--rope)"/></svg>
+        ${jarSVG(who).replace('class="jar ', `class="jar ${cls} `).replace('<div class="jar', `<div style="top:${rope + 8}px" class="jar`)}
+      </div></div>`);
+    return l;
+  };
+  const L1 = lantern(me, mid - 22, H - 357, 64, 'mine');
+  const L2 = lantern(pa, mid - 70, H - 342, 92, 'partner');
+  fg.append(L2, L1);
+  const mine = L1.querySelector('.jar') as HTMLElement, theirs = L2.querySelector('.jar') as HTMLElement;
+  mine.addEventListener('click', (e) => {
+    e.stopPropagation();
+    sendHeart(false);
+    core.onSendHeart();
+  });
+  theirs.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toast(`${PEOPLE[pa].of} mumu · ${pa === 'beto' ? 'ahududu kokulu' : 'vanilya kokulu'}`, I.heart(14));
+  });
+  return fg;
+}
+
+export const partnerOnline = (on: boolean) => {
+  document.querySelector('.jar.partner')?.classList.toggle('on', on);
+  document.querySelector('.lantern.partner')?.classList.toggle('on', on);
+};
+
+function refresh(el: HTMLElement) {
+  if (!el.isConnected) return;
+  $('[data-n]', el).textContent = String(state.stars.length);
+  const now = getServerNowMs();
+  const unreadCount = state.stars.filter((s) => s.from === state.partner && !s.opened && !(s.unlockAt && s.unlockAt > now)).length;
+  $('.badge', el).classList.toggle('hide', unreadCount === 0);
+  updateAppBadge(unreadCount);
+  const wx = $('[data-wx]', el);
+  const on = state.settings.weather !== 'off';
+  wx.classList.toggle('hide', !on);
+  if (on) {
+    const w = core.engine.weather;
+    wx.innerHTML = `${wxIcon(w.kind)}<span class="num">${isNaN(w.temp) ? '—' : Math.round(w.temp) + '°'}</span>`;
+  }
+}
+
+export function wxIcon(kind: string) {
+  const day = core.engine?.sky.current.daylight > 0.5;
+  return ({ clear: day ? I.sun() : I.moon(), partly: I.cloud(), cloudy: I.cloud(), overcast: I.cloud(), fog: I.fog(),
+    drizzle: I.rain(), rain: I.rain(), heavyRain: I.rain(), showers: I.rain(), snow: I.snow(), heavySnow: I.snow(), sleet: I.snow(), thunder: I.bolt() } as Record<string, string>)[kind] ?? I.cloud();
+}
+
+/* ---------- çentik bildirimleri: karşı tarafın canlı durumu ---------- */
+export function showLive(activity: 'writing' | 'sending' | 'drawing' | 'photo' | 'voice' | 'left', o: { onWatch?: () => void; star?: Star } = {}) {
+  if (!state.settings.live && activity !== 'left') return;
+  const p = PEOPLE[state.partner];
+  const av = SIGN[p.sign];
+  const map = {
+    writing: { title: `${p.name} sana yazıyor`, sub: 'Bir yıldız hazırlanıyor', loader: 'dots' as const },
+    sending: { title: `${p.name} gönderiyor`, sub: 'Yıldız yolda…', loader: 'ring' as const },
+    drawing: { title: `${p.name} bir şey çiziyor`, sub: 'Canlı izleyebilirsin', loader: null },
+    photo: { title: `${p.name} bir fotoğraf seçiyor`, sub: 'Bir yıldız hazırlanıyor', loader: 'dots' as const },
+    voice: { title: `${p.name} sesini kaydediyor`, sub: 'Bir yıldız hazırlanıyor', loader: 'dots' as const },
+    left: { title: `${p.name} bir yıldız bıraktı`, sub: 'Gökyüzüne bak', loader: null },
+  }[activity];
+  island({
+    avatar: av, color: p.color, ...map,
+    action: activity === 'drawing' && o.onWatch ? { label: 'İzle', onClick: o.onWatch }
+      : activity === 'left' && o.star ? { label: 'Aç', onClick: () => core.openStar(o.star!) } : undefined,
+    ms: activity === 'left' ? 5200 : activity === 'drawing' ? 9000 : 6200,
+  });
+}
+
+/* ---------- kalp: mumdan kalp yükselir; ikiniz 5 sn içinde dokunursanız büyük kalp ---------- */
+let lastMine = 0, lastPartner = 0;
+export function sendHeart(fromPartner = false) {
+  if (!core.homeEl) return;
+  const jar = document.querySelector(fromPartner ? '.jar.partner' : '.jar.mine') as HTMLElement | null;
+  if (!jar) return;
+  const r = jar.getBoundingClientRect(), a = core.homeEl.getBoundingClientRect();
+  const x = r.left - a.left + r.width / 2, y = r.top - a.top + 18;
+  const col = fromPartner ? PEOPLE[state.partner].color : '#fff';
+  const el = h(`<div class="heart-fly" style="left:${x - 9}px;top:${y - 9}px;color:${col}">${I.heartFill(18)}</div>`);
+  core.homeEl.appendChild(el);
+  const drift = (Math.random() - 0.5) * 50;
+  el.animate([
+    { transform: 'translate(0,0) scale(.4)', opacity: 0 },
+    { transform: `translate(${drift * 0.2}px,-40px) scale(1)`, opacity: 1, offset: 0.2 },
+    { transform: `translate(${drift}px,-170px) scale(.9) rotate(${drift / 5}deg)`, opacity: 0.9, offset: 0.7 },
+    { transform: `translate(${drift * 1.3}px,-250px) scale(.7)`, opacity: 0 },
+  ], { duration: 2800, easing: 'cubic-bezier(.25,.6,.3,1)' }).finished.then(() => el.remove());
+  const now = Date.now();
+  if (fromPartner) lastPartner = now; else lastMine = now;
+  if (lastMine && lastPartner && Math.abs(lastMine - lastPartner) < 5000) {
+    lastMine = lastPartner = 0;
+    setTimeout(bigHeart, 600);
+  } else if (!fromPartner) {
+    toast(`${PEOPLE[state.partner].name} kalbini görecek`, I.heartFill(14), 1800);
+  }
+}
+
+export function bigHeart() {
+  if (!core.homeEl) return;
+  const el = h(`<div style="position:absolute;inset:0;z-index:60;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none">
+    <div style="color:#fff;position:relative">${I.heartFill(120)}<div style="position:absolute;inset:0;color:var(--partner);opacity:.55;transform:translate(10px,6px) scale(.9)">${I.heartFill(120)}</div></div>
+    <div class="h2" style="margin-top:14px;text-shadow:0 2px 20px rgba(0,0,0,.4)">Aynı anda düşündük</div></div>`);
+  core.homeEl.appendChild(el);
+  const heart = el.firstElementChild as HTMLElement;
+  heart.animate([
+    { transform: 'scale(.3)', opacity: 0 },
+    { transform: 'scale(1.08)', opacity: 1, offset: 0.35 },
+    { transform: 'scale(1)', opacity: 1, offset: 0.5 },
+    { transform: 'scale(1.05)', opacity: 1, offset: 0.62 },
+    { transform: 'scale(1)', opacity: 1, offset: 0.8 },
+    { transform: 'scale(1.1) translateY(-30px)', opacity: 0 },
+  ], { duration: 3400, easing: 'cubic-bezier(.3,.7,.3,1)' });
+  (el.lastElementChild as HTMLElement).animate(
+    [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none', offset: 0.3 }, { opacity: 1, offset: 0.8 }, { opacity: 0 }],
+    { duration: 3400 }
+  ).finished.then(() => el.remove());
+}
