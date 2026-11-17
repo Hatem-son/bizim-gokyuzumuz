@@ -21,8 +21,8 @@ export const appEl = () => app;
 /* ---------------- alt sayfa ---------------- */
 export type Sheet = { el: HTMLElement; close: (fast?: boolean) => Promise<void>; onClose?: () => void };
 
-export function openSheet(content: HTMLElement, o: { cls?: string; dismissable?: boolean; onClose?: () => void; backdrop?: boolean } = {}): Sheet {
-  const back = h(`<div class="backdrop"></div>`);
+export function openSheet(content: HTMLElement, o: { cls?: string; backCls?: string; dismissable?: boolean; onClose?: () => void; backdrop?: boolean } = {}): Sheet {
+  const back = h(`<div class="backdrop ${o.backCls ?? ''}"></div>`);
   const sheet = h(`<div class="sheet glass-strong ${o.cls ?? ''}" role="dialog" aria-modal="true"><div class="grab"></div></div>`);
   sheet.appendChild(content);
   if (o.backdrop !== false) app.appendChild(back);
@@ -168,7 +168,7 @@ export function confirmSheet(title: string, body: string, yes: string, danger = 
       <div class="h2" style="margin-bottom:8px">${title}</div><p class="body" style="margin:0 0 22px">${body}</p>
       <button type="button" class="btn btn-block ${danger ? '' : 'btn-primary'}" data-y style="${danger ? 'background:rgba(255,143,143,.16);color:#ffb3b3' : ''}">${yes}</button>
       <button type="button" class="btn btn-block btn-ghost" data-n style="margin-top:4px">Vazgeç</button></div>`);
-    const s = openSheet(c, { onClose: () => res(false) });
+    const s = openSheet(c, { cls: 'confirm-sheet', backCls: 'confirm-back', onClose: () => res(false) });
     c.querySelector('[data-y]')!.addEventListener('click', () => { res(true); void s.close(); });
     c.querySelector('[data-n]')!.addEventListener('click', () => void s.close());
   });
@@ -245,3 +245,4 @@ export async function closeIsland() {
   ], { duration: reduced() ? 120 : 420, delay: 100, easing: 'cubic-bezier(.5,0,.3,1)', fill: 'forwards' }).finished;
   el.remove();
 }
+

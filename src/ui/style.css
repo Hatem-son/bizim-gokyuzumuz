@@ -162,11 +162,13 @@ canvas { position: absolute; left: 0; top: 0; pointer-events: none; }
 
 /* ---------- alt sayfa (sheet) + klavye uyumu ---------- */
 .backdrop { position: absolute; inset: 0; z-index: 40; background: rgba(3,4,10,.55); opacity: 0; }
+.backdrop.confirm-back { z-index: 64; }
 .sheet {
   position: absolute; left: 0; right: 0; bottom: 0; z-index: 41; border-radius: var(--r-xl) var(--r-xl) 0 0;
   padding: 10px 20px calc(var(--safe-b) + 18px); max-height: calc(100% - var(--safe-t) - 10px);
   display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain;
 }
+.sheet.confirm-sheet { z-index: 65; }
 @media (min-width: 540px) {
   .sheet { max-width: 460px; margin: 0 auto; }
 }
@@ -269,3 +271,4 @@ html.kb-open .auth .brand .sub { display: none; }
 .seal svg.wax { position: absolute; inset: 0; }
 .seal .emb { position: relative; color: rgba(0,0,0,.28); }
 .seal .half { position: absolute; inset: 0; }
+

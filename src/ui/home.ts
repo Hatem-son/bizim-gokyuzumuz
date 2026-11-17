@@ -46,14 +46,18 @@ export function buildHome(): HTMLElement {
     toast(`${place} · ${KIND_TR[w.kind]}${isNaN(w.temp) ? '' : ` · ${Math.round(w.temp)}°`}`, wxIcon(w.kind));
   });
 
-  const tick = () => {
-    if (document.hidden || !el.isConnected) return;
+  const tick = (initial = false) => {
+    if (document.hidden) return;
+    if (!initial && !el.isConnected) {
+      clearInterval(homeTickId);
+      return;
+    }
     const p = untilParts(state.meetDate.getTime());
     $('[data-days]', el).textContent = String(p.d);
     $('[data-hm]', el).textContent = `${p.h} saat · ${String(p.m).padStart(2, '0')} dakika`;
   };
-  tick();
-  homeTickId = window.setInterval(tick, 15_000);
+  tick(true);
+  homeTickId = window.setInterval(() => tick(false), 15_000);
   core.refreshHome = () => refresh(el);
   refresh(el);
   return el;
@@ -189,3 +193,4 @@ export function bigHeart() {
     { duration: 3400 }
   ).finished.then(() => el.remove());
 }
+

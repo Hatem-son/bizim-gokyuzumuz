@@ -15,7 +15,7 @@ import {
 
 /* ===================== mühür ve zarf ===================== */
 let sealN = 0;
-export function waxSeal(owner: Who, size = 58) {
+export function waxSeal(owner: Who, size = 58, mini = false) {
   const gid = `ws${owner}${++sealN}`;
   const pts: string[] = [];
   for (let i = 0; i <= 48; i++) {
@@ -28,7 +28,10 @@ export function waxSeal(owner: Who, size = 58) {
     owner === 'beto'
       ? raspberry(20, true)
       : `<svg width="22" height="22" viewBox="0 0 24 24"><path fill="currentColor" d="M15.5 3.5a8.5 8.5 0 1 0 5 15.4A7 7 0 0 1 15.5 3.5Z"/><path fill="currentColor" d="M18 4.5l.6 1.6 1.6.6-1.6.6-.6 1.6-.6-1.6-1.6-.6 1.6-.6Z"/></svg>`;
-  return `<div class="seal" style="width:${size}px;height:${size}px;margin-left:${-size / 2}px">
+  const st = mini
+    ? `position:relative;left:auto;top:auto;margin:0;width:${size}px;height:${size}px`
+    : `width:${size}px;height:${size}px;margin-left:${-size / 2}px`;
+  return `<div class="seal" style="${st}">
     <svg class="wax" viewBox="0 0 58 58" width="${size}" height="${size}"><defs><radialGradient id="${gid}" cx=".38" cy=".32" r=".75"><stop offset="0" stop-color="${c[0]}"/><stop offset=".55" stop-color="${c[1]}"/><stop offset="1" stop-color="${c[2]}"/></radialGradient></defs>
       <path d="M${pts.join(' L')} Z" fill="url(#${gid})"/><circle cx="29" cy="29" r="18.5" fill="none" stroke="rgba(0,0,0,.22)" stroke-width="1.6"/><circle cx="29" cy="29" r="18.5" fill="none" stroke="rgba(255,255,255,.18)" stroke-width=".7" transform="translate(-.6 -.6)"/>
       <ellipse cx="21" cy="17" rx="7" ry="3.5" fill="rgba(255,255,255,.22)" transform="rotate(-30 21 17)"/></svg>
@@ -103,8 +106,8 @@ export async function openStar(st: Star, onOpened?: () => void) {
       <p class="small">Açılınca haber vereceğiz.</p>
       <div class="view-actions"><button type="button" class="btn btn-soft" data-x>Tamam</button></div></div>`);
     const cd = $('[data-cd]', content);
-    const tick = () => {
-      if (document.hidden || !content.isConnected) return;
+    const tick = (initial = false) => {
+      if (document.hidden || (!initial && !content.isConnected)) return;
       const p = untilParts(st.unlockAt!);
       cd.innerHTML = (
         [
@@ -117,8 +120,8 @@ export async function openStar(st: Star, onOpened?: () => void) {
         .map(([l, v]) => `<div><b>${String(v).padStart(2, '0')}</b><span>${l}</span></div>`)
         .join('');
     };
-    tick();
-    const iv = window.setInterval(tick, 1000);
+    tick(true);
+    const iv = window.setInterval(() => tick(false), 1000);
     cleanupTimer = () => clearInterval(iv);
   } else {
     const status = await ensureDecrypted(st);
@@ -147,7 +150,7 @@ export async function openStar(st: Star, onOpened?: () => void) {
     content = h(`<div class="env-wrap">
       ${sealed ? envelope(st.from) : ''}
       <article class="letter from-${st.from}">
-        ${sealed ? '' : `<div class="mini-seal" style="position:absolute;right:16px;top:14px;width:34px;height:34px">${waxSeal(st.from, 34).replace('class="seal"', 'class="seal" style="position:static;margin:0"')}</div>`}
+        ${sealed ? '' : `<div class="mini-seal" style="position:absolute;right:16px;top:14px;width:34px;height:34px">${waxSeal(st.from, 34, true)}</div>`}
         <div class="row-flex"><div class="from">${fromP.from}</div><span class="grow"></span>${st.hazel ? `<span class="meta" style="color:#a07a3c;margin-right:40px">ela yıldız</span>` : ''}</div>
         <div class="meta" style="margin-top:8px">${fmtDate(st.createdAt)}</div>
         ${body}
@@ -311,7 +314,7 @@ async function openEnvelope(wrap: HTMLElement, env: HTMLElement, letter: HTMLEle
   env.animate([{ transform: 'none', opacity: 1 }, { transform: 'translateY(240px)', opacity: 0 }], { duration: short ? 60 : 520, easing: 'cubic-bezier(.5,0,.8,.4)', fill: 'forwards' }).finished.then(() => env.remove());
   await letter.animate([{ transform: 'translateY(-26px) scale(.98)' }, { transform: 'none' }], { duration: short ? 60 : 520, easing: 'cubic-bezier(.3,1.25,.5,1)', fill: 'forwards' }).finished;
   letter.getAnimations().forEach((a) => a.cancel());
-  letter.insertAdjacentHTML('afterbegin', `<div class="mini-seal" style="position:absolute;right:16px;top:14px;width:34px;height:34px">${waxSeal(owner, 34).replace('class="seal"', 'class="seal" style="position:static;margin:0"')}</div>`);
+  letter.insertAdjacentHTML('afterbegin', `<div class="mini-seal" style="position:absolute;right:16px;top:14px;width:34px;height:34px">${waxSeal(owner, 34, true)}</div>`);
   (letter.querySelector('.mini-seal') as HTMLElement).animate([{ opacity: 0, transform: 'scale(1.4)' }, { opacity: 1, transform: 'none' }], { duration: 380, easing: 'cubic-bezier(.3,1.3,.5,1)' });
   if (actions) actions.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 380, fill: 'forwards' });
 }
