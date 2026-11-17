@@ -48,6 +48,7 @@ import { currentDecimalHour, formatHour, getSolarTimes, skyAtHour, type SkyPhase
 import type { StarKind, StarRecord, Who } from './types';
 import { initComposeSheet, type ComposeController } from './ui/composeSheet';
 import { CountdownController } from './ui/countdown';
+import type { DiagnosticsController } from './ui/diagnostics';
 import { $, setInert } from './ui/dom';
 import { showFloatNote } from './ui/floatNote';
 import { GardenController } from './ui/garden';
@@ -75,7 +76,7 @@ let captionTimer = 0;
 let compassHideTimer = 0;
 let greetPending = false;
 let planeInterval = 0;
-let perfTimer = 0;
+let diagCtrl: DiagnosticsController | null = null;
 let enterTimers: number[] = [];
 let syncHeartCheckPending = false;
 let pendingSyncHoldCount: number | null = null;
@@ -904,9 +905,9 @@ async function bootstrap(): Promise<void> {
     window.clearTimeout(pushNudgeTimer);
     window.clearTimeout(unlockCheckTimer);
     window.clearTimeout(syncStatDelayTimer);
-    window.clearInterval(perfTimer);
     window.clearInterval(planeInterval);
-    perfTimer = 0;
+    diagCtrl?.destroy();
+    diagCtrl = null;
     planeInterval = 0;
     syncStatDelayTimer = 0;
     pendingSyncHoldCount = null;
@@ -1248,27 +1249,27 @@ async function bootstrap(): Promise<void> {
       onboard.show();
     });
 
-    // Gizli performans paneli: Ayarlar'da sürüm numarasına 5 kez dokununca açılır/kapanır
+    // Geçici Teşhis satırı (Aşama 1.1) + sürüm numarasına 5 dokunuş (Aşama 1 bitiminde yalnızca 5 dokunuşla açılır)
     const perfHud = $('#perf-hud');
     const verBtn = $('#s-ver');
+    const diagBtn = document.getElementById('s-diag');
     let verTaps: number[] = [];
 
-    const renderPerfHud = () => {
-      if (perfHud.hidden || !skyEngine) return;
-      const st = skyEngine.getPerfStats();
-      const modeLabel =
-        st.mode === 'active' ? '60fps' : st.mode === 'idle' ? '30fps' : st.mode === 'quiet' ? '10fps' : 'durdu';
-      perfHud.textContent = `Son ${st.samples} kare · Ort ${st.avgMs} ms · En kötü ${st.maxMs} ms · ${st.fps} fps (${modeLabel})`;
+    const ensureDiagnostics = async (): Promise<DiagnosticsController> => {
+      if (diagCtrl) return diagCtrl;
+      const { createDiagnosticsController } = await import('./ui/diagnostics');
+      diagCtrl = createDiagnosticsController(perfHud, {
+        getVersion: () => verBtn.textContent || 'v1.2.6',
+        getCanvas: () => document.getElementById('sky-canvas') as HTMLCanvasElement | null,
+        getEngineStats: () => skyEngine?.getPerfStats() ?? null,
+      });
+      return diagCtrl;
     };
 
-    const togglePerfHud = (show: boolean) => {
-      perfHud.hidden = !show;
-      window.clearInterval(perfTimer);
-      if (show) {
-        renderPerfHud();
-        perfTimer = window.setInterval(renderPerfHud, 400);
-      }
-    };
+    diagBtn?.addEventListener('click', () => {
+      closeSettingsFn?.();
+      void ensureDiagnostics().then((ctrl) => ctrl.open());
+    });
 
     verBtn.addEventListener('click', () => {
       const now = Date.now();
@@ -1276,17 +1277,17 @@ async function bootstrap(): Promise<void> {
       verTaps.push(now);
       if (verTaps.length >= 5) {
         verTaps = [];
-        const nextShow = perfHud.hidden;
-        togglePerfHud(nextShow);
-        showToast(
-          nextShow ? 'Performans kutusu açıldı' : 'Performans kutusu kapatıldı',
-          'Son 120 kare ortalaması / en kötü süresi',
-          'gold',
-          '✦'
-        );
+        void ensureDiagnostics().then((ctrl) => {
+          const nextShow = ctrl.toggle();
+          showToast(
+            nextShow ? 'Teşhis paneli açıldı' : 'Teşhis paneli kapatıldı',
+            'FPS, kare süresi, uzun görev ve katman ölçümü',
+            'gold',
+            '✦'
+          );
+        });
       }
     });
-    perfHud.addEventListener('click', () => togglePerfHud(false));
 
     type PushPromptState = { dismissedAt?: number; askedCount?: number; done?: boolean };
     const WEEK_MS = 7 * 86_400_000;
@@ -1519,11 +1520,13 @@ async function bootstrap(): Promise<void> {
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
       hideCompassPopup();
+      diagCtrl?.setHiddenPaused(true);
       resetKeyboardRef?.();
       stopGlobalTimers();
       if (appMounted) markSeen();
       return;
     }
+    diagCtrl?.setHiddenPaused(false);
     resetKeyboardRef?.();
     startGlobalTimers();
     if (!appMounted) return;

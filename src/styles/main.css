@@ -116,6 +116,10 @@
   --env-3: #fae3ee;
 
   --kb: 0px;
+  --sat: env(safe-area-inset-top, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
   color-scheme: dark;
 }
 
@@ -1918,22 +1922,98 @@ body.kb-active #onboard .link-btn {
 .perf-hud {
   position: fixed;
   left: 12px;
-  bottom: calc(env(safe-area-inset-bottom) + 12px);
+  top: calc(env(safe-area-inset-top) + 104px);
   z-index: 60;
-  padding: 8px 12px;
-  border-radius: 12px;
-  background: rgba(6, 10, 26, .92);
-  border: 1px solid rgba(255, 255, 255, .18);
-  color: var(--ink);
+  width: min(304px, calc(100vw - 24px));
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(12, 16, 38, .96);
+  border: 1px solid #2a3260;
+  color: #edf2ff;
   font-size: 11px;
-  font-weight: 800;
+  line-height: 1.45;
   font-variant-numeric: tabular-nums;
-  line-height: 1.4;
-  cursor: pointer;
 }
 
 .perf-hud[hidden] {
   display: none;
+}
+
+.diag-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.diag-title {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #8fb0ff;
+}
+
+.diag-x {
+  width: 44px;
+  height: 44px;
+  margin: -10px -8px -8px 0;
+  border: 0;
+  background: none;
+  color: #cfd6ff;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.diag-body {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  line-height: 1.42;
+  color: #f4f6ff;
+  white-space: pre-wrap;
+  word-break: break-word;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.diag-hint {
+  margin: 6px 0 0;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: rgba(255, 214, 120, .14);
+  color: #ffe29a;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.diag-hint[hidden] {
+  display: none;
+}
+
+.diag-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.diag-copy {
+  min-height: 44px;
+  min-width: 96px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid #3c4c8c;
+  background: #232d5e;
+  color: #f5f7ff;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.diag-copy:active {
+  transform: scale(.96);
 }
 
 .push-nudge {
