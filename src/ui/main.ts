@@ -34,7 +34,16 @@ import { isSupabaseConfigured, getSessionFast, inferWhoFromEmail, signOutSupabas
 import { loadSavedKey, clearActiveKey } from '../lib/crypto';
 import { hasBiometric, BACKGROUND_LOCK_MS } from '../lib/lock';
 import { STORAGE_KEYS, store } from '../lib/storage';
-import { fetchAllStars, getServerNowMs, subscribeStarsRealtime, markStarUnlockNotified } from '../lib/stars';
+import {
+  fetchAllStars,
+  getServerNowMs,
+  subscribeStarsRealtime,
+  markStarUnlockNotified,
+  uploadPreparedStar,
+  OfflineNetworkError,
+  isOfflineLikeError,
+} from '../lib/stars';
+import { listQueuedStars, removeQueuedStar } from '../lib/outbox';
 import { PairRealtime } from '../lib/realtime';
 import { isStarHazel } from '../lib/hazel';
 import type { StarRecord } from '../types';
@@ -166,6 +175,7 @@ Object.assign(core, {
   sendDrawPacket: (pkt: DrawLivePacket) => void pairRealtime.sendDrawPacket(pkt),
   onDrawPacket: (cb: (pkt: DrawLivePacket) => void) => pairRealtime.onDrawPacket(cb),
   onSendHeart: () => pairRealtime.sendHeart(),
+  onOutboxChange: () => void syncOfflineAndOutbox(),
   setMyLiveActivity: (act: 'writing' | 'sending' | 'drawing' | 'photo' | 'voice' | 'idle') =>
     pairRealtime.setMyActivity(act),
 });
@@ -365,9 +375,114 @@ export function mapRecordToStar(rec: StarRecord, allRecords: StarRecord[], visib
 }
 
 async function loadStarsFromBackend() {
-  const records = await fetchAllStars(toDbWho(state.me));
-  state.stars = records.map((r) => mapRecordToStar(r, records, false));
+  const dbMe = toDbWho(state.me);
+  const records = await fetchAllStars(dbMe);
+  const mapped = records.map((r) => mapRecordToStar(r, records, false));
+  const queued = await listQueuedStars(dbMe);
+  for (const q of queued) {
+    if (!mapped.some((s) => s.id === q.id)) {
+      const kind: Kind = q.kind === 'photo' ? 'photo' : q.kind === 'voice' ? 'voice' : q.kind === 'draw' ? 'draw' : 'text';
+      mapped.push({
+        id: q.id,
+        from: state.me,
+        kind,
+        createdAt: q.queuedAt,
+        unlockAt: q.unlockAt ? Date.parse(q.unlockAt) : undefined,
+        opened: false,
+        x: Math.max(24, Math.min(SKY_W - 24, (q.x / 100) * SKY_W)),
+        y: Math.max(70, Math.min(HORIZON - 56, 70 + (q.y / 100) * (HORIZON - 130))),
+        visible: false,
+      });
+    }
+  }
+  state.stars = mapped;
 }
+
+// ---------- çevrimdışı uyarısı + şifreli giden kutusu (IndexedDB) ----------
+let offlineEl: HTMLElement | null = null;
+let flushingOutbox = false;
+
+function setOfflineBanner(text: string | null) {
+  if (!text) {
+    if (offlineEl) {
+      const el = offlineEl;
+      offlineEl = null;
+      el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 220, fill: 'forwards' }).finished.then(() => el.remove());
+    }
+    return;
+  }
+  if (!offlineEl) {
+    offlineEl = h(`<div class="offline toast glass-strong" role="status" aria-live="polite">${I.cloud(14)}<span></span></div>`);
+    app.appendChild(offlineEl);
+    offlineEl.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 280, fill: 'forwards' });
+  }
+  offlineEl.querySelector('span')!.textContent = text;
+}
+
+async function syncOfflineAndOutbox() {
+  if (!inHome) {
+    setOfflineBanner(null);
+    return;
+  }
+  const dbMe = toDbWho(state.me);
+  const queued = await listQueuedStars(dbMe);
+  const online = navigator.onLine !== false;
+
+  if (!online) {
+    setOfflineBanner(
+      queued.length > 0
+        ? `Çevrimdışı · ${queued.length} yıldız bağlantı gelince gidecek`
+        : 'Çevrimdışı · yıldızların bağlantı gelince gidecek'
+    );
+    return;
+  }
+
+  if (queued.length === 0) {
+    setOfflineBanner(null);
+    return;
+  }
+
+  if (flushingOutbox) return;
+  flushingOutbox = true;
+  setOfflineBanner(`Bekleyen ${queued.length} yıldız gökyüzüne bırakılıyor…`);
+  let sentCount = 0;
+  try {
+    for (const env of queued) {
+      try {
+        const uploaded = await uploadPreparedStar(env);
+        await removeQueuedStar(env.id);
+        const stLocal = state.stars.find((s) => s.id === env.id);
+        if (stLocal) stLocal.raw = uploaded;
+        sentCount++;
+      } catch (err) {
+        if (err instanceof OfflineNetworkError || isOfflineLikeError(err)) break;
+        await removeQueuedStar(env.id);
+      }
+    }
+  } finally {
+    flushingOutbox = false;
+  }
+
+  const remaining = await listQueuedStars(dbMe);
+  if (remaining.length > 0) {
+    setOfflineBanner(`Çevrimdışı · ${remaining.length} yıldız bağlantı gelince gidecek`);
+  } else {
+    setOfflineBanner(null);
+    if (sentCount > 0) {
+      island({
+        avatar: I.starFill(18),
+        color: PEOPLE[state.me].color,
+        title: 'Yıldızların ulaştı',
+        sub: `${PEOPLE[state.partner].of} gökyüzünde`,
+        ms: 3200,
+      });
+    }
+  }
+  core.refreshHome();
+}
+
+window.addEventListener('online', () => void syncOfflineAndOutbox());
+window.addEventListener('offline', () => void syncOfflineAndOutbox());
 
 // ---------- açılış + giriş + ana ekran ----------
 let inHome = false;
@@ -469,6 +584,20 @@ async function enterHome() {
       }
     },
   });
+
+  void syncOfflineAndOutbox();
+
+  // Bildirimden açıldıysa ilgili yıldıza odaklan
+  const sp = new URLSearchParams(location.search);
+  const targetStarId = sp.get('star');
+  if (targetStarId) {
+    const found = state.stars.find((s) => s.id === targetStarId);
+    if (found) {
+      core.scrollTo(found.x - W / 2, 500);
+      setTimeout(() => void openStar(found), 600);
+    }
+    history.replaceState(null, '', '/');
+  }
 }
 
 function drawLily(cnum: HTMLElement) {
@@ -578,14 +707,30 @@ let hiddenAt = 0;
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     hiddenAt = Date.now();
-  } else if (inHome && hiddenAt && Date.now() - hiddenAt >= BACKGROUND_LOCK_MS && state.settings.faceId && hasBiometric()) {
-    hiddenAt = 0;
-    inHome = false;
-    runLock(app, () => {
-      inHome = true;
-    });
+  } else {
+    void syncOfflineAndOutbox();
+    if (inHome && hiddenAt && Date.now() - hiddenAt >= BACKGROUND_LOCK_MS && state.settings.faceId && hasBiometric()) {
+      hiddenAt = 0;
+      inHome = false;
+      runLock(app, () => {
+        inHome = true;
+      });
+    }
   }
 });
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', (ev) => {
+    const data = ev.data as { type?: string; starId?: string } | null;
+    if (data?.type === 'notification-open' && data.starId && inHome) {
+      const found = state.stars.find((s) => s.id === data.starId);
+      if (found) {
+        core.scrollTo(found.x - W / 2, 500);
+        setTimeout(() => void openStar(found), 550);
+      }
+    }
+  });
+}
 
 engine.start();
 void boot();
