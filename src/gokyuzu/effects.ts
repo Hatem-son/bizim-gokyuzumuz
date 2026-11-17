@@ -184,47 +184,51 @@ export class Effects {
  */
 export function drawUserStar(
   c: CanvasRenderingContext2D, x: number, y: number, id: string, now: number,
-  o: { tint: string; daylight: number; arrivedAt?: number; unread?: boolean; hazel?: boolean },
+  o: { tint: string; daylight: number; arrivedAt?: number; unread?: boolean; hazel?: boolean; ext?: number; exposure?: number },
 ) {
+  const exp = o.exposure ?? 1;
+  if (exp < 0.01) return;
+  const ext = o.ext ?? 1;
   const h = hash(id);
-  const period = 2600 + (h % 2200), ph = ((h >>> 9) % 1000) / 1000;
+  const period = 2800 + (h % 2400), ph = ((h >>> 9) % 1000) / 1000;
   const sn = Math.sin(((now / period + ph) % 1) * Math.PI * 2);
-  const boost = o.arrivedAt && now - o.arrivedAt < 10000 ? 1.5 : 1;
-  const a = clamp(0.9 + 0.1 * sn * boost, 0.7, 1);
-  const sc = 1 + 0.04 * sn * boost;
-  const col = mix('#ffffff', o.hazel ? '#c9a26a' : o.tint, 0.3);
+  const boost = o.arrivedAt && now - o.arrivedAt < 10000 ? 1.4 : 1;
+  const a = clamp(0.84 + 0.1 * sn * boost, 0.65, 1) * ext * exp;
+  const sc = 1 + 0.035 * sn * boost;
+  const col = mix('#ffffff', o.hazel ? '#c9a26a' : o.tint, 0.28);
   if (o.daylight > 0.3) {
-    // Gündüz: açık gökte 'lighter' görünmez → yumuşak koyu gölge + renkli ışık + beyaz çekirdek (normal karışım)
-    const d = o.daylight;
+    const d = o.daylight * exp;
     c.globalCompositeOperation = 'source-over';
-    c.globalAlpha = 0.22 * d;
-    c.drawImage(glow('#0b1230', 24), x - 9, y - 9, 18, 18);
-    c.globalAlpha = 0.85 * d * a;
-    c.drawImage(glow(col, 48), x - 11 * sc, y - 11 * sc, 22 * sc, 22 * sc);
-    c.globalAlpha = d;
+    c.globalAlpha = 0.18 * d;
+    c.drawImage(glow('#0b1230', 24), x - 7, y - 7, 14, 14);
+    c.globalAlpha = 0.72 * d * a;
+    c.drawImage(glow(col, 48), x - 8.5 * sc, y - 8.5 * sc, 17 * sc, 17 * sc);
+    c.globalAlpha = 0.9 * d;
     c.fillStyle = '#fff';
-    c.beginPath(); c.arc(x, y, 1.6, 0, 6.2832); c.fill();
+    c.beginPath(); c.arc(x, y, 1.4, 0, 6.2832); c.fill();
     c.globalAlpha = 1;
-    if (d > 0.7) return;
+    if (o.daylight > 0.7) return;
   }
   c.globalCompositeOperation = 'lighter';
-  c.globalAlpha = a;
-  const g = 15 * sc;
+  c.globalAlpha = a * 0.72;
+  const g = 9.5 * sc;
   c.drawImage(glow(col, 48), x - g, y - g, g * 2, g * 2);
-  c.globalAlpha = a * 0.38;
+  c.globalAlpha = a * 0.92;
+  c.fillStyle = '#ffffff';
+  c.beginPath(); c.arc(x, y, 1.45, 0, 6.2832); c.fill();
+  c.globalAlpha = a * 0.24;
   c.strokeStyle = col;
-  c.lineWidth = 0.6;
-  const r = 11 * sc;
+  c.lineWidth = 0.55;
+  const r = 7.5 * sc;
   c.beginPath();
   c.moveTo(x - r, y); c.lineTo(x + r, y);
   c.moveTo(x, y - r); c.lineTo(x, y + r);
   c.stroke();
-  // okunmamış: 6 sn'de bir çok hafif ışık nefesi (halka değil, yumuşak büyüme)
   if (o.unread) {
     const t = ((now + (h % 6000)) % 6000) / 1600;
     if (t < 1) {
-      c.globalAlpha = 0.35 * Math.sin(Math.PI * t);
-      const s = 18 + 16 * t;
+      c.globalAlpha = 0.24 * Math.sin(Math.PI * t) * ext * exp;
+      const s = 12 + 11 * t;
       c.drawImage(glow(col, 48), x - s, y - s, s * 2, s * 2);
     }
   }

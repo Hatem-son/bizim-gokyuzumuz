@@ -12,16 +12,21 @@ export function initKeyboard(opts: {
 }) {
   const vv = window.visualViewport;
   const root = document.documentElement;
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:100lvh;pointer-events:none;visibility:hidden';
+  document.body.appendChild(probe);
+
   let raf = 0;
   let open = false;
   let base = measureAppH();
 
   function measureAppH() {
     const standalone = matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone;
-    // iOS standalone: innerHeight durum çubuğu kadar kısa gelebiliyor → screen.height ile tamamla
+    const lvh = probe.offsetHeight || 0;
+    // iOS standalone & Safari: innerHeight safe-area / adres çubuğu kadar kısa gelebiliyor → 100lvh ve screen.height ile tamamla
     return standalone
-      ? Math.max(window.innerHeight, root.clientHeight, screen.height)
-      : Math.max(window.innerHeight, root.clientHeight);
+      ? Math.max(window.innerHeight, root.clientHeight, lvh, screen.height)
+      : Math.max(window.innerHeight, root.clientHeight, lvh);
   }
 
   function apply() {

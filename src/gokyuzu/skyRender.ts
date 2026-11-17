@@ -1,5 +1,7 @@
 // Gök katmanı: atmosfer dokusu (worker), samanyolu, yıldız alanı (gerçek parlaklık dağılımı ve renk
-// sıcaklığı), güneş diski, gerçekçi ay. Dokular değişince ÇAPRAZ SOLMA ile geçilir; her karede yalnızca drawImage.
+// sıcaklığı), kişisel yıldızlar, güneş diski, gerçekçi ay. Dokular iki yanda tam ekran genişliği kadar
+// gerçek taşma payıyla (bleedX) üretilir ve ötesinde aynalı döşenir → sağa/sola ne kadar kaydırılırsa
+// kaydırılsın dikişsiz, simetrisiz, pikselsiz sonsuz gökyüzü görünür.
 import { SkyState } from './skyState';
 import { SkyGeom, ALT_TOP, skyToScreen, CELESTIAL_PARALLAX } from './skyGeom';
 import { SkyWorker } from './workerClient';
@@ -8,8 +10,34 @@ import { rng, lerp, clamp } from './util';
 type Tex = { img: CanvasImageSource; w: number; h: number; data: Uint8ClampedArray };
 type Star = { x: number; y: number; r: number; a: number; c: string; grp: 0 | 1 | 2; tw: number; ph: number };
 
-// B-V renk indisine göre yıldız renkleri (çoğu beyaz; az sayıda mavi ve turuncu)
 const STAR_COLORS = ['#cdd9ff', '#e4ebff', '#ffffff', '#ffffff', '#fff5ea', '#ffe6cc', '#ffd2a8'];
+
+/** Yatayda aynalı döşeme: kenar pikselleri kendisiyle eşleştiği için dikişsiz sonsuz devam eder. */
+export function drawMirrorTiledX(
+  c: CanvasRenderingContext2D,
+  img: CanvasImageSource,
+  x0: number,
+  y: number,
+  tw: number,
+  th: number,
+  viewW: number,
+) {
+  if (tw <= 0) return;
+  const kMin = Math.floor(-x0 / tw);
+  const kMax = Math.ceil((viewW - x0) / tw) - 1;
+  for (let k = kMin; k <= kMax; k++) {
+    const dx = x0 + k * tw;
+    if ((k & 1) === 0) {
+      c.drawImage(img, dx, y, tw, th);
+    } else {
+      c.save();
+      c.translate(dx + tw, y);
+      c.scale(-1, 1);
+      c.drawImage(img, 0, 0, tw, th);
+      c.restore();
+    }
+  }
+}
 
 export class SkyRenderer {
   private atmo: { cur: Tex | null; prev: Tex | null; t0: number; dur: number } = { cur: null, prev: null, t0: 0, dur: 1 };
@@ -17,46 +45,57 @@ export class SkyRenderer {
   private moonTex: Tex | null = null;
   private moonKey = '';
   private stars: Star[] = [];
-  private layers: HTMLCanvasElement[] = [];      // 3 parlaklık grubu, panorama boyutunda (bir kez çizilir)
-  private bright: Star[] = [];                   // en parlak ~18 yıldız: tek tek, parıldayarak
+  private layers: HTMLCanvasElement[] = [];
+  private bright: Star[] = [];
   private dither: CanvasPattern | null = null;
   private pending = false;
   private lastKey = '';
+  private readonly bleedX: number;
+  private readonly texW: number;
   /** açılış: yıldız grubu görünürlüğü çarpanı (0..1), sinematik pozlama */
   intro = { stars: [1, 1, 1] as number[] };
-  moonTint: [number, number, number] | null = null; // Beto: ela ay ışığı (doğrusal çarpan)
+  moonTint: [number, number, number] | null = null;
+  /** Gönderilen yıldızları doğrudan gök kubbe katmanında (Güneş ve Ay'ın arkasında) çizmek için kanca */
+  onDrawUserStars?: (
+    c: CanvasRenderingContext2D,
+    now: number,
+    s: SkyState,
+    scrollX: number,
+    moonPos: { x: number; y: number } | null,
+  ) => void;
 
   constructor(private ctx: CanvasRenderingContext2D, public g: SkyGeom, private worker: SkyWorker) {
+    this.bleedX = g.W;
+    this.texW = g.panoW + this.bleedX * 2;
     this.buildStars();
     this.buildDither();
-    worker.run({ type: 'milky', w: Math.round(g.panoW / 2), h: Math.round(g.horizonY / 2), seed: 11 }).then((t) => (this.milkyTex = t));
+    worker.run({ type: 'milky', w: Math.round(this.texW / 2), h: Math.round(g.horizonY / 2), seed: 11 }).then((t) => (this.milkyTex = t));
   }
 
   private buildStars() {
-    const { panoW, horizonY } = this.g;
+    const { horizonY } = this.g;
+    const texW = this.texW;
     const r = rng(1987);
-    const N = Math.round((panoW * horizonY) / 520);
+    const N = Math.round((texW * horizonY) / 520);
     for (let i = 0; i < N; i++) {
-      // kadir dağılımı: sönük yıldızlar üstel olarak çok daha fazla (gerçek gökyüzünde her kadirde ~2.5×)
-      const m = -1.2 + Math.log10(1 + r() * 9999) * 1.85; // çoğunluk 5–6 kadir, birkaç tane < 1
-      const lum = Math.pow(10, -0.4 * (m - 6.2));          // 1 … ~900
+      const m = -1.2 + Math.log10(1 + r() * 9999) * 1.85;
+      const lum = Math.pow(10, -0.4 * (m - 6.2));
       const y = Math.pow(r(), 1.15) * horizonY * 0.97;
       const altDeg = (horizonY - y) / this.g.pxPerDeg;
-      const ext = clamp(altDeg / 14) * 0.85 + 0.15;           // ufka yakın sönükleşme (atmosfer sönümü)
+      const ext = clamp(altDeg / 14) * 0.85 + 0.15;
       const grp: 0 | 1 | 2 = m < 2 ? 0 : m < 4 ? 1 : 2;
       this.stars.push({
-        x: r() * panoW, y,
+        x: r() * texW, y,
         r: clamp(0.38 + Math.log10(lum) * 0.3, 0.38, 1.5),
         a: clamp((0.2 + Math.log10(lum) * 0.3) * ext, 0.1, 1),
         c: STAR_COLORS[Math.min(STAR_COLORS.length - 1, Math.floor(r() * STAR_COLORS.length))],
         grp, tw: 1.5 + r() * 3, ph: r() * 6.28,
       });
     }
-    // sönük ve orta gruplar statik katmanlara (bir kez), parlaklar tek tek
     for (let gi = 0; gi < 3; gi++) {
       const c = document.createElement('canvas');
       const d = Math.min(window.devicePixelRatio || 1, 2);
-      c.width = Math.ceil(panoW * d); c.height = Math.ceil(horizonY * d);
+      c.width = Math.ceil(texW * d); c.height = Math.ceil(horizonY * d);
       const x = c.getContext('2d')!;
       x.scale(d, d);
       for (const s of this.stars) {
@@ -70,7 +109,6 @@ export class SkyRenderer {
     this.bright = this.stars.filter((s) => s.grp === 0 && s.r > 1.25);
   }
 
-  /** 8 bit gradyanlarda bantlanmayı önleyen ince gren (sinematik his de verir). */
   private buildDither() {
     const c = document.createElement('canvas');
     c.width = c.height = 128;
@@ -86,7 +124,6 @@ export class SkyRenderer {
     this.dither = this.ctx.createPattern(c, 'repeat');
   }
 
-  /** Ay tonu (ela ay ışığı) değiştiğinde ay dokusunu tazele. */
   refreshMoon(s: SkyState) {
     const tintKey = this.moonTint ? this.moonTint.join(',') : 'std';
     const mk = `${Math.round(s.phase.fraction * 60)}${s.phase.waxing}:${tintKey}`;
@@ -97,7 +134,6 @@ export class SkyRenderer {
     }
   }
 
-  /** Yeni gök dokusu iste (30 sn'de bir ve hava değişince). ms: çapraz solma süresi. */
   request(s: SkyState, ms = 2500) {
     this.refreshMoon(s);
     const key = [s.sunAlt.toFixed(1), s.sunVaz.toFixed(1), s.moonAlt.toFixed(0), s.haze.toFixed(2), s.overcast.toFixed(2)].join('|');
@@ -108,8 +144,8 @@ export class SkyRenderer {
     this.worker.run({
       type: 'atmo',
       p: {
-        cols: Math.round(g.panoW / 8), rows: Math.round(g.horizonY / 8),
-        azSpan: g.azSpan, altTop: ALT_TOP,
+        cols: Math.round(this.texW / 8), rows: Math.round(g.horizonY / 8),
+        azSpan: this.texW / g.pxPerDeg, altTop: ALT_TOP,
         sunAlt: s.sunDisp < 48 ? s.sunAlt : s.sunDisp, sunAz: s.sunVaz,
         moonAlt: s.moonAlt, moonAz: s.moonVaz, moonFrac: s.phase.fraction,
         haze: s.haze, overcast: s.overcast, cityGlow: s.cityGlow,
@@ -122,7 +158,6 @@ export class SkyRenderer {
 
   get ready() { return !!this.atmo.cur; }
 
-  /** CSS için renkler: dokunun orta sütunundan üst / orta / ufuk (çapraz solma dahil). */
   sampleColors(): { top: string; mid: string; hor: string } | null {
     const { cur, prev } = this.atmo;
     if (!cur) return null;
@@ -145,54 +180,78 @@ export class SkyRenderer {
     return a.dur <= 0 ? 1 : clamp((performance.now() - a.t0) / a.dur);
   }
 
-  frame(now: number, s: SkyState, scrollX: number) {
-    const c = this.ctx, g = this.g;
-    const W = g.W, H = g.horizonY;
-    const ox = -scrollX * CELESTIAL_PARALLAX;
-    c.imageSmoothingEnabled = true;
-    c.imageSmoothingQuality = 'high';
-
-    // 1) atmosfer dokusu (eski → yeni çapraz solma)
+  private drawAtmo(c: CanvasRenderingContext2D, tx0: number, W: number, H: number) {
     const { cur, prev } = this.atmo;
     const k = this.fade();
     if (prev && k < 1) {
       c.globalAlpha = 1;
-      c.drawImage(prev.img, ox, 0, g.panoW, H);
+      drawMirrorTiledX(c, prev.img, tx0, 0, this.texW, H, W);
       c.globalAlpha = k;
     }
-    if (cur) c.drawImage(cur.img, ox, 0, g.panoW, H);
+    if (cur) drawMirrorTiledX(c, cur.img, tx0, 0, this.texW, H, W);
     c.globalAlpha = 1;
+  }
 
-    // 2) samanyolu ve yıldızlar (eklemeli ışık)
+  frame(now: number, s: SkyState, scrollX: number) {
+    const c = this.ctx, g = this.g;
+    const W = g.W, H = g.horizonY;
+    const ox = -scrollX * CELESTIAL_PARALLAX;
+    const tx0 = ox - this.bleedX;
+    const texW = this.texW;
+
+    c.globalCompositeOperation = 'source-over';
+    c.globalAlpha = 1;
+    c.clearRect(0, 0, W, H + 4);
+    c.imageSmoothingEnabled = true;
+    c.imageSmoothingQuality = 'high';
+
+    // 1) atmosfer dokusu
+    this.drawAtmo(c, tx0, W, H);
+
+    // 2) samanyolu ve arka plan yıldızları
     c.globalCompositeOperation = 'lighter';
     if (this.milkyTex && s.milky > 0.01) {
       c.globalAlpha = 0.32 * s.milky * this.intro.stars[2];
-      c.drawImage(this.milkyTex.img, ox, 0, g.panoW, H);
+      drawMirrorTiledX(c, this.milkyTex.img, tx0, 0, texW, H, W);
     }
     for (let gi = 2; gi >= 0; gi--) {
       const a = s.starVis[gi] * this.intro.stars[gi];
       if (a < 0.01) continue;
       c.globalAlpha = a;
-      c.drawImage(this.layers[gi], ox, 0, g.panoW, H);
+      drawMirrorTiledX(c, this.layers[gi], tx0, 0, texW, H, W);
     }
-    // parlak yıldızlar: hafif sintilasyon (ufka yakın daha belirgin), minik yumuşak hale, ışın YOK
     const ba = s.starVis[0] * this.intro.stars[0];
-    if (ba > 0.01) {
-      for (const st of this.bright) {
-        const x = st.x + ox;
-        if (x < -4 || x > W + 4) continue;
-        const nearH = 1 - clamp((H - st.y) / (g.pxPerDeg * 25));
-        const tw = 1 - (0.12 + 0.3 * nearH) * (0.5 + 0.5 * Math.sin(now / 1000 * st.tw * (1 + nearH) + st.ph));
-        c.globalAlpha = ba * st.a * tw;
-        c.fillStyle = st.c;
-        c.beginPath(); c.arc(x, st.y, st.r, 0, 6.2832); c.fill();
-        c.globalAlpha = ba * st.a * tw * 0.18;
-        c.beginPath(); c.arc(x, st.y, st.r * 3.2, 0, 6.2832); c.fill();
+    if (ba > 0.01 && texW > 0) {
+      const kMin = Math.floor(-tx0 / texW);
+      const kMax = Math.ceil((W - tx0) / texW) - 1;
+      for (let k = kMin; k <= kMax; k++) {
+        const tileX = tx0 + k * texW;
+        const flip = (k & 1) !== 0;
+        for (const st of this.bright) {
+          const x = tileX + (flip ? texW - st.x : st.x);
+          if (x < -4 || x > W + 4) continue;
+          const nearH = 1 - clamp((H - st.y) / (g.pxPerDeg * 25));
+          const tw = 1 - (0.12 + 0.3 * nearH) * (0.5 + 0.5 * Math.sin((now / 1000) * st.tw * (1 + nearH) + st.ph));
+          c.globalAlpha = ba * st.a * tw;
+          c.fillStyle = st.c;
+          c.beginPath(); c.arc(x, st.y, st.r, 0, 6.2832); c.fill();
+          c.globalAlpha = ba * st.a * tw * 0.18;
+          c.beginPath(); c.arc(x, st.y, st.r * 3.2, 0, 6.2832); c.fill();
+        }
       }
     }
+    c.globalCompositeOperation = 'source-over';
+    c.globalAlpha = 1;
 
-    // 3) güneş: yumuşak hale (atmosfer zaten Mie halesi veriyor) + parlak disk; ufukta hafif basık
+    // 2b) kişisel yıldızlar: gök kubbeye sabit (Güneş, Ay, bulutlar ve palmiyelerin arkasında)
+    const moonPos = this.moonTex && s.moonAlpha > 0.01 ? skyToScreen(g, s.moonDisp, s.moonVaz, scrollX) : null;
+    this.onDrawUserStars?.(c, now, s, scrollX, moonPos);
+    c.globalCompositeOperation = 'source-over';
+    c.globalAlpha = 1;
+
+    // 3) güneş
     if (s.sunAlpha > 0.01) {
+      c.globalCompositeOperation = 'lighter';
       const p = skyToScreen(g, s.sunDisp, s.sunVaz, scrollX);
       const L = s.sunLight;
       const col = (m: number) => `rgb(${L.map((v) => Math.round(255 * Math.min(1, Math.pow(v * m, 1 / 2.2)))).join(',')})`;
@@ -206,13 +265,24 @@ export class SkyRenderer {
       c.globalAlpha = s.sunAlpha;
       c.fillStyle = col(1.6);
       c.beginPath(); c.ellipse(p.x, p.y, r, r * squash, 0, 0, 6.2832); c.fill();
+      c.globalCompositeOperation = 'source-over';
+      c.globalAlpha = 1;
     }
-    c.globalCompositeOperation = 'source-over';
 
-    // 4) ay: gerçekçi disk; gece hafif hale (Beto'da sıcak ela-krem tonlama)
-    if (this.moonTex && s.moonAlpha > 0.01) {
-      const p = skyToScreen(g, s.moonDisp, s.moonVaz, scrollX);
+    // 4) ay: gerçekçi katı küre (karanlık yüzü dahil arkasındaki hiçbir yıldızı geçirmez)
+    if (this.moonTex && moonPos && s.moonAlpha > 0.01) {
+      const p = moonPos;
       const size = 46;
+      const limbR = size * (88 / 192);
+      if (this.atmo.cur) {
+        c.save();
+        c.beginPath();
+        c.arc(p.x, p.y, limbR, 0, Math.PI * 2);
+        c.clip();
+        c.globalCompositeOperation = 'source-over';
+        this.drawAtmo(c, tx0, W, H);
+        c.restore();
+      }
       if (s.daylight < 0.6) {
         c.globalCompositeOperation = 'lighter';
         c.globalAlpha = s.moonAlpha * 0.14 * s.phase.fraction * (1 - s.daylight);
@@ -223,7 +293,6 @@ export class SkyRenderer {
         c.fillRect(p.x - size * 2.4, p.y - size * 2.4, size * 4.8, size * 4.8);
         c.globalCompositeOperation = 'source-over';
       }
-      // gündüz: ay göğün mavisine karışır (screen) → karanlık yüz kaybolur, aydınlık yüz soluk mavi-beyaz
       c.globalCompositeOperation = s.daylight > 0.3 ? 'screen' : 'source-over';
       c.globalAlpha = s.moonAlpha;
       c.drawImage(this.moonTex.img, p.x - size / 2, p.y - size / 2, size, size);
@@ -231,7 +300,7 @@ export class SkyRenderer {
       c.globalAlpha = 1;
     }
 
-    // 5) gren: çok ince (bantlanmayı kırar)
+    // 5) gren
     if (this.dither) {
       c.globalCompositeOperation = 'soft-light';
       c.globalAlpha = 0.035;

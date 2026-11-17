@@ -242,9 +242,19 @@ function renderIcon(size, maskable) {
 }
 
 function renderSplash(width, height) {
+  // SON-PROMPT kuralı: açılış görseli düz #05070d (logo veya ek şekil yok; doğrudan sinematik intro açılır)
   const buf = Buffer.alloc(width * height * 4);
-  paintNightSky(buf, width, height, [8, 23, 28], Math.round(Math.min(width, height) * 0.18));
-  paintTwinStars(buf, width, height, 0.45, 0.055, 0.65, true);
+  const row = Buffer.alloc(width * 4);
+  for (let x = 0; x < width; x++) {
+    const idx = x * 4;
+    row[idx] = 5;
+    row[idx + 1] = 7;
+    row[idx + 2] = 13;
+    row[idx + 3] = 255;
+  }
+  for (let y = 0; y < height; y++) {
+    row.copy(buf, y * width * 4);
+  }
   return encodePNG(width, height, buf);
 }
 

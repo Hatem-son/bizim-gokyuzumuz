@@ -43,7 +43,8 @@ html, body {
   margin: 0;
   padding: 0;
   width: 100%;
-  height: var(--app-h, 100svh);
+  height: var(--app-h, 100lvh);
+  min-height: 100lvh;
   overflow: hidden;
   overscroll-behavior: none;
   background: var(--sky-bottom, #05070d);
@@ -57,10 +58,10 @@ svg { display: block; }
 /* ---------- tam ekran PWA uygulama çerçevesi ---------- */
 #app {
   position: fixed;
-  left: 0;
-  top: 0;
+  inset: 0;
   width: 100%;
-  height: var(--app-h, 100svh);
+  height: var(--app-h, 100lvh);
+  min-height: 100lvh;
   overflow: hidden;
   background: var(--sky-bottom, #05070d);
   -webkit-user-select: none;

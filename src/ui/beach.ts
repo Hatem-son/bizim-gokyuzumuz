@@ -1,6 +1,9 @@
 // Kumsal: ufukta gökyüzünü yansıtan deniz + ay/güneş/fener ışık yolu + kıyıya gelip giden dalga köpüğü +
 // ıslak kum parıltısı + kuru kum (gren, rüzgâr çizgileri, ikimizin ayak izleri) + mumların kuma düşen ışığı.
 import { rng } from '../gokyuzu/util';
+import { drawMirrorTiledX } from '../gokyuzu/skyRender';
+
+const SAND_BLEED_B = 96; // ekranın en altına kadar kesintisiz kum uzantısı (safe-area / dinamik bar payı)
 
 type RGB = [number, number, number];
 const parse = (c: string): RGB => (c.match(/\d+/g) ?? ['0', '0', '0']).slice(0, 3).map(Number) as RGB;
@@ -13,14 +16,18 @@ export class Beach {
   private grain: CanvasPattern | null = null;
   private r = rng(77);
   private prints: { x: number; y: number; a: number; s: number; who: 0 | 1 }[] = [];
+  private readonly bleedX: number;
+  private readonly sandW: number;
   readonly shoreY: number;
 
   constructor(private c: CanvasRenderingContext2D, private o: { W: number; H: number; horizonY: number; skyW: number }) {
     this.shoreY = Math.round(o.horizonY + (o.H - o.horizonY) * (92 / 244));
+    this.bleedX = o.W;
+    this.sandW = o.skyW + this.bleedX * 2;
     const d = Math.min(devicePixelRatio || 1, 2);
     this.sand = document.createElement('canvas');
-    this.sand.width = Math.ceil(o.skyW * d);
-    this.sand.height = Math.ceil((o.H - this.shoreY + 28) * d);
+    this.sand.width = Math.ceil(this.sandW * d);
+    this.sand.height = Math.ceil((o.H - this.shoreY + SAND_BLEED_B) * d);
     this.sand.getContext('2d')!.scale(d, d);
     const g = document.createElement('canvas');
     g.width = g.height = 96;
@@ -33,7 +40,7 @@ export class Beach {
     }
     gx.putImageData(im, 0, 0);
     this.grain = this.sand.getContext('2d')!.createPattern(g, 'repeat');
-    const startX = o.skyW * 0.5 - 40;
+    const startX = this.bleedX + o.skyW * 0.5 - 40;
     for (let k = 0; k < 18; k++) {
       const t = k / 17;
       const y = (o.H - this.shoreY) * (1 - t) + 6;
@@ -48,8 +55,8 @@ export class Beach {
 
   private drawSand(hor: RGB, top: RGB, day: number, sun: RGB) {
     const c = this.sand.getContext('2d')!;
-    const { skyW } = this.o;
-    const h = this.o.H - this.shoreY + 28;
+    const skyW = this.sandW;
+    const h = this.o.H - this.shoreY + SAND_BLEED_B;
     const dayS: RGB = [222 * (0.75 + 0.25 * sun[0]), 202 * (0.75 + 0.25 * sun[1]), 168 * (0.7 + 0.3 * sun[2])];
     const nightS: RGB = mix([28, 30, 40], top, 0.25);
     const base = mix(nightS, dayS, Math.pow(day, 0.8));
@@ -128,7 +135,7 @@ export class Beach {
     const c = this.c, { W, H, horizonY } = this.o;
     const hor = parse(colors.hor), top = parse(colors.top);
     const shore = this.shoreY;
-    c.clearRect(0, horizonY - 2, W, H - horizonY + 8);
+    c.clearRect(0, horizonY - 2, W, H - horizonY + SAND_BLEED_B);
 
     const deep: RGB = mix([6, 10, 20], [28, 70, 96], day);
     const g = c.createLinearGradient(0, horizonY, 0, shore);
@@ -195,7 +202,7 @@ export class Beach {
 
     const key = colors.hor + colors.top + Math.round(day * 30) + sun.map((v) => v.toFixed(1)).join();
     if (key !== this.sandKey) { this.sandKey = key; this.drawSand(hor, top, day, sun); }
-    c.drawImage(this.sand, -scrollX, shore - 6, this.o.skyW, H - shore + 28);
+    drawMirrorTiledX(c, this.sand, -scrollX - this.bleedX, shore - 6, this.sandW, H - shore + SAND_BLEED_B, W);
 
     const T = 6.5, ph = (t % T) / T;
     for (let k = 0; k < 4; k++) {
@@ -227,32 +234,32 @@ export class Beach {
     c.fillRect(0, shore - 2, W, wetTo - shore + 4);
     if (ph > 0.38) {
       c.fillStyle = css(mix(hor, [255, 255, 255], 0.2), 0.18 * (1 - dry));
-      c.beginPath(); c.moveTo(0, shore);
-      for (let x = 0; x <= W; x += 6) c.lineTo(x, edge(x + scrollX) + 3);
-      for (let x = W; x >= 0; x -= 6) c.lineTo(x, shore + 2 + maxReach * (1 - dry * 0.6) + Math.sin(x * 0.04) * 3);
+      c.beginPath(); c.moveTo(-6, shore);
+      for (let x = -6; x <= W + 6; x += 6) c.lineTo(x, edge(x + scrollX) + 3);
+      for (let x = W + 6; x >= -6; x -= 6) c.lineTo(x, shore + 2 + maxReach * (1 - dry * 0.6) + Math.sin(x * 0.04) * 3);
       c.closePath(); c.fill();
     }
     const sheet = c.createLinearGradient(0, shore - 8, 0, shore + maxReach + 8);
     sheet.addColorStop(0, css(mix(mix(hor, deep, 0.45), [255, 255, 255], 0.08), 0.95));
     sheet.addColorStop(1, css(mix(hor, [255, 255, 255], 0.25), 0.55));
     c.fillStyle = sheet;
-    c.beginPath(); c.moveTo(0, shore - 8);
-    for (let x = 0; x <= W; x += 5) c.lineTo(x, edge(x + scrollX));
-    c.lineTo(W, shore - 8); c.closePath(); c.fill();
+    c.beginPath(); c.moveTo(-5, shore - 8);
+    for (let x = -5; x <= W + 5; x += 5) c.lineTo(x, edge(x + scrollX));
+    c.lineTo(W + 5, shore - 8); c.closePath(); c.fill();
     const foamA = (0.55 + 0.4 * day) * (ph < 0.38 ? 1 : 0.35 + 0.65 * up);
     const band = 6 + 10 * up;
     for (let k = 0; k < 4; k++) {
       c.fillStyle = `rgba(255,255,255,${(foamA * 0.22 * (1 - k / 4)).toFixed(3)})`;
       c.beginPath();
-      for (let x = 0; x <= W; x += 5) { const y = edge(x + scrollX) - (band * k) / 4 + Math.sin(x * 0.11 + t * 2 + k) * 1.2; x ? c.lineTo(x, y) : c.moveTo(x, y); }
-      for (let x = W; x >= 0; x -= 5) c.lineTo(x, edge(x + scrollX) - band * (k + 1) / 4 - 1);
+      for (let x = -5; x <= W + 5; x += 5) { const y = edge(x + scrollX) - (band * k) / 4 + Math.sin(x * 0.11 + t * 2 + k) * 1.2; x > -5 ? c.lineTo(x, y) : c.moveTo(x, y); }
+      for (let x = W + 5; x >= -5; x -= 5) c.lineTo(x, edge(x + scrollX) - band * (k + 1) / 4 - 1);
       c.closePath(); c.fill();
     }
     c.strokeStyle = `rgba(255,255,255,${foamA.toFixed(3)})`;
     c.lineWidth = 2.2 + 2 * up;
     c.lineCap = 'round';
     c.beginPath();
-    for (let x = 0; x <= W; x += 5) x ? c.lineTo(x, edge(x + scrollX)) : c.moveTo(x, edge(x + scrollX));
+    for (let x = -5; x <= W + 5; x += 5) x > -5 ? c.lineTo(x, edge(x + scrollX)) : c.moveTo(x, edge(x + scrollX));
     c.stroke();
     const lace = Math.round(60 + 70 * up);
     for (let i = 0; i < lace; i++) {

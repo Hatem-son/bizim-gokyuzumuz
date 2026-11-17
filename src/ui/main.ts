@@ -3,7 +3,7 @@ import './style.css';
 import './screens.css';
 
 import { Engine } from '../gokyuzu/engine';
-import { makeGeom, skyToScreen } from '../gokyuzu/skyGeom';
+import { makeGeom, skyToScreen, panoToScreenX, CELESTIAL_PARALLAX } from '../gokyuzu/skyGeom';
 import { defaultLocation } from '../gokyuzu/astro';
 import { SkyWorker } from '../gokyuzu/workerClient';
 import { SkyRenderer } from '../gokyuzu/skyRender';
@@ -11,7 +11,8 @@ import { WeatherRenderer } from '../gokyuzu/weatherRender';
 import { Effects, drawUserStar } from '../gokyuzu/effects';
 import { Plane, schedulePlane } from '../gokyuzu/plane';
 import { SwipeHint } from '../gokyuzu/swipeHint';
-import { prepare, playIntro, introMode } from '../gokyuzu/intro';
+import { prepare, playIntro } from '../gokyuzu/intro';
+import { clamp, hash } from '../gokyuzu/util';
 import { initKeyboard } from '../gokyuzu/keyboard';
 import { startWeather } from '../gokyuzu/weather';
 import { Beach } from './beach';
@@ -56,16 +57,21 @@ st.textContent = ART_CSS + PALM_CSS + LILY_CSS + '@keyframes spin{to{transform:r
 document.head.appendChild(st);
 initUI(app);
 
+// ÖNCE tam ekran yüksekliğini (--app-h: 100lvh / screen.height) ayarla ki tuval telefonun en altına kadar kesintisiz insin
+initKeyboard({
+  hideWhenOpen: () => [...app.querySelectorAll<HTMLElement>('.dock, .gk-cons, .gk-edge, .gk-hint-txt')],
+});
+
+const cssAppH = parseInt(document.documentElement.style.getPropertyValue('--app-h'), 10) || 0;
 const W = Math.max(320, app.clientWidth || window.innerWidth);
-const H = Math.max(540, app.clientHeight || window.innerHeight);
+const H = Math.max(540, cssAppH, app.clientHeight || 0, window.innerHeight);
 const HORIZON = Math.round(H * (600 / 844));
 const SKY_W = Math.round(W * 2.2);
 Object.assign(core, { W, H, skyW: SKY_W, horizonY: HORIZON });
 
 app.insertAdjacentHTML('afterbegin', `
-  <div id="skyWrap" class="layer"><canvas id="cSky"></canvas><canvas id="cWBack"></canvas><div id="planeHost" class="layer" style="pointer-events:none"></div><canvas id="cWFront"></canvas></div>
+  <div id="skyWrap" class="layer"><canvas id="cSky"></canvas><canvas id="cFx"></canvas><canvas id="cWBack"></canvas><div id="planeHost" class="layer" style="pointer-events:none"></div><canvas id="cWFront"></canvas></div>
   <div id="groundWrap" class="layer" style="pointer-events:none"><canvas id="cGround"></canvas></div>
-  <canvas id="cStars"></canvas><canvas id="cFx"></canvas>
   <div id="fgWrap" class="layer" style="pointer-events:none;z-index:4"></div>
   <div id="flash" class="layer" style="background:#dfe6ff;opacity:0;pointer-events:none;z-index:6"></div>`);
 
@@ -85,16 +91,15 @@ function cv(id: string, maxDpr = 2, extraH = 0) {
 const geom = makeGeom(W, HORIZON, SKY_W);
 const worker = new SkyWorker();
 const engine = new Engine(defaultLocation, geom);
-const sky = new SkyRenderer(cv('cSky', 1.5), geom, worker);
+const sky = new SkyRenderer(cv('cSky', 1.5, 4), geom, worker);
 const weatherRenderer = new WeatherRenderer(worker, cv('cWBack', 1.5), cv('cWFront', 1.5), $('#flash'), geom, engine.weather);
 weatherRenderer.lightningEnabled = state.settings.lightning;
-const beach = new Beach(cv('cGround', 2, 6), { W, H, horizonY: HORIZON, skyW: SKY_W });
+const beach = new Beach(cv('cGround', 2, 96), { W, H, horizonY: HORIZON, skyW: SKY_W });
 const skyCanvas = document.getElementById('cSky') as HTMLCanvasElement;
 let fg: HTMLElement | null = null;
 const wind = new Wind();
 const fx = new Effects(cv('cFx'), { w: W, h: H });
 fx.flashEl = $('#flash');
-const starsCtx = cv('cStars');
 
 engine.onLowPower = (low) => {
   weatherRenderer.maxParticles = low ? 160 : 320;
@@ -154,6 +159,33 @@ const pairRealtime = new PairRealtime({
 
 let stopStarsRealtime: (() => void) | null = null;
 
+/** Yıldızın gök kubbedeki ekran konumu: gerçek yıldızlar ve Ay ile birebir aynı paralaks (0.5) ve Ay koruma yarıçapı. */
+function computeStarScreenPos(
+  t: Star,
+  scrollX = core.scrollX,
+  moonPos?: { x: number; y: number } | null,
+): { x: number; y: number } {
+  let x = panoToScreenX(geom, t.x, scrollX);
+  let y = t.y;
+  const mp =
+    moonPos !== undefined
+      ? moonPos
+      : engine.sky.current.moonAlpha > 0.01
+        ? skyToScreen(geom, engine.sky.current.moonDisp, engine.sky.current.moonVaz, scrollX)
+        : null;
+  if (mp) {
+    const dx = x - mp.x, dy = y - mp.y;
+    const d = Math.hypot(dx, dy);
+    const minDist = 38;
+    if (d < minDist) {
+      const ang = d > 0.5 ? Math.atan2(dy, dx) : ((hash(t.id) % 628) / 100);
+      x = mp.x + Math.cos(ang) * minDist;
+      y = clamp(mp.y + Math.sin(ang) * minDist, 64, HORIZON - 48);
+    }
+  }
+  return { x, y };
+}
+
 Object.assign(core, {
   engine,
   fx,
@@ -162,11 +194,15 @@ Object.assign(core, {
   worker,
   plane,
   geom,
+  starScreenPos: (stObj: Star) => computeStarScreenPos(stObj),
+  scrollToStar: (stObj: Star, ms = 650) => {
+    core.scrollTo((stObj.x - W / 2) / CELESTIAL_PARALLAX, ms);
+  },
   openCompose,
   openArchive,
   openSettings,
   openCountdown,
-  openStar: (st: Star) => void openStar(st),
+  openStar: (stObj: Star) => void openStar(stObj),
   openBoard: (existing?: unknown[] | null) => openBoard((existing as Stroke[] | null) ?? null),
   renderDrawingPreview: (cvEl: HTMLCanvasElement, strokes: unknown[], upTo?: number) =>
     renderDrawing(cvEl, strokes as Stroke[], 1, upTo ?? Infinity),
@@ -181,10 +217,6 @@ Object.assign(core, {
 });
 core.scrollX = (SKY_W - W) / 2;
 applyPersona();
-
-initKeyboard({
-  hideWhenOpen: () => [...app.querySelectorAll<HTMLElement>('.dock, .gk-cons, .gk-edge, .gk-hint-txt')],
-});
 
 // ---------- zemin ışığı → lilyum, palmiye ve kavanoz renkleri ----------
 const lerpHex = (a: string, b: string, t: number) => {
@@ -216,6 +248,30 @@ function updateFlora(day: number) {
 let starsShown = false;
 let fgX = NaN;
 let nextMeteor = performance.now() + 30_000;
+
+// Kişisel yıldızlar doğrudan gök kubbe katmanında (Güneş, Ay, bulutlar ve palmiyelerin arkasında) çizilir
+sky.onDrawUserStars = (c, now, s, sx, moonPos) => {
+  if (!starsShown) return;
+  const srvNow = getServerNowMs();
+  const exposure = sky.intro.stars[0] ?? 1;
+  for (const t of state.stars) {
+    if (!t.visible) continue;
+    const pos = computeStarScreenPos(t, sx, moonPos);
+    if (pos.x < -28 || pos.x > W + 28) continue;
+    const altDeg = (HORIZON - pos.y) / geom.pxPerDeg;
+    const ext = clamp(altDeg / 14) * 0.72 + 0.28;
+    const unread = t.from === state.partner && !t.opened && !(t.unlockAt && t.unlockAt > srvNow);
+    drawUserStar(c, pos.x, pos.y, t.id, now, {
+      tint: PEOPLE[t.from].color,
+      daylight: s.daylight,
+      arrivedAt: t.arrivedAt,
+      unread,
+      hazel: t.hazel,
+      ext,
+      exposure,
+    });
+  }
+};
 
 engine.add((now, dt, s) => {
   const sx = core.scrollX;
@@ -254,24 +310,6 @@ engine.add((now, dt, s) => {
   if (fg && fgX !== Math.round(sx * 10)) {
     fgX = Math.round(sx * 10);
     fg.style.transform = `translate3d(${-sx}px,0,0)`;
-  }
-
-  starsCtx.clearRect(0, 0, W, H);
-  if (starsShown) {
-    const srvNow = getServerNowMs();
-    for (const t of state.stars) {
-      if (!t.visible) continue;
-      const x = t.x - sx;
-      if (x < -30 || x > W + 30) continue;
-      const unread = t.from === state.partner && !t.opened && !(t.unlockAt && t.unlockAt > srvNow);
-      drawUserStar(starsCtx, x, t.y, t.id, now, {
-        tint: PEOPLE[t.from].color,
-        daylight: s.daylight,
-        arrivedAt: t.arrivedAt,
-        unread,
-        hazel: t.hazel,
-      });
-    }
   }
 
   if (fx.frame(now, dt)) engine.busy(200);
@@ -335,26 +373,28 @@ addEventListener('pointercancel', () => { drag = null; });
 
 function tapSky(e: PointerEvent) {
   const r = app.getBoundingClientRect();
-  const x = e.clientX - r.left + core.scrollX, y = e.clientY - r.top;
+  const tx = e.clientX - r.left, ty = e.clientY - r.top;
   let best: Star | null = null, bd = 30;
+  let bestPos = { x: 0, y: 0 };
   for (const t of state.stars) {
     if (!t.visible) continue;
-    const d = Math.hypot(t.x - x, t.y - y);
-    if (d < bd) { bd = d; best = t; }
+    const pos = computeStarScreenPos(t);
+    const d = Math.hypot(pos.x - tx, pos.y - ty);
+    if (d < bd) { bd = d; best = t; bestPos = pos; }
   }
   if (best) {
-    fx.land({ x: best.x - core.scrollX, y: best.y }, { now: performance.now() - 700, tint: PEOPLE[best.from].color });
+    fx.land(bestPos, { now: performance.now() - 700, tint: PEOPLE[best.from].color });
     engine.busy(800);
     const chosen = best;
     setTimeout(() => core.openStar(chosen), 120);
   }
 }
 
-// ---------- Supabase StarRecord -> UI Star dönüşümü ----------
+// ---------- Supabase StarRecord -> UI Star dönüşümü (gök kubbe koordinatı) ----------
 export function mapRecordToStar(rec: StarRecord, allRecords: StarRecord[], visible = true): Star {
   const kind: Kind =
     rec.kind === 'photo' ? 'photo' : rec.kind === 'voice' ? 'voice' : rec.kind === 'draw' ? 'draw' : 'text';
-  const x = Math.max(24, Math.min(SKY_W - 24, (rec.x / 100) * SKY_W));
+  const x = Math.max(28, Math.min(geom.panoW - 28, 28 + (rec.x / 100) * (geom.panoW - 56)));
   const y = Math.max(70, Math.min(HORIZON - 56, 70 + (rec.y / 100) * (HORIZON - 130)));
   const unlockAt = rec.unlockAt ? Date.parse(rec.unlockAt) : undefined;
   const locked = Boolean(unlockAt && unlockAt > getServerNowMs());
@@ -389,7 +429,7 @@ async function loadStarsFromBackend() {
         createdAt: q.queuedAt,
         unlockAt: q.unlockAt ? Date.parse(q.unlockAt) : undefined,
         opened: false,
-        x: Math.max(24, Math.min(SKY_W - 24, (q.x / 100) * SKY_W)),
+        x: Math.max(28, Math.min(geom.panoW - 28, 28 + (q.x / 100) * (geom.panoW - 56))),
         y: Math.max(70, Math.min(HORIZON - 56, 70 + (q.y / 100) * (HORIZON - 130))),
         visible: false,
       });
@@ -504,15 +544,16 @@ async function resolveBootMode(): Promise<'auth' | 'lock' | 'home'> {
   return state.settings.faceId && hasBiometric() ? 'lock' : 'home';
 }
 
-async function enterHome() {
-  await loadStarsFromBackend();
-  // Kişiye göre ön plan fenerlerini güncelle
-  $('#fgWrap').innerHTML = '';
-  fg = buildForeground(SKY_W, H, beach.shoreY);
-  $('#fgWrap').appendChild(fg);
-  wind.attach(fg);
+async function enterHome(preloaded = false) {
+  if (!preloaded) {
+    await loadStarsFromBackend();
+    $('#fgWrap').innerHTML = '';
+    fg = buildForeground(SKY_W, H, beach.shoreY);
+    $('#fgWrap').appendChild(fg);
+    wind.attach(fg);
+    fgX = NaN;
+  }
   $('#fgWrap').classList.remove('pre');
-  fgX = NaN;
 
   [...document.querySelectorAll('#fgWrap .jar.mine')].forEach((j) =>
     (j as HTMLElement).animate([{ opacity: 0 }, { opacity: 1 }], { duration: 1200, delay: 400, easing: 'ease-out', fill: 'backwards' })
@@ -537,7 +578,8 @@ async function enterHome() {
   sorted.forEach((t) => (t.visible = false));
   sorted.forEach((t, i) =>
     setTimeout(() => {
-      fx.land({ x: t.x - core.scrollX, y: t.y }, { now: performance.now() - 650, tint: PEOPLE[t.from].color, onSettle: () => (t.visible = true) });
+      const pos = computeStarScreenPos(t);
+      fx.land(pos, { now: performance.now() - 650, tint: PEOPLE[t.from].color, onSettle: () => (t.visible = true) });
       engine.busy(1500);
     }, 300 + i * 90)
   );
@@ -553,19 +595,27 @@ async function enterHome() {
       const stNew = mapRecordToStar(rec, allRecs, false);
       state.stars.push(stNew);
       if (stNew.from === state.partner) {
-        if (stNew.x < core.scrollX + 24 || stNew.x > core.scrollX + W - 24) {
-          core.scrollTo(stNew.x - W / 2, 550);
+        const curPos = computeStarScreenPos(stNew);
+        if (curPos.x < 24 || curPos.x > W - 24) {
+          core.scrollToStar(stNew, 550);
         }
-        const screenSpot = { x: Math.max(36, Math.min(W - 36, stNew.x - core.scrollX)), y: stNew.y };
+        const targetScrollX =
+          curPos.x < 24 || curPos.x > W - 24
+            ? Math.max(0, Math.min(maxScroll, (stNew.x - W / 2) / CELESTIAL_PARALLAX))
+            : core.scrollX;
+        const screenSpot = computeStarScreenPos(stNew, targetScrollX);
         engine.busy(2600);
-        fx.incoming(screenSpot, {
-          now: performance.now(),
-          tint: PEOPLE[state.partner].color,
-          onSettle: () => {
-            stNew.visible = true;
-            stNew.arrivedAt = performance.now();
-          },
-        });
+        fx.incoming(
+          { x: Math.max(36, Math.min(W - 36, screenSpot.x)), y: screenSpot.y },
+          {
+            now: performance.now(),
+            tint: PEOPLE[state.partner].color,
+            onSettle: () => {
+              stNew.visible = true;
+              stNew.arrivedAt = performance.now();
+            },
+          }
+        );
         setTimeout(() => {
           showLive('left', { star: stNew });
           core.refreshHome();
@@ -593,7 +643,7 @@ async function enterHome() {
   if (targetStarId) {
     const found = state.stars.find((s) => s.id === targetStarId);
     if (found) {
-      core.scrollTo(found.x - W / 2, 500);
+      core.scrollToStar(found, 500);
       setTimeout(() => void openStar(found), 600);
     }
     history.replaceState(null, '', '/');
@@ -632,40 +682,49 @@ function firstRunNudge(force = false) {
 }
 
 async function boot(mode?: 'auth' | 'lock' | 'home') {
-  const resolved = mode ?? (await resolveBootMode());
-  applyPersona();
+  // İlk milisaniyeden itibaren #05070d örtüsü hazır (logo / ara ekran yok, doğrudan SON-PROMPT açılışı)
   clearPageStack();
   $$('.screen.home,.auth,.page,.sheet,.backdrop,.board,.watch,.cdpage,.scene-fg,.island-pop').forEach((x) => x.remove());
+  const overlay = h(`<div class="layer" style="background:#05070d;z-index:90"></div>`);
+  app.appendChild(overlay);
   core.homeEl = null as unknown as HTMLElement;
   inHome = false;
+  starsShown = false;
+  sky.intro.stars = [0, 0, 0];
+
+  const resolved = mode ?? (await resolveBootMode());
+  applyPersona();
   fg = buildForeground(SKY_W, H, beach.shoreY);
   $('#fgWrap').innerHTML = '';
   $('#fgWrap').appendChild(fg);
   wind.attach(fg);
   $('#fgWrap').classList.add('pre');
   fgX = NaN;
-  starsShown = false;
 
-  const overlay = h(`<div class="layer" style="background:#05070d;z-index:90"></div>`);
-  app.appendChild(overlay);
-  sky.intro.stars = [0, 0, 0];
   const ready = new Promise<void>((r) => {
     const c = () => (sky.ready ? r() : setTimeout(c, 30));
     c();
   });
-  await prepare([ready], ['italic 600 40px "Cormorant Garamond"', '500 15px "Inter"']);
-  $('#fgWrap').animate([{ transform: 'translate3d(0,90px,0)' }, { transform: 'none' }], { duration: 2800, easing: 'cubic-bezier(.25,.1,.12,1)' });
+  const preloadTasks: Promise<unknown>[] = [ready];
+  if (resolved === 'home') preloadTasks.push(loadStarsFromBackend());
+  await prepare(preloadTasks, ['italic 600 40px "Cormorant Garamond"', '500 15px "Inter"']);
+
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  $('#fgWrap').animate([{ transform: 'translate3d(0,90px,0)' }, { transform: 'none' }], {
+    duration: reduced ? 1260 : 2800,
+    easing: 'cubic-bezier(.25,.1,.12,1)',
+  });
   const reveal = playIntro(
     { overlay, sky: $('#skyWrap'), ground: $('#groundWrap'), setStars: (a, b, c) => (sky.intro.stars = [a, b, c]) },
-    introMode()
+    reduced ? 'short' : 'full'
   );
   if (resolved === 'home') {
     await reveal;
-    await enterHome();
+    await enterHome(true);
     return;
   }
   await sleep(900);
-  const after = () => void enterHome();
+  const after = () => void enterHome(false);
   if (resolved === 'lock') runLock(app, after);
   else runAuth(app, after);
 }
@@ -725,7 +784,7 @@ if ('serviceWorker' in navigator) {
     if (data?.type === 'notification-open' && data.starId && inHome) {
       const found = state.stars.find((s) => s.id === data.starId);
       if (found) {
-        core.scrollTo(found.x - W / 2, 500);
+        core.scrollToStar(found, 500);
         setTimeout(() => void openStar(found), 550);
       }
     }

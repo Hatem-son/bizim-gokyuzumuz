@@ -9,6 +9,7 @@
 import { SkyState } from './skyState';
 import { Weather } from './weather';
 import { SkyGeom, CLOUD_PARALLAX } from './skyGeom';
+import { drawMirrorTiledX } from './skyRender';
 import { SkyWorker } from './workerClient';
 import { layersFor, CloudParams } from './cloudGen';
 import { rng, clamp, lerp, reducedMotion } from './util';
@@ -222,17 +223,17 @@ export class WeatherRenderer {
   }
 
   private drawLayer(c: CanvasRenderingContext2D, L: Layer, now: number, dt: number, x0: number, speed: number) {
-    const H = this.g.horizonY;
+    const H = this.g.horizonY, W = this.g.W;
     L.drift += speed * dt;
     L.prevDrift += speed * dt;
     const k = L.cur ? clamp((now - L.t0) / 6000) : 1;
     if (L.prev && k < 1) {
       c.globalAlpha = L.cur ? 1 - k : clamp(1 - (now - L.t0) / 6000);
-      c.drawImage(L.prev.img, x0 + L.prevDrift, 0, L.prev.w * 2, H);
+      drawMirrorTiledX(c, L.prev.img, x0 + L.prevDrift, 0, L.prev.w * 2, H, W);
     }
     if (L.cur) {
       c.globalAlpha = k;
-      c.drawImage(L.cur.img, x0 + L.drift, 0, L.cur.w * 2, H);
+      drawMirrorTiledX(c, L.cur.img, x0 + L.drift, 0, L.cur.w * 2, H, W);
     }
     c.globalAlpha = 1;
   }
@@ -262,7 +263,7 @@ export class WeatherRenderer {
     if (a > 0.01 && this.low.cur) {
       f.globalCompositeOperation = 'lighter';
       f.globalAlpha = a * 0.9;
-      f.drawImage(this.low.cur.img, cloudX + this.low.drift, 0, this.low.cur.w * 2, this.g.horizonY);
+      drawMirrorTiledX(f, this.low.cur.img, cloudX + this.low.drift, 0, this.low.cur.w * 2, this.g.horizonY, this.g.W);
       f.globalCompositeOperation = 'source-over';
     }
     this.flashEl.style.opacity = (a * 0.18).toFixed(3);

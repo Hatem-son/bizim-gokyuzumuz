@@ -5,6 +5,7 @@ import { raspberry } from './art';
 import { I, SIGN } from './icons';
 import { state, PEOPLE, Star, Kind, fmtDate, toDbWho } from './state';
 import { core } from './core';
+import { CELESTIAL_PARALLAX, skyToScreen } from '../gokyuzu/skyGeom';
 import { compressImage, CompressedPhoto, VoiceRecorder, RecordedVoice } from '../lib/media';
 import {
   prepareEncryptedStar,
@@ -255,9 +256,10 @@ async function flyAway(sheet: Sheet, draft: ComposeDraft, onClearDraft: () => vo
   const a = app.getBoundingClientRect();
   const r = sheet.el.getBoundingClientRect();
   const target = freeSpot();
-  const starX = target.x + core.scrollX;
+  const starX = target.x + core.scrollX * CELESTIAL_PARALLAX;
   const starY = target.y;
-  const xPct = Math.max(1, Math.min(99, (starX / core.skyW) * 100));
+  const panoSpan = Math.max(1, core.geom.panoW - 56);
+  const xPct = Math.max(1, Math.min(99, ((starX - 28) / panoSpan) * 100));
   const yPct = Math.max(2, Math.min(96, ((starY - 70) / Math.max(1, core.horizonY - 130)) * 100));
 
   core.setMyLiveActivity('sending');
@@ -408,13 +410,22 @@ async function flyAway(sheet: Sheet, draft: ComposeDraft, onClearDraft: () => vo
 
 export function freeSpot() {
   const W = core.W;
-  for (let k = 0; k < 40; k++) {
+  const curSky = core.engine?.sky.current;
+  const moonP = curSky && curSky.moonAlpha > 0.01 ? skyToScreen(core.geom, curSky.moonDisp, curSky.moonVaz, core.scrollX) : null;
+  const sunP = curSky && curSky.sunAlpha > 0.01 ? skyToScreen(core.geom, curSky.sunDisp, curSky.sunVaz, core.scrollX) : null;
+  for (let k = 0; k < 60; k++) {
     const x = 40 + Math.random() * (W - 80);
-    const y = 200 + Math.random() * Math.max(80, core.horizonY - 330);
-    const ok = state.stars.every((s) => Math.hypot(s.x - core.scrollX - x, s.y - y) > 48);
+    const y = 180 + Math.random() * Math.max(80, core.horizonY - 310);
+    if (moonP && Math.hypot(moonP.x - x, moonP.y - y) < 48) continue;
+    if (sunP && Math.hypot(sunP.x - x, sunP.y - y) < 36) continue;
+    const ok = state.stars.every((s) => {
+      const sp = core.starScreenPos(s);
+      return Math.hypot(sp.x - x, sp.y - y) > 42;
+    });
     if (ok) return { x, y };
   }
-  return { x: W / 2, y: Math.min(280, core.horizonY - 120) };
+  const fbX = moonP && Math.abs(moonP.x - W / 2) < 52 ? (moonP.x < W / 2 ? W * 0.72 : W * 0.28) : W / 2;
+  return { x: fbX, y: Math.min(280, core.horizonY - 120) };
 }
 
 /** Gerçek MediaRecorder ses kaydı arayüzü (dalga çubukları gerçek mikrofon seviyesinden transform: scaleY ile çizilir). */

@@ -23,6 +23,8 @@ export const core = {
   horizonY: 600,
   scrollX: 0,
   scrollTo: (_x: number, _ms?: number) => {},
+  scrollToStar: (_st: Star, _ms?: number) => {},
+  starScreenPos: (_st: Star): { x: number; y: number } => ({ x: 0, y: 0 }),
   homeEl: null as unknown as HTMLElement,
   refreshHome: () => {},
   reloadWeather: () => {},

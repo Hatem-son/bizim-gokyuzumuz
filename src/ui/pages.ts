@@ -272,7 +272,7 @@ export async function openStar(st: Star, onOpened?: () => void) {
   content.querySelector('[data-show]')?.addEventListener('click', async () => {
     await sheet.close();
     while (document.querySelector('.page')) await popPage(core.homeEl);
-    core.scrollTo(st.x - core.W / 2, 700);
+    core.scrollToStar(st, 700);
   });
 
   if (!mine && !locked && !st.opened) {
