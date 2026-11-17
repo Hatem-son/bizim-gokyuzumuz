@@ -63,6 +63,7 @@ export function openDiagnostics() {
       <div class="diag-cell"><span class="small">Yavaş kare</span><b data-slow>0.0%</b></div>
       <div class="diag-cell"><span class="small">Uzun görev</span><b data-lt>0</b></div>
       <div class="diag-cell"><span class="small">Worker (atmo/bulut)</span><b data-wk>—</b></div>
+      <div class="diag-cell" style="grid-column:span 2"><span class="small">INSERT → çentik bildirimi</span><b data-lat>—</b></div>
     </div>
     <div class="eyebrow" style="margin:14px 2px 8px">Saat: <span data-hlbl>${core.engine.timeOverride ? fmtH(curHour) : 'şimdi'}</span></div>
     <input type="range" min="0" max="23.99" step="0.05" value="${curHour.toFixed(2)}" data-hour style="width:100%">
@@ -77,6 +78,7 @@ export function openDiagnostics() {
     <div class="row-flex" style="margin-top:10px">
       <button type="button" class="chip grow" data-plane style="justify-content:center">Uçak</button>
       <button type="button" class="chip grow" data-meteor style="justify-content:center">Meteor</button>
+      <button type="button" class="chip grow" data-ocean style="justify-content:center">Deniz selamı</button>
     </div>
   </div>`);
 
@@ -100,6 +102,8 @@ export function openDiagnostics() {
     $('[data-lt]', c).textContent = String(st.longTasks);
     const tm = core.worker.timings;
     $('[data-wk]', c).textContent = `${tm.atmo || 0} / ${tm.clouds || 0} ms`;
+    $('[data-lat]', c).textContent =
+      core.lastInsertLatencyMs !== null ? `${core.lastInsertLatencyMs.toFixed(1)} ms` : 'bekleniyor';
   };
   updateMetrics();
   const iv = window.setInterval(updateMetrics, 500);
@@ -164,6 +168,11 @@ export function openDiagnostics() {
   $('[data-meteor]', c).addEventListener('click', () => {
     core.fx.decorative(performance.now());
     core.engine.busy(1200);
+  });
+
+  $('[data-ocean]', c).addEventListener('click', () => {
+    void s.close();
+    setTimeout(() => core.triggerOcean(), 240);
   });
 }
 

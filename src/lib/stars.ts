@@ -39,6 +39,11 @@ const localSecretMem: Record<string, string> = {};
 
 let serverClockOffsetMs = 0;
 let lastFetchFailed = false;
+let lastSeenStarIso = '';
+
+export function noteSeenStarIso(iso: string | null | undefined): void {
+  if (iso && iso > lastSeenStarIso) lastSeenStarIso = iso;
+}
 
 export class OfflineNetworkError extends Error {
   constructor(message: string) {
@@ -380,7 +385,10 @@ export async function fetchAllStars(me: Who): Promise<StarRecord[]> {
       return store.get<StarRecord[]>(`${STARS_CACHE_PREFIX}${me}`, []);
     }
     lastFetchFailed = false;
-    const mapped = (data as DbStarRow[]).map((row) => mapDbRow(row, whoMap, me));
+    const mapped = (data as DbStarRow[]).map((row) => {
+      noteSeenStarIso(row.created_at);
+      return mapDbRow(row, whoMap, me);
+    });
     store.set(`${STARS_CACHE_PREFIX}${me}`, mapped);
     return mapped;
   } catch {
@@ -414,8 +422,8 @@ export async function prepareEncryptedStar(params: {
     id,
     from: params.from,
     kind: params.kind,
-    x: +params.pos.x.toFixed(2),
-    y: +params.pos.y.toFixed(2),
+    x: +params.pos.x.toFixed(3),
+    y: +params.pos.y.toFixed(3),
     size,
     once: Boolean(params.once),
     hasMedia: Boolean(sealedMedia),
@@ -740,6 +748,8 @@ export function subscribeStarsRealtime(
     onUpdate: (star: StarRecord) => void;
   }
 ): () => void {
+  const partner: Who = me === 'hamham' ? 'beto' : 'hamham';
+
   if (!isSupabaseConfigured) {
     const onStorage = (e: StorageEvent) => {
       if (e.key !== STORAGE_KEYS.starsLocal || !e.newValue) return;
@@ -747,6 +757,7 @@ export function subscribeStarsRealtime(
         const next = JSON.parse(e.newValue) as StarRecord[];
         const latest = next[next.length - 1];
         if (latest && latest.from !== me) {
+          noteSeenStarIso(latest.createdAt);
           handlers.onInsert(latest);
         }
       } catch {
@@ -760,18 +771,67 @@ export function subscribeStarsRealtime(
   const sb = getSupabase()!;
   let channel: RealtimeChannel | null = null;
   let cancelled = false;
+  let reconnectTimer = 0;
+  let hasSubscribedOnce = false;
+  let whoMap = new Map<string, Who>();
+  let myUserId = '';
 
-  void getUserWhoMap().then((whoMap) => {
-    if (cancelled) return;
-    channel = sb
+  void sb.auth.getSession().then(({ data }) => {
+    if (data.session?.user?.id) myUserId = data.session.user.id;
+  });
+  void getUserWhoMap().then((m) => {
+    whoMap = m;
+  });
+
+  const resolveRow = (row: DbStarRow): StarRecord => {
+    noteSeenStarIso(row.created_at);
+    if (whoMap.has(row.from_user)) return mapDbRow(row, whoMap, me);
+    const inferred: Who = myUserId ? (row.from_user === myUserId ? me : partner) : me;
+    return {
+      ...mapDbRow(row, whoMap, inferred),
+      from: inferred,
+    };
+  };
+
+  const catchUpMissed = async () => {
+    if (cancelled || document.hidden || !lastSeenStarIso) return;
+    try {
+      const { data, error } = await sb
+        .from('stars')
+        .select('id, from_user, kind, x, y, size, once, spent, has_media, created_at, opened_at, unlock_at, unlock_notified, unlock_push_sent')
+        .gt('created_at', lastSeenStarIso)
+        .order('created_at', { ascending: true });
+      if (!error && data) {
+        for (const row of data as DbStarRow[]) {
+          handlers.onInsert(resolveRow(row));
+        }
+      }
+    } catch {
+      // Ağ kesintisinde sessizce geç
+    }
+  };
+
+  const cleanupChannel = () => {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = 0;
+    if (channel) {
+      const ch = channel;
+      channel = null;
+      void sb.removeChannel(ch);
+    }
+  };
+
+  const connect = () => {
+    if (cancelled || document.hidden) return;
+    cleanupChannel();
+    const ch = sb
       .channel('bizim-gokyuzumuz-stars')
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'stars' },
         (payload) => {
           const row = payload.new as DbStarRow;
-          const star = mapDbRow(row, whoMap, me);
-          handlers.onInsert(star);
+          handlers.onInsert(resolveRow(row));
         }
       )
       .on(
@@ -779,18 +839,40 @@ export function subscribeStarsRealtime(
         { event: 'UPDATE', schema: 'public', table: 'stars' },
         (payload) => {
           const row = payload.new as DbStarRow;
-          const star = mapDbRow(row, whoMap, me);
-          handlers.onUpdate(star);
+          handlers.onUpdate(resolveRow(row));
         }
       )
-      .subscribe();
-  });
+      .subscribe((status) => {
+        if (cancelled || ch !== channel) return;
+        if (status === 'SUBSCRIBED') {
+          if (hasSubscribedOnce) void catchUpMissed();
+          hasSubscribedOnce = true;
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          if (!document.hidden && !cancelled) {
+            clearTimeout(reconnectTimer);
+            reconnectTimer = window.setTimeout(() => connect(), 1500);
+          }
+        }
+      });
+    channel = ch;
+  };
+
+  const onVis = () => {
+    if (cancelled) return;
+    if (document.hidden) {
+      cleanupChannel();
+    } else {
+      connect();
+      void catchUpMissed();
+    }
+  };
+
+  document.addEventListener('visibilitychange', onVis);
+  if (!document.hidden) connect();
 
   return () => {
     cancelled = true;
-    if (channel) {
-      void sb.removeChannel(channel);
-      channel = null;
-    }
+    document.removeEventListener('visibilitychange', onVis);
+    cleanupChannel();
   };
 }

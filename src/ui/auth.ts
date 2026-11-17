@@ -323,4 +323,5 @@ export function applyPersona() {
     core.sky.moonTint = state.me === 'beto' ? [1.0, 0.94, 0.82] : null;
     if (core.engine) core.sky.refreshMoon(core.engine.sky.current);
   }
+  core.onPersona();
 }

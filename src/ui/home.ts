@@ -63,14 +63,38 @@ export function buildHome(): HTMLElement {
   return el;
 }
 
-/** Kumsal ön planı: palmiyeler + fenerler (gökyüzüyle birlikte kayar). main.ts her karede translateX verir. */
-export function buildForeground(skyW: number, H: number, shoreY: number): HTMLElement {
-  const mid = skyW / 2;
-  const fg = h(`<div class="scene-fg" style="width:${skyW}px"></div>`);
-  fg.insertAdjacentHTML('beforeend', `<div style="position:absolute;left:${mid - 215}px;top:${H - 470}px">${palmSVG({ seed: 3, base: { x: 18, y: 470 }, top: { x: 120, y: 92 }, bend: -46, trunkW: 15, fronds: 12, frondLen: 132, w: 300, h: 470 })}</div>`);
-  fg.insertAdjacentHTML('beforeend', `<div style="position:absolute;left:${mid + 100}px;top:${H - 360}px">${palmSVG({ seed: 9, base: { x: 160, y: 360 }, top: { x: 92, y: 120 }, bend: 34, trunkW: 11, fronds: 10, frondLen: 98, w: 220, h: 360 })}</div>`);
-  fg.insertAdjacentHTML('beforeend', `<div style="position:absolute;left:${mid - 420}px;top:${shoreY - 150}px;opacity:.85;transform:scale(.55);transform-origin:bottom left">${palmSVG({ seed: 21, base: { x: 60, y: 300 }, top: { x: 110, y: 70 }, bend: -20, trunkW: 12, fronds: 10, frondLen: 100, w: 240, h: 300 })}</div>`);
-  fg.insertAdjacentHTML('beforeend', `<div style="position:absolute;left:${mid + 290}px;top:${shoreY - 120}px;opacity:.85;transform:scale(.5);transform-origin:bottom left">${palmSVG({ seed: 33, base: { x: 120, y: 300 }, top: { x: 80, y: 60 }, bend: 24, trunkW: 12, fronds: 10, frondLen: 100, w: 240, h: 300 })}</div>`);
+/** Kumsal ön planı: palmiyeler + mumlar. 360° panoramada her öğe kendi dünya x'inde durur;
+ *  placeForeground her karede en yakın kopyaya yerleştirir (sonsuz kaydırma, palmiyeler tekrar tekrar karşına çıkar). */
+export type FgItem = { el: HTMLElement; wx: number; w: number; shown: boolean };
+export function buildForeground(P: number, H: number, shoreY: number, x0: number): HTMLElement {
+  const fg = h(`<div class="scene-fg" style="width:100%"></div>`);
+  const items: FgItem[] = [];
+  const add = (wx: number, top: number, w: number, inner: string, style = '', ox = 50) => {
+    const el = h(`<div class="fgi" style="position:absolute;left:0;top:${top}px;width:${w}px"><div style="${style || `transform-origin:${ox}% 100%`}">${inner}</div></div>`);
+    fg.appendChild(el);
+    items.push({ el, wx, w, shown: true });
+    return el;
+  };
+  const sc = (k: number) => `opacity:.85;transform:scale(${k});transform-origin:bottom left`;
+  const main = add(x0 - 215, H - 470, 300, palmSVG({ seed: 3, base: { x: 18, y: 470 }, top: { x: 120, y: 92 }, bend: -46, trunkW: 15, fronds: 12, frondLen: 132, w: 300, h: 470 }), '', 6);
+  add(x0 + 100, H - 360, 220, palmSVG({ seed: 9, base: { x: 160, y: 360 }, top: { x: 92, y: 120 }, bend: 34, trunkW: 11, fronds: 10, frondLen: 98, w: 220, h: 360 }), '', 73);
+  add(x0 - 420, shoreY - 150, 132, palmSVG({ seed: 21, base: { x: 60, y: 300 }, top: { x: 110, y: 70 }, bend: -20, trunkW: 12, fronds: 10, frondLen: 100, w: 240, h: 300 }), sc(0.55));
+  add(x0 + 290, shoreY - 120, 120, palmSVG({ seed: 33, base: { x: 120, y: 300 }, top: { x: 80, y: 60 }, bend: 24, trunkW: 12, fronds: 10, frondLen: 100, w: 240, h: 300 }), sc(0.5));
+  const extra: [number, number, number, number, number][] = [
+    [P / 3 - 60, 41, 28, 0.7, 0], [P / 3 + 190, 47, -22, 0.5, 1], [P / 2, 53, 30, 0.82, 0], [P / 2 + 260, 59, -26, 0.55, 1],
+    [-P / 3 + 40, 61, -30, 0.72, 0], [-P / 3 - 200, 67, 20, 0.5, 1],
+  ];
+  for (const [dx, seed, bend, k, kind] of extra) {
+    const hgt = kind ? 300 : 380, wd = kind ? 240 : 230;
+    add(
+      x0 + dx,
+      kind ? shoreY - 130 : H - 380 * k - 10,
+      wd * k,
+      palmSVG({ seed, base: { x: wd / 2, y: hgt }, top: { x: wd / 2 + bend * 1.4, y: 80 }, bend, trunkW: kind ? 12 : 11, fronds: 10, frondLen: kind ? 100 : 98, w: wd, h: hgt }),
+      sc(k)
+    );
+  }
+  (fg as HTMLElement & { _items: FgItem[] })._items = items;
   const me = state.me, pa = state.partner;
   const lantern = (who: typeof me, x: number, y: number, rope: number, cls: string) => {
     const l = h(`<div class="lantern ${cls}" style="left:${x}px;top:${y}px">
@@ -81,9 +105,10 @@ export function buildForeground(skyW: number, H: number, shoreY: number): HTMLEl
       </div></div>`);
     return l;
   };
-  const L1 = lantern(me, mid - 22, H - 357, 64, 'mine');
-  const L2 = lantern(pa, mid - 70, H - 342, 92, 'partner');
-  fg.append(L2, L1);
+  const L1 = lantern(me, 193, 113, 64, 'mine');
+  const L2 = lantern(pa, 145, 128, 92, 'partner');
+  (main.firstElementChild as HTMLElement).style.position = 'relative';
+  main.firstElementChild!.append(L2, L1);
   const mine = L1.querySelector('.jar') as HTMLElement, theirs = L2.querySelector('.jar') as HTMLElement;
   mine.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -95,6 +120,20 @@ export function buildForeground(skyW: number, H: number, shoreY: number): HTMLEl
     toast(`${PEOPLE[pa].of} mumu · ${pa === 'beto' ? 'ahududu kokulu' : 'vanilya kokulu'}`, I.heart(14));
   });
   return fg;
+}
+
+/** Her karede: her öğeyi ekrana en yakın kopyasına yerleştir. */
+export function placeForeground(fg: HTMLElement, g: { W: number; panoW: number }, scrollX: number) {
+  const P = g.panoW;
+  const items = (fg as HTMLElement & { _items?: FgItem[] })._items;
+  if (!items) return;
+  for (const it of items) {
+    const cx = it.wx + it.w / 2 - scrollX;
+    const x = cx - P * Math.round((cx - g.W / 2) / P) - it.w / 2;
+    const on = x > -it.w - 60 && x < g.W + 60;
+    if (on !== it.shown) { it.el.style.display = on ? '' : 'none'; it.shown = on; }
+    if (on) it.el.style.transform = `translate3d(${x.toFixed(1)}px,0,0)`;
+  }
 }
 
 export const partnerOnline = (on: boolean) => {

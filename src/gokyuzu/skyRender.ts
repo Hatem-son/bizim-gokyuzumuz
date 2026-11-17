@@ -24,13 +24,6 @@ export class SkyRenderer {
   /** açılış: yıldız grubu görünürlüğü çarpanı (0..1), sinematik pozlama */
   intro = { stars: [1, 1, 1] as number[] };
   moonTint: [number, number, number] | null = null; // Beto: ela ay ışığı (doğrusal çarpan)
-  onDrawUserStars?: (
-    c: CanvasRenderingContext2D,
-    now: number,
-    s: SkyState,
-    scrollX: number,
-    moonPos: { x: number; y: number } | null,
-  ) => void;
 
   constructor(private ctx: CanvasRenderingContext2D, public g: SkyGeom, private worker: SkyWorker) {
     this.buildStars();
@@ -219,9 +212,6 @@ export class SkyRenderer {
     c.globalAlpha = 1;
 
     const moonPos = this.moonTex && s.moonAlpha > 0.01 ? skyToScreen(g, s.moonDisp, s.moonVaz, scrollX) : null;
-    this.onDrawUserStars?.(c, now, s, scrollX, moonPos);
-    c.globalCompositeOperation = 'source-over';
-    c.globalAlpha = 1;
 
     // 4) ay: gerçekçi katı küre (karanlık yüzü dahil arkasındaki yıldızları geçirmez)
     if (this.moonTex && moonPos && s.moonAlpha > 0.01) {

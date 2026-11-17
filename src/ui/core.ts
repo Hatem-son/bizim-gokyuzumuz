@@ -43,4 +43,7 @@ export const core = {
   onSendHeart: () => {},
   onOutboxChange: () => {},
   setMyLiveActivity: (_act: 'writing' | 'sending' | 'drawing' | 'photo' | 'voice' | 'idle') => {},
+  onPersona: () => {},
+  triggerOcean: () => {},
+  lastInsertLatencyMs: null as number | null,
 };

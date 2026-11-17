@@ -5,7 +5,7 @@ import { raspberry } from './art';
 import { I, SIGN } from './icons';
 import { state, PEOPLE, Star, Kind, fmtDate, toDbWho } from './state';
 import { core } from './core';
-import { CELESTIAL_PARALLAX, skyToScreen } from '../gokyuzu/skyGeom';
+import { mod, skyToScreen } from '../gokyuzu/skyGeom';
 import { compressImage, CompressedPhoto, VoiceRecorder, RecordedVoice } from '../lib/media';
 import {
   prepareEncryptedStar,
@@ -256,10 +256,10 @@ async function flyAway(sheet: Sheet, draft: ComposeDraft, onClearDraft: () => vo
   const a = app.getBoundingClientRect();
   const r = sheet.el.getBoundingClientRect();
   const target = freeSpot();
-  const starX = target.x + core.scrollX * CELESTIAL_PARALLAX;
+  const P = Math.max(1, core.geom.panoW);
+  const starX = mod(target.x + core.scrollX, P);
   const starY = target.y;
-  const panoSpan = Math.max(1, core.geom.panoW - 56);
-  const xPct = Math.max(1, Math.min(99, ((starX - 28) / panoSpan) * 100));
+  const xPct = Math.max(0.05, Math.min(99.95, (starX / P) * 100));
   const yPct = Math.max(2, Math.min(96, ((starY - 70) / Math.max(1, core.horizonY - 130)) * 100));
 
   core.setMyLiveActivity('sending');

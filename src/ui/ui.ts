@@ -217,7 +217,7 @@ export function island(o: IslandOpts) {
   inner.innerHTML = content;
   inner.animate(
     [{ opacity: 0, transform: 'scale(.94)' }, { opacity: 1, transform: 'none' }],
-    { duration: 320, delay: islandEl.dataset.open ? 0 : 200, easing: 'ease-out', fill: 'backwards' }
+    { duration: 320, delay: islandEl.dataset.open ? 0 : 120, easing: 'ease-out', fill: 'backwards' }
   );
   islandEl.dataset.open = '1';
   const btn = inner.querySelector('.is-act');
