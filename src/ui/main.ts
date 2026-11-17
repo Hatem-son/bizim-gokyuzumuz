@@ -10,13 +10,19 @@ import { SkyRenderer } from '../gokyuzu/skyRender';
 import { WeatherRenderer } from '../gokyuzu/weatherRender';
 import { Effects } from '../gokyuzu/effects';
 import { Plane, schedulePlane } from '../gokyuzu/plane';
+import { prepare, playIntro, introMode } from '../gokyuzu/intro';
 import { initKeyboard } from '../gokyuzu/keyboard';
 import { startWeather } from '../gokyuzu/weather';
 import { core } from './core';
-import { initUI, $, toast } from './ui';
-import { state, PEOPLE } from './state';
+import { initUI, $, $$, h, toast, sleep } from './ui';
+import { state, setMe, toUiWho } from './state';
+import { runAuth, runLock, applyPersona } from './auth';
 import { I } from './icons';
 import { registerServiceWorker } from '../lib/pwa';
+import { isSupabaseConfigured, getSessionFast, inferWhoFromEmail } from '../lib/supabase';
+import { loadSavedKey } from '../lib/crypto';
+import { hasBiometric, BACKGROUND_LOCK_MS } from '../lib/lock';
+import { STORAGE_KEYS, store } from '../lib/storage';
 
 void registerServiceWorker();
 
@@ -56,7 +62,6 @@ const geom = makeGeom(W, HORIZON, SKY_W);
 const worker = new SkyWorker();
 const engine = new Engine(defaultLocation, geom);
 const sky = new SkyRenderer(cv('cSky', 1.5), geom, worker);
-sky.moonTint = state.me === 'beto' ? [1.0, 0.94, 0.82] : null;
 const weatherRenderer = new WeatherRenderer(worker, cv('cWBack', 1.5), cv('cWFront', 1.5), $('#flash'), geom, engine.weather);
 weatherRenderer.lightningEnabled = state.settings.lightning;
 const fx = new Effects(cv('cFx'), { w: W, h: H });
@@ -98,9 +103,7 @@ const tickPlane = schedulePlane(plane, () => engine.weather.kind !== 'thunder' &
 
 Object.assign(core, { engine, fx, sky, weatherRenderer, worker, plane, geom });
 core.scrollX = (SKY_W - W) / 2;
-app.dataset.me = state.me;
-document.documentElement.style.setProperty('--me', PEOPLE[state.me].color);
-document.documentElement.style.setProperty('--partner', PEOPLE[state.partner].color);
+applyPersona();
 
 initKeyboard({
   hideWhenOpen: () => [...app.querySelectorAll<HTMLElement>('.dock, .gk-cons, .gk-edge, .gk-hint-txt')],
@@ -114,4 +117,66 @@ engine.add((now, dt, s) => {
   if (fx.frame(now, dt)) engine.busy(200);
 });
 
+async function resolveBootMode(): Promise<'auth' | 'lock' | 'home'> {
+  const hasKey = await loadSavedKey();
+  if (!isSupabaseConfigured) {
+    const savedMe = store.get<string | null>(STORAGE_KEYS.me, null);
+    if (!savedMe || !hasKey) return 'auth';
+    return state.settings.faceId && hasBiometric() ? 'lock' : 'home';
+  }
+  const { session, networkFailed } = await getSessionFast();
+  if (session?.user?.email) {
+    const inferred = inferWhoFromEmail(session.user.email);
+    if (inferred) setMe(toUiWho(inferred));
+  }
+  if (!session && !networkFailed) return 'auth';
+  if (!hasKey) return 'auth';
+  return state.settings.faceId && hasBiometric() ? 'lock' : 'home';
+}
+
+let inHome = false;
+async function boot(mode?: 'auth' | 'lock' | 'home') {
+  const resolved = mode ?? (await resolveBootMode());
+  applyPersona();
+  $$('.screen.home,.auth,.page,.sheet,.backdrop,.board,.watch,.cdpage,.scene-fg,.island-pop').forEach((x) => x.remove());
+  inHome = false;
+  const overlay = h(`<div class="layer" style="background:#05070d;z-index:90"></div>`);
+  app.appendChild(overlay);
+  sky.intro.stars = [0, 0, 0];
+  const ready = new Promise<void>((r) => {
+    const c = () => (sky.ready ? r() : setTimeout(c, 30));
+    c();
+  });
+  await prepare([ready], ['italic 600 40px "Cormorant Garamond"', '500 15px "Inter"']);
+  const reveal = playIntro(
+    { overlay, sky: $('#skyWrap'), ground: $('#groundWrap'), setStars: (a, b, c) => (sky.intro.stars = [a, b, c]) },
+    introMode()
+  );
+  if (resolved === 'home') {
+    await reveal;
+    inHome = true;
+    return;
+  }
+  await sleep(900);
+  const after = () => {
+    inHome = true;
+  };
+  if (resolved === 'lock') runLock(app, after);
+  else runAuth(app, after);
+}
+
+let hiddenAt = 0;
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    hiddenAt = Date.now();
+  } else if (inHome && hiddenAt && Date.now() - hiddenAt >= BACKGROUND_LOCK_MS && state.settings.faceId && hasBiometric()) {
+    hiddenAt = 0;
+    inHome = false;
+    runLock(app, () => {
+      inHome = true;
+    });
+  }
+});
+
 engine.start();
+void boot();
