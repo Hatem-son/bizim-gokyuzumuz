@@ -24,6 +24,7 @@ import { initUI, $, $$, h, toast, stagger, sleep, clearPageStack } from './ui';
 import { state, PEOPLE, Star, Kind, setMe, toUiWho, toDbWho } from './state';
 import { buildHome, buildForeground } from './home';
 import { openCompose } from './compose';
+import { openStar } from './pages';
 import { runAuth, runLock, applyPersona } from './auth';
 import { I } from './icons';
 import { registerServiceWorker } from '../lib/pwa';
@@ -117,7 +118,17 @@ const plane = new Plane({
 });
 const tickPlane = schedulePlane(plane, () => engine.weather.kind !== 'thunder' && engine.weather.fog < 0.65);
 
-Object.assign(core, { engine, fx, sky, weatherRenderer, worker, plane, geom, openCompose });
+Object.assign(core, {
+  engine,
+  fx,
+  sky,
+  weatherRenderer,
+  worker,
+  plane,
+  geom,
+  openCompose,
+  openStar: (st: Star) => void openStar(st),
+});
 core.scrollX = (SKY_W - W) / 2;
 applyPersona();
 
