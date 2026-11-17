@@ -500,7 +500,7 @@ textarea:focus-visible {
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: calc(env(safe-area-inset-top) + 14px) 16px 0;
+  padding: calc(env(safe-area-inset-top) + 22px) 32px 0 16px;
   pointer-events: none;
   transition: opacity .45s var(--ease) .25s, transform .55s var(--ease) .35s;
 }
@@ -546,7 +546,7 @@ body.sheet-open .top {
 
 .icon-btn {
   position: fixed;
-  top: calc(env(safe-area-inset-top) + 18px);
+  top: calc(env(safe-area-inset-top) + 34px);
   right: 16px;
   width: 44px;
   height: 44px;
@@ -576,7 +576,7 @@ body.sheet-open .top {
   z-index: 2;
   touch-action: none;
   -webkit-touch-callout: none;
-  top: calc(env(safe-area-inset-top) + 84px);
+  top: calc(env(safe-area-inset-top) + 92px);
   bottom: 36%;
 }
 
@@ -704,7 +704,7 @@ body:not(.awake) .compass {
   justify-content: center;
   gap: 12px;
   margin: 0 auto;
-  padding: 6px 20px 6px 8px;
+  padding: 6px 16px 6px 8px;
   border-radius: 999px;
   cursor: pointer;
   text-align: center;
