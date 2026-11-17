@@ -270,7 +270,8 @@ export class BoatController {
     this.reducedFade = reducedMotion;
     this.fadingOut = false;
     this.fadeStartT = 0;
-    this.rev = Math.random() < 0.5;
+    // Tekne her zaman soldan sağa ileri yönde süzülür; pankart arkasından gelir
+    this.rev = false;
     this.startT = performance.now();
     this.dur = reducedMotion ? 3200 : 28_000 + Math.random() * 6000;
     // Gökyüzünün orta kuşağı (sayaç ve ayın altı, ufuğun üstü)
@@ -318,13 +319,13 @@ export class BoatController {
     let pitch: number;
 
     if (this.reducedFade) {
-      const p = elapsed / this.dur;
+      const p = Math.max(0, Math.min(1, elapsed / this.dur));
       alpha = (p < 0.2 ? p / 0.2 : p > 0.8 ? (1 - p) / 0.2 : 1) * fadeAlpha;
       boatX = skyW * 0.5 - this.boatW * 0.5;
       y = this.baseY;
       pitch = 0;
     } else {
-      const p = elapsed / this.dur;
+      const p = Math.max(0, Math.min(1, elapsed / this.dur));
       const totalW = this.bannerW + this.ropeW + this.boatW + 32;
       const fromX = this.rev ? skyW + 24 : -totalW;
       const toX = this.rev ? -totalW : skyW + 24;

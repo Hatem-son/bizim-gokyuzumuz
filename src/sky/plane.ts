@@ -256,7 +256,8 @@ export class PlaneController {
       void this.ensureFontsLoaded();
       return false;
     }
-    this.rev = Math.random() < 0.5;
+    // Uçak her zaman soldan sağa doğru burnu önde uçar; ters/geri gelişe izin verilmez
+    this.rev = false;
     this.startT = performance.now();
     this.dur = 27_000 + Math.random() * 5000;
     this.baseY = skyTop + skyHeight * (0.14 + Math.random() * 0.18);
@@ -282,7 +283,7 @@ export class PlaneController {
       return;
     }
 
-    const p = elapsed / this.dur;
+    const p = Math.max(0, Math.min(1, elapsed / this.dur));
     const totalW = this.bannerW + this.ropeW + this.planeW + 30;
     const fromX = this.rev ? skyW + 30 : -totalW;
     const toX = this.rev ? -totalW : skyW + 30;
