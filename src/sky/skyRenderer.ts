@@ -1,6 +1,7 @@
 import { MOON_TINT } from '../config';
 import { isStarHazel } from '../lib/hazel';
 import type { StarRecord, Who } from '../types';
+import { BoatController } from './boat';
 import { PlaneController } from './plane';
 import {
   currentDecimalHour,
@@ -132,6 +133,7 @@ export interface SkyEngineOptions {
   onWithoutChange?: (active: boolean) => void;
   onHeartStart?: () => void;
   onStarTap?: (star: StarRecord, center: { x: number; y: number }) => void;
+  onGuideStarTap?: (pt: { x: number; y: number }) => void;
   onSkyEmptyTap?: (pt: { x: number; y: number }) => void;
   onCaption?: (title: string, sub: string, ms: number) => void;
   onTimelapseEnd?: () => void;
@@ -155,6 +157,7 @@ export class SkyEngine {
   private readonly dustSprite = document.createElement('canvas');
   private readonly glintSprite = document.createElement('canvas');
   private readonly hazelRaySprite = document.createElement('canvas');
+  private readonly guideStarSprite = document.createElement('canvas');
   private readonly starHalos: Record<SkyColorKey, HTMLCanvasElement> = {
     blue: document.createElement('canvas'),
     pink: document.createElement('canvas'),
@@ -175,6 +178,10 @@ export class SkyEngine {
   private resizeRafs: number[] = [];
 
   private readonly planeCtrl = new PlaneController();
+  private readonly boatCtrl = new BoatController();
+  private reducedVehicleRaf = 0;
+  private readonly guideX = 41.5;
+  private readonly guideY = 8.5;
 
   private W = 0;
   private H = 0;
@@ -242,8 +249,14 @@ export class SkyEngine {
   private readonly onVisibility = () => {
     if (document.hidden) {
       this.stopPan();
+      if (this.reducedVehicleRaf) {
+        cancelAnimationFrame(this.reducedVehicleRaf);
+        this.reducedVehicleRaf = 0;
+      }
       if (this.timelapseRaf) {
         cancelAnimationFrame(this.timelapseRaf);
+    cancelAnimationFrame(this.reducedVehicleRaf);
+    this.reducedVehicleRaf = 0;
         this.timelapseRaf = 0;
         this.timelapseActive = false;
       }
@@ -383,8 +396,19 @@ export class SkyEngine {
     this.boostMotion(1600);
   }
 
+  public isVehicleActive(): boolean {
+    return this.planeCtrl.isActive() || this.boatCtrl.isActive();
+  }
+
   public launchPlane(): boolean {
-    if (this.reducedMotion || document.hidden || this.timelapseActive || this.trav.on || this.withoutMode) {
+    if (
+      this.reducedMotion ||
+      document.hidden ||
+      this.timelapseActive ||
+      this.trav.on ||
+      this.withoutMode ||
+      this.isVehicleActive()
+    ) {
       return false;
     }
     const ok = this.planeCtrl.launch(this.me, this.skyTop, this.skyHeight);
@@ -392,8 +416,63 @@ export class SkyEngine {
     return ok;
   }
 
+  public launchBoat(): boolean {
+    if (
+      document.hidden ||
+      this.timelapseActive ||
+      this.trav.on ||
+      this.withoutMode ||
+      this.isVehicleActive()
+    ) {
+      return false;
+    }
+    const ok = this.boatCtrl.launch(this.me, this.skyTop, this.skyHeight, this.getSkyW(), this.reducedMotion);
+    if (!ok) return false;
+    if (this.reducedMotion) {
+      cancelAnimationFrame(this.reducedVehicleRaf);
+      const stepReduced = () => {
+        if (document.hidden || !this.boatCtrl.isActive()) {
+          this.reducedVehicleRaf = 0;
+          this.drawFrame(performance.now());
+          return;
+        }
+        this.drawFrame(performance.now());
+        this.reducedVehicleRaf = requestAnimationFrame(stepReduced);
+      };
+      this.reducedVehicleRaf = requestAnimationFrame(stepReduced);
+    } else {
+      this.boostMotion(600);
+    }
+    return ok;
+  }
+
   public stopPlane(): void {
     this.planeCtrl.stop();
+    this.boatCtrl.stop();
+    cancelAnimationFrame(this.reducedVehicleRaf);
+    this.reducedVehicleRaf = 0;
+  }
+
+  public getGuideStarScreenPos(): { x: number; y: number } {
+    const sw = this.getSkyW();
+    return {
+      x: (this.guideX / 100) * sw * PANO - this.ox,
+      y: this.skyTop + (this.guideY / 100) * this.skyHeight,
+    };
+  }
+
+  public hitTestGuideStar(clientX: number, clientY: number): { x: number; y: number } | null {
+    if (
+      this.trav.on ||
+      this.withoutMode ||
+      !this.isMoonOverlayClosed() ||
+      document.querySelector('.sheet.open, .modal.open, #lock:not(.gone)')
+    ) {
+      return null;
+    }
+    const pos = this.getGuideStarScreenPos();
+    if (pos.x < -28 || pos.x > this.W + 28) return null;
+    return Math.hypot(clientX - pos.x, clientY - pos.y) <= 26 ? pos : null;
   }
 
   public isTraveling(): boolean {
@@ -696,6 +775,8 @@ export class SkyEngine {
     if (!this.timelapseActive) return;
     this.timelapseActive = false;
     cancelAnimationFrame(this.timelapseRaf);
+    cancelAnimationFrame(this.reducedVehicleRaf);
+    this.reducedVehicleRaf = 0;
     document.body.classList.remove('timelapse');
     this.skyHourOverride = null;
     this.syncSkyState(true);
@@ -1028,6 +1109,17 @@ export class SkyEngine {
         return;
       }
 
+      const guideHit = this.hitTestGuideStar(clientX, clientY);
+      if (guideHit) {
+        this.opts.onGuideStarTap?.(guideHit);
+        return;
+      }
+
+      if (this.boatCtrl.hitTest(clientX, clientY) && this.boatCtrl.dismissWithFade()) {
+        this.boostMotion(500);
+        return;
+      }
+
       const orbHit = this.hitTestOrb(clientX, clientY);
       if (orbHit) {
         const now = Date.now();
@@ -1065,6 +1157,7 @@ export class SkyEngine {
 
       const orbHit = this.hitTestOrb(e.clientX, e.clientY);
       const starHit = this.hitTestStar(e.clientX, e.clientY);
+      const guideHit = this.hitTestGuideStar(e.clientX, e.clientY);
 
       if (orbHit) {
         this.orbPressTimer = window.setTimeout(() => {
@@ -1073,7 +1166,7 @@ export class SkyEngine {
           this.suppressNextClick = true;
           this.opts.onWithoutChange?.(true);
         }, 500);
-      } else if (!starHit) {
+      } else if (!starHit && !guideHit) {
         this.pressTimer = window.setTimeout(() => {
           this.suppressNextClick = true;
           void this.startTravel();
@@ -1306,6 +1399,48 @@ export class SkyEngine {
           hrg.rotate(Math.PI / 2);
         }
         hrg.restore();
+      }
+    }
+
+    // 2c. "Bizim Kuzey Yıldızımız" (#dbe6ff ince 4 kollu sabit yön yıldızı)
+    {
+      const gss = 96;
+      this.guideStarSprite.width = gss;
+      this.guideStarSprite.height = gss;
+      const gg = this.guideStarSprite.getContext('2d');
+      if (gg) {
+        const m = gss / 2;
+        const glow = gg.createRadialGradient(m, m, 0, m, m, 36);
+        glow.addColorStop(0, 'rgba(255,255,255,0.95)');
+        glow.addColorStop(0.16, 'rgba(219,230,255,0.72)');
+        glow.addColorStop(0.45, 'rgba(182,208,255,0.22)');
+        glow.addColorStop(1, 'rgba(182,208,255,0)');
+        gg.fillStyle = glow;
+        gg.beginPath();
+        gg.arc(m, m, 36, 0, Math.PI * 2);
+        gg.fill();
+
+        gg.save();
+        gg.translate(m, m);
+        for (let r = 0; r < 2; r++) {
+          const len = r === 0 ? 28 : 22;
+          const sg = gg.createLinearGradient(-len, 0, len, 0);
+          sg.addColorStop(0, 'rgba(219,230,255,0)');
+          sg.addColorStop(0.32, 'rgba(219,230,255,0.7)');
+          sg.addColorStop(0.5, '#ffffff');
+          sg.addColorStop(0.68, 'rgba(219,230,255,0.7)');
+          sg.addColorStop(1, 'rgba(219,230,255,0)');
+          gg.fillStyle = sg;
+          gg.beginPath();
+          gg.moveTo(-len, 0);
+          gg.lineTo(0, -1.15);
+          gg.lineTo(len, 0);
+          gg.lineTo(0, 1.15);
+          gg.closePath();
+          gg.fill();
+          gg.rotate(Math.PI / 2);
+        }
+        gg.restore();
       }
     }
 
@@ -2402,18 +2537,38 @@ export class SkyEngine {
       ctx.globalAlpha = this.moonUiAlpha * this.moonScreen.opacity;
       ctx.drawImage(this.moonCanvas, this.moonScreen.x - half, this.moonScreen.y - half, box, box);
       ctx.restore();
+
+      if (!this.withoutMode) {
+        const gsPos = this.getGuideStarScreenPos();
+        if (gsPos.x >= -36 && gsPos.x <= this.W + 36) {
+          const pulse =
+            this.reducedMotion || this.deepIdle
+              ? 0.92
+              : 0.75 + 0.25 * (0.5 + 0.5 * Math.sin(ts * ((Math.PI * 2) / 3.5)));
+          const dayAtten = Math.max(0.48, 1 - 0.35 * this.currentDaylight);
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = pulse * this.moonUiAlpha * dayAtten;
+          ctx.drawImage(this.guideStarSprite, gsPos.x - 24, gsPos.y - 24, 48, 48);
+          ctx.restore();
+        }
+      }
     }
 
-    // 6. Airplane + banner (stopped after 20s deep idle)
-    if (
-      !this.reducedMotion &&
+    // 6. Airplane / Boat + banner (stopped on hidden tab / 20s deep idle; boat supports reduced-motion stationary fade)
+    const canDrawOverlayVehicle =
       !this.deepIdle &&
       document.body.classList.contains('awake') &&
       !this.timelapseActive &&
       !this.trav.on &&
-      !this.withoutMode
-    ) {
-      this.planeCtrl.draw(ctx, t, this.W);
+      !this.withoutMode;
+    if (canDrawOverlayVehicle) {
+      if (!this.reducedMotion) {
+        this.planeCtrl.draw(ctx, t, this.W);
+      }
+      if (!this.reducedMotion || this.boatCtrl.isActive()) {
+        this.boatCtrl.draw(ctx, t, this.W);
+      }
     }
 
     // 7. Sent stars, gold links, comets & sparks (plus travel card zoom / 3D month carousel)
@@ -2535,7 +2690,7 @@ export class SkyEngine {
     const moonTarget = this.isMoonOverlayClosed() ? 1 : 0;
     if (Math.abs(moonTarget - this.moonUiAlpha) > 0.02) return true;
     if (this.drag !== null || this.panJob !== null || this.timelapseActive || this.trav.on) return true;
-    if (this.planeCtrl.isActive()) return true;
+    if (this.planeCtrl.isActive() || this.boatCtrl.isActive()) return true;
     if (
       this.comets.length > 0 ||
       this.sparks.length > 0 ||
@@ -2705,6 +2860,8 @@ export class SkyEngine {
     this.pauseLoop();
     this.panJob = null;
     cancelAnimationFrame(this.timelapseRaf);
+    cancelAnimationFrame(this.reducedVehicleRaf);
+    this.reducedVehicleRaf = 0;
     for (const id of this.resizeRafs) cancelAnimationFrame(id);
     this.resizeRafs = [];
     this.resizeObserver?.disconnect();

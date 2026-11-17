@@ -1,5 +1,24 @@
+import { PEOPLE } from '../lib/people';
 import { STORAGE_KEYS, store } from '../lib/storage';
 import type { Who } from '../types';
+
+/** Her zaman diliminde gösterilebilecek okyanus ve yön bulma karşılamaları */
+const OCEAN_GREETINGS: Record<Who, string[]> = {
+  hamham: [
+    `${PEOPLE.beto.name}, yıldızlardan yön buluyor, yolu sana çıkıyor`,
+    `Okyanus uzak olsa da ${PEOPLE.beto.name} yakın`,
+    `Pusulan ${PEOPLE.beto.name}, kaybolmazsın`,
+    `Bu gece rüzgar ${PEOPLE.beto.abl} sana selam getirdi`,
+    'Aranızdaki yol, yıldızlarla işaretli',
+  ],
+  beto: [
+    `${PEOPLE.hamham.name} yıldızlara bakıp yolunu sana çeviriyor`,
+    `Okyanus uzak olsa da ${PEOPLE.hamham.name} yakın`,
+    `Pusulan ${PEOPLE.hamham.name}, kaybolmazsın`,
+    `Bu gece rüzgar ${PEOPLE.hamham.abl} sana selam getirdi`,
+    'Aranızdaki yol, yıldızlarla işaretli',
+  ],
+};
 
 const GREETINGS: Record<Who, [number, string[]][]> = {
   beto: [
@@ -22,8 +41,9 @@ export function pickGreeting(who: Who, hour: number): string {
   const h = ((hour % 24) + 24) % 24;
   const last = store.get<string>(STORAGE_KEYS.greet, '');
   const bucket = GREETINGS[who].find(([limit]) => h < limit) ?? GREETINGS[who][0];
-  const candidates = bucket[1].filter((item) => item !== last);
-  const pool = candidates.length > 0 ? candidates : bucket[1];
+  const combined = [...bucket[1], ...OCEAN_GREETINGS[who]];
+  const candidates = combined.filter((item) => item !== last);
+  const pool = candidates.length > 0 ? candidates : combined;
   const picked = pool[Math.floor(Math.random() * pool.length)];
   store.set(STORAGE_KEYS.greet, picked);
   return picked;

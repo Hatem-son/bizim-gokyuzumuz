@@ -65,6 +65,7 @@ let letterCtrl: LetterController | null = null;
 let gardenCtrl: GardenController | null = null;
 let candleHeartCtrl: CandleWhiteHeartController | null = null;
 let captionTimer = 0;
+let compassHideTimer = 0;
 let greetPending = false;
 let planeInterval = 0;
 let perfTimer = 0;
@@ -346,17 +347,122 @@ function maybeTimelapse(delayMs: number): boolean {
   return true;
 }
 
-function canLaunchPlane(): boolean {
-  if (!currentMe || !document.body.classList.contains('awake') || document.hidden) return false;
-  if (skyEngine?.isTimelapseActive()) return false;
+type VehicleKind = 'plane' | 'boat';
+
+const COMPASS_QUOTES: readonly string[] = [
+  'Kaybolursan bu yıldıza bak, ben oradayım',
+  'Yönümü hep sana bulurum',
+  'Pusulam sensin',
+  'Ne kadar uzak olsak da aynı yıldıza bakıyoruz',
+  'Dönüş yolum sende',
+  'Her gece bu yıldızdan yön bulurum',
+  'Rüzgar nereye eserse essin, sana varırım',
+  "9 Ocak'a kadar bu yıldız yolumu gösteriyor",
+  'Yıldızlar yolumu gösterir, kalbim seni',
+  'Sana giden her rota bu yıldızdan geçer',
+];
+
+function pickCompassQuote(): string {
+  const last = store.get<string>(STORAGE_KEYS.compass, '');
+  const pool = COMPASS_QUOTES.filter((q) => q !== last);
+  const list = pool.length > 0 ? pool : COMPASS_QUOTES;
+  const picked = list[Math.floor(Math.random() * list.length)];
+  store.set(STORAGE_KEYS.compass, picked);
+  return picked;
+}
+
+function hideCompassPopup(): void {
+  window.clearTimeout(compassHideTimer);
+  compassHideTimer = 0;
+  const pop = document.getElementById('compass-pop');
+  if (!pop) return;
+  pop.classList.remove('show');
+  pop.setAttribute('aria-hidden', 'true');
+  pop.hidden = true;
+}
+
+function showCompassPopup(starPos?: { x: number; y: number }): void {
+  if (!appMounted || !currentMe || !skyEngine) return;
+  if (!document.body.classList.contains('awake') || document.hidden) return;
+  if (skyEngine.isTraveling() || skyEngine.isWithoutMode()) return;
+  if (document.querySelector('.sheet.open, .modal.open, #lock:not(.gone)')) return;
+
+  const pop = document.getElementById('compass-pop');
+  const needle = document.getElementById('compass-needle') as SVGSVGElement | null;
+  const quoteEl = document.getElementById('compass-quote');
+  const dialEl = pop?.querySelector('.compass-dial');
+  if (!pop || !needle || !quoteEl || !dialEl) return;
+
+  // Karşılama başlığı açıksa pusula ile çakışmasın
+  window.clearTimeout(captionTimer);
+  document.getElementById('sky-cap')?.classList.remove('on');
+
+  const target = starPos ?? skyEngine.getGuideStarScreenPos();
+  const wasHidden = pop.hidden || !pop.classList.contains('show');
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  quoteEl.textContent = pickCompassQuote();
+  pop.hidden = false;
+  pop.setAttribute('aria-hidden', 'false');
+
+  const r = dialEl.getBoundingClientRect();
+  const cx = r.left + r.width * 0.5 || window.innerWidth * 0.5;
+  const cy = r.top + r.height * 0.5 || window.innerHeight * 0.44;
+  const targetDeg = Math.atan2(target.y - cy, target.x - cx) * (180 / Math.PI) + 90;
+
+  if (wasHidden && !reduced) {
+    const initialDeg = Math.abs(targetDeg) < 16 ? (targetDeg >= 0 ? -24 : 24) : 0;
+    needle.style.transitionDuration = '0s';
+    needle.style.transform = `rotate(${initialDeg.toFixed(1)}deg)`;
+    void pop.offsetWidth;
+    needle.style.transitionDuration = '';
+  }
+
+  requestAnimationFrame(() => {
+    pop.classList.add('show');
+    needle.style.transform = `rotate(${targetDeg.toFixed(1)}deg)`;
+  });
+
+  window.clearTimeout(compassHideTimer);
+  compassHideTimer = window.setTimeout(() => {
+    pop.classList.remove('show');
+    pop.setAttribute('aria-hidden', 'true');
+    compassHideTimer = window.setTimeout(() => {
+      if (!pop.classList.contains('show')) pop.hidden = true;
+    }, 280);
+  }, 3000);
+}
+
+function canLaunchVehicle(): boolean {
+  if (!appMounted || !currentMe || !document.body.classList.contains('awake') || document.hidden) return false;
+  if (skyEngine?.isTimelapseActive() || skyEngine?.isVehicleActive()) return false;
   if (document.querySelector('.sheet.open, .modal.open, #lock:not(.gone)')) return false;
   return true;
 }
 
-function tryPlane(attempt = 0): void {
-  if (canLaunchPlane() && skyEngine?.launchPlane()) return;
-  if (attempt < 8) {
-    window.setTimeout(() => tryPlane(attempt + 1), 3000);
+function pickNextVehicleKind(): VehicleKind {
+  const history = store.get<VehicleKind[]>(STORAGE_KEYS.vehicle, []);
+  if (history.length >= 2 && history[history.length - 1] === history[history.length - 2]) {
+    return history[history.length - 1] === 'plane' ? 'boat' : 'plane';
+  }
+  return Math.random() < 0.5 ? 'plane' : 'boat';
+}
+
+function launchRandomVehicle(): boolean {
+  if (!canLaunchVehicle() || !skyEngine) return false;
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const kind: VehicleKind = reduced ? 'boat' : pickNextVehicleKind();
+  const ok = kind === 'boat' ? skyEngine.launchBoat() : skyEngine.launchPlane();
+  if (!ok) return false;
+  const history = store.get<VehicleKind[]>(STORAGE_KEYS.vehicle, []);
+  store.set(STORAGE_KEYS.vehicle, [...history.slice(-1), kind]);
+  return true;
+}
+
+function tryVehicle(attempt = 0): void {
+  if (launchRandomVehicle()) return;
+  if (attempt < 8 && appMounted && !document.hidden) {
+    window.setTimeout(() => tryVehicle(attempt + 1), 3000);
   }
 }
 
@@ -761,6 +867,7 @@ async function handleStarTap(star: StarRecord, pt: { x: number; y: number }): Pr
     return;
   }
 
+  hideCompassPopup();
   await letterCtrl?.open({
     star,
     starPos: pt,
@@ -785,6 +892,7 @@ async function bootstrap(): Promise<void> {
   let schedulePushNudgeFn: (() => void) | null = null;
 
   const unmountAppShell = () => {
+    hideCompassPopup();
     clearEnterTimers();
     window.clearTimeout(pushNudgeTimer);
     window.clearTimeout(unlockCheckTimer);
@@ -914,6 +1022,7 @@ async function bootstrap(): Promise<void> {
       },
       onWithoutChange: (active) => {
         if (active) {
+          hideCompassPopup();
           showSkyCaption('Sensiz gökyüzü', 'BIRAKINCA DÖNERİZ', 0);
         } else {
           showSkyCaption('Seninle gökyüzü', `${stars.length} YILDIZ`, 2600);
@@ -935,6 +1044,9 @@ async function bootstrap(): Promise<void> {
       },
       onStarTap: (star, pt) => {
         void handleStarTap(star, pt);
+      },
+      onGuideStarTap: (pt) => {
+        showCompassPopup(pt);
       },
       onOrbTap: (orb, pt) => {
         if (orb === 'moon') {
@@ -1047,11 +1159,13 @@ async function bootstrap(): Promise<void> {
 
     $('#btn-write').addEventListener('click', () => {
       if (!currentMe) return;
+      hideCompassPopup();
       composeCtrl?.open(currentMe);
     });
 
     const settingsSheet = $('#settings');
     openSettingsFn = () => {
+      hideCompassPopup();
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
       resetKeyboardRef?.();
       refreshUiStatus();
@@ -1214,8 +1328,8 @@ async function bootstrap(): Promise<void> {
 
     if (!document.hidden) {
       planeInterval = window.setInterval(() => {
-        if (!document.hidden && canLaunchPlane() && Math.random() < 0.5) {
-          skyEngine?.launchPlane();
+        if (!document.hidden && Math.random() < 0.5) {
+          launchRandomVehicle();
         }
       }, 300_000);
     }
@@ -1290,7 +1404,7 @@ async function bootstrap(): Promise<void> {
       enterTimers.push(window.setTimeout(() => showGreeting(lock.isLocked()), 1350));
     }
 
-    enterTimers.push(window.setTimeout(() => tryPlane(), 6500));
+    enterTimers.push(window.setTimeout(() => tryVehicle(), 6500));
     enterTimers.push(window.setTimeout(() => schedulePushNudgeFn?.(), 12_000));
 
     if (!store.get<number | null>(STORAGE_KEYS.pan, null)) {
@@ -1380,8 +1494,8 @@ async function bootstrap(): Promise<void> {
     }
     if (appMounted && !planeInterval) {
       planeInterval = window.setInterval(() => {
-        if (!document.hidden && canLaunchPlane() && Math.random() < 0.5) {
-          skyEngine?.launchPlane();
+        if (!document.hidden && Math.random() < 0.5) {
+          launchRandomVehicle();
         }
       }, 300_000);
     }
@@ -1396,6 +1510,7 @@ async function bootstrap(): Promise<void> {
 
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
+      hideCompassPopup();
       resetKeyboardRef?.();
       stopGlobalTimers();
       if (appMounted) markSeen();
@@ -1411,7 +1526,7 @@ async function bootstrap(): Promise<void> {
         window.setTimeout(() => showGreeting(lock.isLocked()), 600);
       }
       if (Date.now() - lastSeen > 20 * 60 * 1000) {
-        window.setTimeout(() => tryPlane(), 6500);
+        window.setTimeout(() => tryVehicle(), 6500);
       }
     }
   });
