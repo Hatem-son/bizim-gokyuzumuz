@@ -1,7 +1,7 @@
 {
   "name": "bizim-gokyuzumuz",
   "private": true,
-  "version": "1.2.8",
+  "version": "6.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,6 +12,8 @@
     "security-check": "node scripts/security-check.mjs"
   },
   "dependencies": {
+    "@fontsource/cormorant-garamond": "^5.3.0",
+    "@fontsource/inter": "^5.3.0",
     "@supabase/supabase-js": "^2.49.1"
   },
   "devDependencies": {
@@ -19,4 +21,3 @@
     "vite": "^6.1.0"
   }
 }
-
