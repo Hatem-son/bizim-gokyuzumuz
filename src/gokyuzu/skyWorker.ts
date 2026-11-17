@@ -11,7 +11,7 @@ type Job =
   | { id: number; type: 'moon'; size: number; fraction: number; waxing: boolean; tint: [number, number, number] | null };
 
 const post = (id: number, w: number, h: number, data: Uint8ClampedArray) =>
-  (self as any).postMessage({ id, w, h, data }, [data.buffer]);
+  (self as unknown as Worker).postMessage({ id, w, h, data }, [data.buffer]);
 
 self.onmessage = (e: MessageEvent<Job>) => {
   const j = e.data;
@@ -34,13 +34,13 @@ function milkyWay(w: number, h: number, seed: number) {
   for (let y = 0; y < h; y++)
     for (let x = 0; x < w; x++) {
       const u = x / w, v = y / h;
-      // kuşak ekseni: sol alttan sağ üste hafif eğri
-      const cy = 0.95 - u * 0.85 + 0.08 * Math.sin(u * 3.1);
+      const th = u * Math.PI * 2, cu = Math.cos(th), su = Math.sin(th); // yatayda DÖNGÜSEL (360° dikişsiz)
+      const cy = 0.5 + 0.34 * su + 0.05 * Math.sin(th * 3);
       const dist = Math.abs(v - cy) / 0.16;
       const band = Math.exp(-dist * dist);
       if (band < 0.01) continue;
-      const cloud = fbm(n, u * 6, v * 6, 0.5, 5);
-      const dust = Math.max(0, fbm(n, u * 11 + 9, v * 11, 2.1, 4) - 0.48) * 3.2 * Math.exp(-(((v - cy) / 0.05) ** 2));
+      const cloud = fbm(n, cu * 0.95 + 3, v * 6, su * 0.95 + 3, 5);
+      const dust = Math.max(0, fbm(n, cu * 1.75 + 9, v * 11, su * 1.75 + 2, 4) - 0.48) * 3.2 * Math.exp(-(((v - cy) / 0.05) ** 2));
       const a = Math.max(0, band * (0.35 + 0.9 * (cloud - 0.35)) - dust * 0.5);
       const i = (y * w + x) * 4;
       out[i] = 222; out[i + 1] = 228; out[i + 2] = 255;
@@ -49,26 +49,20 @@ function milkyWay(w: number, h: number, seed: number) {
   return out;
 }
 
-/**
- * Gerçekçi ay diski (kuzey yarımküreden görünüş, kuzey yukarıda).
- * Gerçek yakın yüz haritasına göre denizler, parlak kraterler (Tycho ışınlarıyla, Copernicus, Kepler),
- * ince krater dokusu. Lommel–Seeliger yansıması (ayda kenar kararması çok azdır), dar ve yumuşak terminatör,
- * terminatör yakınında rölyef. Yüksek çözünürlükte (192 px) üretilir, ~46 px çizilir → keskin.
- */
-type Mare = [number, number, number, number, number, number]; // x, y, rx, ry, açı(rad), koyuluk
+type Mare = [number, number, number, number, number, number];
 const MARIA: Mare[] = [
-  [-0.56, -0.02, 0.30, 0.50, 0.15, 0.85], // Oceanus Procellarum
-  [-0.27, -0.36, 0.27, 0.22, 0.2, 1.0],   // Imbrium
-  [0.16, -0.34, 0.15, 0.14, 0, 0.95],     // Serenitatis
-  [0.31, -0.07, 0.19, 0.15, -0.3, 0.95],  // Tranquillitatis
-  [0.69, -0.27, 0.10, 0.08, 0, 1.0],      // Crisium
-  [0.56, 0.12, 0.11, 0.18, 0.2, 0.85],    // Fecunditatis
-  [0.36, 0.29, 0.08, 0.08, 0, 0.8],       // Nectaris
-  [-0.18, 0.35, 0.17, 0.12, 0.2, 0.8],    // Nubium
-  [-0.47, 0.39, 0.08, 0.08, 0, 0.85],     // Humorum
-  [-0.06, -0.66, 0.44, 0.06, 0.05, 0.7],  // Frigoris
-  [0.02, -0.14, 0.08, 0.06, 0, 0.7],      // Vaporum / Sinus Medii
-  [-0.36, 0.08, 0.10, 0.12, 0, 0.6],      // Cognitum
+  [-0.56, -0.02, 0.30, 0.50, 0.15, 0.85],
+  [-0.27, -0.36, 0.27, 0.22, 0.2, 1.0],
+  [0.16, -0.34, 0.15, 0.14, 0, 0.95],
+  [0.31, -0.07, 0.19, 0.15, -0.3, 0.95],
+  [0.69, -0.27, 0.10, 0.08, 0, 1.0],
+  [0.56, 0.12, 0.11, 0.18, 0.2, 0.85],
+  [0.36, 0.29, 0.08, 0.08, 0, 0.8],
+  [-0.18, 0.35, 0.17, 0.12, 0.2, 0.8],
+  [-0.47, 0.39, 0.08, 0.08, 0, 0.85],
+  [-0.06, -0.66, 0.44, 0.06, 0.05, 0.7],
+  [0.02, -0.14, 0.08, 0.06, 0, 0.7],
+  [-0.36, 0.08, 0.10, 0.12, 0, 0.6],
 ];
 const CRATERS: [number, number, number, number][] = [
   [-0.12, 0.69, 0.035, 0.55], [-0.31, -0.13, 0.03, 0.35], [-0.5, -0.07, 0.02, 0.3], [-0.6, -0.42, 0.02, 0.35], [0.2, 0.55, 0.025, 0.2],
@@ -87,7 +81,6 @@ function moonDisk(size: number, fraction: number, waxing: boolean, tint: [number
       if (r2 > 1.02) continue;
       const nz = Math.sqrt(Math.max(0, 1 - r2));
       const u = Math.asin(Math.max(-1, Math.min(1, dx))) / (Math.PI / 2), v = Math.asin(Math.max(-1, Math.min(1, dy))) / (Math.PI / 2);
-      // denizler: gerçek konumlarda Gauss alanlarının toplamı + gürültü → birbirine bağlanan organik şekiller
       let field = 0;
       for (const [mx, my, rx, ry, a, k] of MARIA) {
         const c = Math.cos(a), s2 = Math.sin(a);
@@ -119,7 +112,6 @@ function moonDisk(size: number, fraction: number, waxing: boolean, tint: [number
       const edge = Math.max(0, Math.min(1, (1 - Math.sqrt(r2)) * R + 0.5));
       const i = (y * size + x) * 4;
       const g = Math.min(1, L) ** (1 / 1.15);
-      // denizler hafif soğuk gri, yaylalar sıcak
       const tintR = 1 - 0.05 * mare, tintB = 1 + 0.03 * mare;
       out[i] = 255 * Math.min(1, g * base[0] * tintR);
       out[i + 1] = 255 * Math.min(1, g * base[1]);

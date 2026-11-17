@@ -1,7 +1,7 @@
 // Kumsal: ufukta gökyüzünü yansıtan deniz + ay/güneş/fener ışık yolu + kıyıya gelip giden dalga köpüğü +
 // ıslak kum parıltısı + kuru kum (gren, rüzgâr çizgileri, ikimizin ayak izleri) + mumların kuma düşen ışığı.
 import { rng } from '../gokyuzu/util';
-import { drawMirrorTiledX } from '../gokyuzu/skyRender';
+import { mod } from '../gokyuzu/skyGeom';
 
 const SAND_BLEED_B = 96; // ekranın en altına kadar kesintisiz kum uzantısı (safe-area / dinamik bar payı)
 
@@ -202,7 +202,9 @@ export class Beach {
 
     const key = colors.hor + colors.top + Math.round(day * 30) + sun.map((v) => v.toFixed(1)).join();
     if (key !== this.sandKey) { this.sandKey = key; this.drawSand(hor, top, day, sun); }
-    drawMirrorTiledX(c, this.sand, -scrollX - this.bleedX, shore - 6, this.sandW, H - shore + SAND_BLEED_B, W);
+    for (let sx = -mod(scrollX + this.bleedX, this.sandW); sx < W; sx += this.sandW) {
+      c.drawImage(this.sand, Math.round(sx), shore - 6, this.sandW, H - shore + SAND_BLEED_B);
+    }
 
     const T = 6.5, ph = (t % T) / T;
     for (let k = 0; k < 4; k++) {
