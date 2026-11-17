@@ -317,3 +317,410 @@ async function openEnvelope(wrap: HTMLElement, env: HTMLElement, letter: HTMLEle
 }
 
 export const esc = (s: string) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]!));
+
+import { pushPage, segment, confirmSheet, stagger } from './ui';
+import { fmtMonth, fmtUntil, saveSettings } from './state';
+import { lilyBloom } from './lily';
+import { APP_VERSION } from '../config';
+import { openDiagnostics } from './diagnostics';
+import { askGeo, searchCity, chooseCity, CLEAR } from '../gokyuzu/weather';
+import { subscribePushNotifications } from '../lib/push';
+import { enrollBiometric, disableBiometric } from '../lib/lock';
+
+/* ===================== arşiv ===================== */
+export function openArchive() {
+  let filter = 0;
+  const page = h(`<div class="page" role="dialog" aria-label="Yıldızlarımız">
+    <div class="page-head"><button type="button" class="icon-btn" data-back aria-label="Geri">${I.back()}</button></div>
+    <div class="page-body" data-scroll>
+      <div class="title" style="font-size:38px;margin:2px 4px 14px;display:flex;align-items:center;gap:8px">Yıldızlarımız ${lilyBloom(28, 12)}</div>
+      <div class="stats" data-stats></div>
+      <div data-seg></div>
+      <div data-list style="margin-top:10px"></div>
+    </div></div>`);
+
+  const renderStats = () => {
+    const total = state.stars.length;
+    const first = total ? Math.min(...state.stars.map((s) => s.createdAt)) : 0;
+    const mine = state.stars.filter((s) => s.from === state.me).length;
+    const firstStr = first ? new Date(first).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' }) : '—';
+    $('[data-stats]', page).innerHTML = `<div><b class="num">${total}</b><span class="small">yıldız</span></div>
+      <div><b class="num">${total - mine}</b><span class="small">${PEOPLE[state.partner].from}</span></div>
+      <div><b class="num">${mine}</b><span class="small">senden</span></div>
+      <div style="margin-left:auto;text-align:right"><span class="small">ilk yıldız</span><div style="font:italic 600 18px var(--serif);margin-top:4px">${firstStr}</div></div>`;
+  };
+  renderStats();
+
+  $('[data-seg]', page).appendChild(
+    segment(['Hepsi', 'Gelen', 'Giden', 'Kilitli'], 0, (i) => {
+      filter = i;
+      list();
+    })
+  );
+  const listEl = $('[data-list]', page);
+
+  const list = () => {
+    const now = getServerNowMs();
+    const items = state.stars
+      .filter(
+        (s) =>
+          filter === 0 ||
+          (filter === 1 && s.from !== state.me) ||
+          (filter === 2 && s.from === state.me) ||
+          (filter === 3 && Boolean(s.unlockAt && s.unlockAt > now))
+      )
+      .sort((a, b) => b.createdAt - a.createdAt);
+
+    if (!items.length) {
+      listEl.innerHTML = `<div class="empty"><div style="color:var(--text-3);display:inline-block">${I.star(34)}</div><div class="h2" style="margin-top:12px">Burada henüz yıldız yok</div><p class="body">${filter === 3 ? 'Zamanlı bir yıldız bırakınca burada görünür.' : 'İlk yıldızı sen bırak.'}</p></div>`;
+      return;
+    }
+
+    let month = '';
+    listEl.innerHTML = '';
+    for (const s of items) {
+      const m = fmtMonth(s.createdAt);
+      if (m !== month) {
+        month = m;
+        listEl.appendChild(h(`<div class="eyebrow group-title">${m}</div>`));
+      }
+      const locked = Boolean(s.unlockAt && s.unlockAt > now);
+      const incoming = s.from !== state.me;
+      const t1 = locked
+        ? `${fmtUntil(s.unlockAt!)} sonra açılacak`
+        : !incoming
+          ? `${PEOPLE[state.partner].to} bıraktın`
+          : !s.opened
+            ? 'Açılmamış yıldız'
+            : s.kind === 'text'
+              ? s.text || 'Bir mektup'
+              : s.kind === 'photo'
+                ? s.caption || 'Bir fotoğraf'
+                : s.kind === 'voice'
+                  ? 'Bir ses kaydı'
+                  : 'Bir çizim';
+      const kIcon = locked ? I.lock(11) : { text: I.text(11), photo: I.camera(11), voice: I.mic(11), draw: I.pen(11) }[s.kind];
+      const row = h(`<button type="button" class="arch-row press">
+        <span class="ic" style="color:${PEOPLE[s.from].color}">${I.starFill(18)}<span class="k">${kIcon}</span></span>
+        <span class="tx"><div class="t1">${esc(t1)}</div><div class="t2 small">${incoming ? PEOPLE[s.from].from : 'Senden'} · ${fmtDate(s.createdAt)}</div></span>
+        ${incoming && !s.opened && !locked ? '<span class="new" aria-label="Yeni"></span>' : ''}</button>`);
+
+      if (incoming && s.opened && !locked && s.kind === 'text' && s.text === undefined && s.raw) {
+        void decryptStarPayload(s.raw, toDbWho(state.me))
+          .then((pl) => {
+            s.text = pl.text || 'Seni düşündüm.';
+            const t1El = row.querySelector('.t1');
+            if (t1El) t1El.textContent = s.text;
+          })
+          .catch(() => undefined);
+      }
+
+      row.addEventListener('click', () => {
+        void openStar(s, () => {
+          renderStats();
+          list();
+        });
+      });
+      listEl.appendChild(row);
+    }
+    stagger($$('.arch-row', listEl), { gap: 28, y: 8 });
+  };
+  list();
+  $('[data-back]', page).addEventListener('click', () => void popPage(core.homeEl));
+  pushPage(page, core.homeEl);
+}
+
+/* ===================== ayarlar ===================== */
+export function openSettings() {
+  const S = state.settings;
+  const tg = (on: boolean) => `<span class="toggle ${on ? 'on' : ''}" role="switch" aria-checked="${on}"></span>`;
+  const wxLabel = () => ({ off: 'Kapalı', geo: 'Konumum', city: S.city || 'Şehir' })[S.weather];
+  const page = h(`<div class="page" role="dialog" aria-label="Ayarlar">
+    <div class="page-head"><button type="button" class="icon-btn" data-back aria-label="Geri">${I.back()}</button></div>
+    <div class="page-body" data-scroll>
+      <div class="title" style="font-size:38px;margin:2px 4px 6px">Ayarlar</div>
+      <div class="eyebrow group-title">Bildirimler ve giriş</div>
+      <div class="group">
+        <button type="button" class="set-row" data-notify><span class="si">${I.bell(17)}</span><span class="st">Yıldız düşünce haber ver</span>${tg(S.notify)}</button>
+        <button type="button" class="set-row" data-faceid><span class="si">${I.face(17)}</span><span class="st">Face ID ile aç</span>${tg(S.faceId)}</button>
+      </div>
+      <div class="eyebrow group-title">Gökyüzü</div>
+      <div class="group">
+        <button type="button" class="set-row" data-wx><span class="si">${I.cloud(17)}</span><span class="st">Hava durumu</span><span class="sv"><span data-wxv>${wxLabel()}</span>${I.chevron(16)}</span></button>
+        <button type="button" class="set-row" data-k="live"><span class="si">${I.star(17)}</span><span class="st">Canlı gösterge<div class="small" style="margin-top:3px">“${PEOPLE[state.partner].name} yıldız gönderiyor”</div></span>${tg(S.live)}</button>
+        <button type="button" class="set-row" data-k="lightning"><span class="si">${I.bolt(17)}</span><span class="st">Şimşek efekti</span>${tg(S.lightning)}</button>
+      </div>
+      <div class="eyebrow group-title">Uygulama</div>
+      <div class="group">
+        <button type="button" class="set-row" data-guide><span class="si">${I.plusSq(17)}</span><span class="st">Ana ekrana ekle</span><span class="sv">${I.chevron(16)}</span></button>
+        <button type="button" class="set-row" data-about><span class="si">${I.info(17)}</span><span class="st">Sürüm</span><span class="sv">v${APP_VERSION}</span></button>
+      </div>
+      <div class="group" style="margin-top:22px">
+        <button type="button" class="set-row" data-out style="color:var(--danger)"><span class="si" style="color:var(--danger)">${I.logout(17)}</span><span class="st">Çıkış yap</span></button>
+      </div>
+      <p class="small center" style="margin-top:22px">Bütün yıldızlarınız cihazda şifrelenir. Sunucu içeriği göremez.</p>
+    </div></div>`);
+
+  const syncToggle = (btn: HTMLElement, val: boolean) => {
+    const t = $('.toggle', btn);
+    t.classList.toggle('on', val);
+    t.setAttribute('aria-checked', String(val));
+  };
+
+  $('[data-notify]', page).addEventListener('click', async (e) => {
+    const btn = e.currentTarget as HTMLElement;
+    if (!S.notify) {
+      const res = await subscribePushNotifications();
+      if (res.ok) {
+        S.notify = true;
+        saveSettings();
+        syncToggle(btn, true);
+        toast('Bildirimler açıldı', I.bell(14));
+      } else {
+        toast(res.error, I.info(14), 3400);
+      }
+    } else {
+      S.notify = false;
+      saveSettings();
+      syncToggle(btn, false);
+    }
+  });
+
+  $('[data-faceid]', page).addEventListener('click', async (e) => {
+    const btn = e.currentTarget as HTMLElement;
+    if (!S.faceId) {
+      const res = await enrollBiometric(toDbWho(state.me));
+      if (res.ok) {
+        S.faceId = true;
+        saveSettings();
+        syncToggle(btn, true);
+        toast('Face ID açıldı', I.face(14));
+      } else {
+        toast(res.error, I.info(14), 3400);
+      }
+    } else {
+      disableBiometric();
+      S.faceId = false;
+      saveSettings();
+      syncToggle(btn, false);
+      toast('Face ID kapatıldı', I.face(14));
+    }
+  });
+
+  $$('[data-k]', page).forEach((b) =>
+    b.addEventListener('click', () => {
+      const k = b.dataset.k as 'live' | 'lightning';
+      S[k] = !S[k];
+      saveSettings();
+      if (k === 'lightning') core.weatherRenderer.lightningEnabled = S.lightning;
+      syncToggle(b, S[k]);
+    })
+  );
+
+  $('[data-wx]', page).addEventListener('click', () =>
+    weatherSheet(() => {
+      $('[data-wxv]', page).textContent = wxLabel();
+      core.refreshHome();
+    })
+  );
+  $('[data-guide]', page).addEventListener('click', () => openGuide());
+
+  let taps = 0;
+  let tapReset = 0;
+  $('[data-about]', page).addEventListener('click', () => {
+    clearTimeout(tapReset);
+    tapReset = window.setTimeout(() => { taps = 0; }, 2500);
+    if (++taps >= 5) {
+      taps = 0;
+      openDiagnostics();
+    }
+  });
+
+  $('[data-out]', page).addEventListener('click', async () => {
+    if (await confirmSheet('Çıkış yapılsın mı?', 'Tekrar girmek için şifren ve gizli kelimeniz gerekecek.', 'Çıkış yap', true)) {
+      await core.logout();
+    }
+  });
+
+  $('[data-back]', page).addEventListener('click', () => void popPage(core.homeEl));
+  pushPage(page, core.homeEl);
+}
+
+export function weatherSheet(done: () => void) {
+  const S = state.settings;
+  const c = h(`<div>
+    <div class="h2" style="margin:2px 2px 6px">Gökyüzümüz senin havana bürünsün mü?</div>
+    <p class="body" style="margin:0 2px 18px">Yağmur yağınca burada da yağar. Konumun yalnızca bu telefonda kalır.</p>
+    <div class="group">
+      <button type="button" class="set-row" data-v="geo"><span class="si">${I.pin(17)}</span><span class="st">Konumumu kullan</span><span class="sv" data-c></span></button>
+      <button type="button" class="set-row" data-v="city"><span class="si">${I.cloud(17)}</span><span class="st">Şehir seç</span><span class="sv" data-c></span></button>
+      <button type="button" class="set-row" data-v="off"><span class="si">${I.close(17)}</span><span class="st">Kapalı</span><span class="sv" data-c></span></button>
+    </div>
+    <div class="field ${S.weather === 'city' ? '' : 'hide'}" data-city style="margin-top:14px">
+      <input placeholder="Şehir adı (ör. İstanbul, Bağdat)" value="${esc(S.city)}" enterkeyhint="search" autocomplete="off">
+    </div>
+    <div class="group hide" data-results style="margin-top:10px"></div>
+  </div>`);
+  const mark = () =>
+    $$('[data-v]', c).forEach((b) => ($('[data-c]', b).innerHTML = b.dataset.v === S.weather ? '<span style="color:#fff">✓</span>' : ''));
+  mark();
+  const s = openSheet(c);
+  const resBox = $('[data-results]', c);
+  const cityInput = $<HTMLInputElement>('input', c);
+
+  $$('[data-v]', c).forEach((b) =>
+    b.addEventListener('click', async () => {
+      const v = b.dataset.v as typeof S.weather;
+      if (v === 'city') {
+        $('[data-city]', c).classList.remove('hide');
+        cityInput.focus({ preventScroll: true });
+        return;
+      }
+      if (v === 'geo') {
+        try {
+          await askGeo();
+          S.weather = 'geo';
+          saveSettings();
+          mark();
+          core.reloadWeather();
+          done();
+          toast('Konumuna göre hava durumu açıldı', I.pin(14));
+          setTimeout(() => void s.close(), 250);
+        } catch {
+          toast('Konum izni alınamadı · şehir seçebilirsin', I.pin(14), 3000);
+        }
+        return;
+      }
+      S.weather = 'off';
+      saveSettings();
+      core.engine.setWeather(CLEAR, 2000);
+      core.weatherRenderer.setWeather(CLEAR);
+      mark();
+      done();
+      setTimeout(() => void s.close(), 250);
+    })
+  );
+
+  let searchTimer = 0;
+  const runCitySearch = async (q: string) => {
+    if (q.trim().length < 2) {
+      resBox.classList.add('hide');
+      return;
+    }
+    try {
+      const list = await searchCity(q.trim());
+      if (!c.isConnected) return;
+      if (!list.length) {
+        resBox.innerHTML = `<div class="small" style="padding:12px 2px">Şehir bulunamadı</div>`;
+        resBox.classList.remove('hide');
+        return;
+      }
+      resBox.innerHTML = list
+        .map(
+          (item: { name: string; admin: string; lat: number; lon: number }, i: number) =>
+            `<button type="button" class="set-row" data-idx="${i}"><span class="st">${esc(item.name)}${item.admin ? ` <span class="small">· ${esc(item.admin)}</span>` : ''}</span></button>`
+        )
+        .join('');
+      resBox.classList.remove('hide');
+      $$('[data-idx]', resBox).forEach((btn) =>
+        btn.addEventListener('click', () => {
+          const picked = list[+btn.dataset.idx!];
+          chooseCity(picked);
+          S.weather = 'city';
+          S.city = picked.name;
+          saveSettings();
+          mark();
+          core.reloadWeather();
+          done();
+          cityInput.blur();
+          setTimeout(() => void s.close(), 200);
+        })
+      );
+    } catch {
+      toast('Şehir araması yapılamadı, interneti kontrol et', I.cloud(14));
+    }
+  };
+
+  cityInput.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = window.setTimeout(() => void runCitySearch(cityInput.value), 280);
+  });
+  cityInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && cityInput.value.trim()) {
+      e.preventDefault();
+      clearTimeout(searchTimer);
+      void runCitySearch(cityInput.value);
+    }
+  });
+}
+
+/* ===================== geri sayım ===================== */
+export function openCountdown() {
+  const target = state.meetDate.getTime();
+  const start = target - 120 * 86400_000;
+  const el = h(`<div class="cdpage" role="dialog" aria-label="9 Ocak geri sayımı">
+    <button type="button" class="icon-btn" data-x aria-label="Kapat">${I.close()}</button>
+    <div class="eyebrow" style="margin-top:4px">Kavuşmamıza</div>
+    <div class="cd-ring">
+      <svg viewBox="0 0 236 236"><circle cx="118" cy="118" r="110" stroke="rgba(255,255,255,.08)" stroke-width="2" fill="none"/>
+        <circle data-arc cx="118" cy="118" r="110" stroke="var(--gold)" stroke-width="2" fill="none" stroke-linecap="round" transform="rotate(-90 118 118)" stroke-dasharray="691" stroke-dashoffset="691"/></svg>
+      <div class="in"><b class="num" data-d>0</b><div style="font:italic 500 22px var(--serif);color:var(--text-2)">gün</div></div>
+    </div>
+    <div class="cd" data-cd></div>
+    <div class="title" style="margin-top:18px;font-size:34px">9 Ocak 2027</div>
+    <div class="body" style="margin-top:4px">Cumartesi</div>
+    <div class="cd-lily" style="margin-top:auto">${lilyBloom(92, 10, 'sway')}</div>
+    <p class="center" style="font:italic 500 19px/1.35 var(--serif);color:var(--text-2);margin:6px 20px 0">Her yıldız bizi biraz daha yaklaştırıyor.</p>
+  </div>`);
+  const app = core.homeEl.parentElement!;
+  app.appendChild(el);
+  el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 360, easing: 'ease-out' });
+  const ring = $('.cd-ring', el);
+  ring.animate([{ transform: 'scale(.92)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 600, easing: 'cubic-bezier(.22,.8,.24,1)' });
+  const frac = Math.min(1, Math.max(0, (getServerNowMs() - start) / (target - start)));
+  const arc = $('[data-arc]', el) as unknown as SVGCircleElement;
+  const targetOffset = 691 * (1 - frac);
+  arc.style.transition = 'stroke-dashoffset 1.4s cubic-bezier(.22,.8,.24,1) .2s';
+  requestAnimationFrame(() => {
+    arc.style.strokeDashoffset = String(targetOffset);
+  });
+
+  const tick = () => {
+    if (document.hidden || !el.isConnected) return;
+    const p = untilParts(target);
+    $('[data-d]', el).textContent = String(p.d);
+    $('[data-cd]', el).innerHTML = (
+      [
+        ['saat', p.h],
+        ['dakika', p.m],
+        ['saniye', p.s],
+      ] as const
+    )
+      .map(([l, v]) => `<div><b>${String(v).padStart(2, '0')}</b><span>${l}</span></div>`)
+      .join('');
+  };
+  tick();
+  const iv = window.setInterval(tick, 1000);
+  $('[data-x]', el).addEventListener('click', async () => {
+    clearInterval(iv);
+    await el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, fill: 'forwards' }).finished;
+    el.remove();
+  });
+}
+
+/* ===================== ana ekrana ekleme ===================== */
+export function openGuide() {
+  const page = h(`<div class="page" role="dialog" aria-label="Ana ekrana ekle">
+    <div class="page-head"><button type="button" class="icon-btn" data-back aria-label="Geri">${I.back()}</button></div>
+    <div class="page-body" data-scroll>
+      <div class="title" style="font-size:34px;margin:2px 4px 8px">Ana ekrana ekle</div>
+      <p class="body" style="margin:0 4px 14px">Gökyüzümüz bir uygulama gibi tam ekran açılır, bildirimler gelir.</p>
+      <div class="group" style="padding:0 16px">
+        <div class="guide-step"><span class="n">1</span><div><div style="font-weight:600">Safari'de aç</div><div class="small" style="margin-top:3px">Bu sayfayı Safari ile açtığından emin ol.</div></div></div>
+        <div class="guide-step"><span class="n">2</span><div><div style="font-weight:600;display:flex;gap:6px;align-items:center">Paylaş ${I.share(17)}</div><div class="small" style="margin-top:3px">Alttaki paylaş düğmesine dokun.</div></div></div>
+        <div class="guide-step"><span class="n">3</span><div><div style="font-weight:600;display:flex;gap:6px;align-items:center">Ana Ekrana Ekle ${I.plusSq(17)}</div><div class="small" style="margin-top:3px">Listeyi aşağı kaydırıp seç, sonra “Ekle”.</div></div></div>
+        <div class="guide-step" style="border:0"><span class="n">4</span><div><div style="font-weight:600">Simgeden aç</div><div class="small" style="margin-top:3px">Bundan sonra gökyüzümüzü hep ana ekrandan aç.</div></div></div>
+      </div></div></div>`);
+  $('[data-back]', page).addEventListener('click', () => void popPage(core.homeEl));
+  pushPage(page);
+}
