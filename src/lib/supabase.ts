@@ -36,6 +36,45 @@ export function getSupabase(): SupabaseClient | null {
   return client;
 }
 
+const KNOWN_TURKISH_ERRS = new Set([
+  'Oturum açık değil.',
+  'Şifreli medya yüklenemedi.',
+  'Yıldız kaydedilemedi.',
+  'Şifreli yıldız içeriği kaydedilemedi.',
+  'Doğrulama verisi okunamadı.',
+  'Doğrulama verisi kaydedilemedi.',
+  'Sunucuya bağlanılamadı. İnternet bağlantını kontrol et.',
+  'Bağlantı kurulamadı. İnternetini kontrol edip tekrar dene.',
+  'Bildirim kaydı sunucuya yazılamadı.',
+]);
+
+/** Tarayıcı/SDK kaynaklı ham İngilizce hata metinlerini Türkçe dostu mesaja çevirir */
+export function toFriendlyTurkishError(err: unknown, fallback: string): string {
+  const msg = err instanceof Error ? err.message.trim() : '';
+  if (!msg) return fallback;
+  if (KNOWN_TURKISH_ERRS.has(msg)) return msg;
+  const lower = msg.toLowerCase();
+  if (
+    lower.includes('network') ||
+    lower.includes('failed to fetch') ||
+    lower.includes('load failed') ||
+    lower.includes('timeout') ||
+    lower.includes('offline')
+  ) {
+    return 'İnternet bağlantısı kurulamadı. Bağlantını kontrol edip tekrar dene.';
+  }
+  if (lower.includes('notallowed') || lower.includes('permission') || lower.includes('denied')) {
+    return 'İzin verilmedi. Cihaz ayarlarından izni kontrol edebilirsin.';
+  }
+  if (lower.includes('abort') || lower.includes('cancel')) {
+    return 'İşlem iptal edildi.';
+  }
+  if (/[çğıöşüÇĞİÖŞÜ]/.test(msg) && !/typeerror|domexception|syntaxerror|error:/i.test(msg)) {
+    return msg;
+  }
+  return fallback;
+}
+
 export function translateAuthError(message: string, status?: number): string {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     return 'İnternet bağlantısı yok. Bağlantını kontrol et.';
@@ -172,7 +211,11 @@ export async function signInWithPassword(
 export async function signOutSupabase(): Promise<void> {
   const sb = getSupabase();
   if (!sb) return;
-  await sb.auth.signOut();
+  try {
+    await sb.auth.signOut();
+  } catch {
+    // Çevrimdışı çıkış yerel durumu temizlemeye devam eder
+  }
 }
 
 export async function fetchVerifyBlob(): Promise<string | null> {
@@ -180,14 +223,18 @@ export async function fetchVerifyBlob(): Promise<string | null> {
   if (!sb) {
     return store.get<string | null>(STORAGE_KEYS.verifyLocal, null);
   }
-  const { data, error } = await sb
-    .from('settings')
-    .select('verify_blob')
-    .eq('id', 1)
-    .maybeSingle();
+  try {
+    const { data, error } = await sb
+      .from('settings')
+      .select('verify_blob')
+      .eq('id', 1)
+      .maybeSingle();
 
-  if (error) throw new Error('Doğrulama verisi okunamadı.');
-  return (data?.verify_blob as string | undefined) || null;
+    if (error) throw new Error('Doğrulama verisi okunamadı.');
+    return (data?.verify_blob as string | undefined) || null;
+  } catch (err) {
+    throw new Error(toFriendlyTurkishError(err, 'Doğrulama verisi okunamadı.'));
+  }
 }
 
 export async function saveVerifyBlob(blob: string): Promise<void> {
@@ -196,9 +243,13 @@ export async function saveVerifyBlob(blob: string): Promise<void> {
     store.set(STORAGE_KEYS.verifyLocal, blob);
     return;
   }
-  const { error } = await sb
-    .from('settings')
-    .upsert({ id: 1, verify_blob: blob, updated_at: new Date().toISOString() }, { onConflict: 'id' });
-  if (error) throw new Error('Doğrulama verisi kaydedilemedi.');
+  try {
+    const { error } = await sb
+      .from('settings')
+      .upsert({ id: 1, verify_blob: blob, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+    if (error) throw new Error('Doğrulama verisi kaydedilemedi.');
+  } catch (err) {
+    throw new Error(toFriendlyTurkishError(err, 'Doğrulama verisi kaydedilemedi.'));
+  }
 }
 

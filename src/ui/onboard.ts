@@ -8,6 +8,7 @@ import {
   isSupabaseConfigured,
   saveVerifyBlob,
   signInWithPassword,
+  toFriendlyTurkishError,
 } from '../lib/supabase';
 import type { Who } from '../types';
 import { $, $$, setInert } from './dom';
@@ -228,7 +229,7 @@ export function initOnboard(opts: {
     try {
       ok = await unlockWithSecret(secret, fetchVerifyBlob, saveVerifyBlob);
     } catch (err) {
-      keyErr.textContent = err instanceof Error ? err.message : 'Anahtar doğrulanamadı.';
+      keyErr.textContent = toFriendlyTurkishError(err, 'Anahtar doğrulanamadı.');
       keyErr.hidden = false;
       enterBtn.textContent = 'Gökyüzüne gir';
       enterBtn.disabled = false;

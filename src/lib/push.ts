@@ -1,5 +1,5 @@
 import type { StarKind, Who } from '../types';
-import { getSupabase, isSupabaseConfigured } from './supabase';
+import { getSupabase, isSupabaseConfigured, toFriendlyTurkishError } from './supabase';
 
 const VAPID_PUBLIC_KEY = (import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined)?.trim() || '';
 
@@ -84,7 +84,7 @@ export async function subscribePushNotifications(): Promise<
   } catch (err) {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : 'Bildirim aboneliği kurulamadı.',
+      error: toFriendlyTurkishError(err, 'Bildirim aboneliği kurulamadı.'),
     };
   }
 }

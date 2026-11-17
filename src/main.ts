@@ -34,7 +34,14 @@ import {
   type StarPayloadData,
 } from './lib/stars';
 import { STORAGE_KEYS, store } from './lib/storage';
-import { getSessionAndProfile, getSessionFast, inferWhoFromEmail, isSupabaseConfigured, signOutSupabase } from './lib/supabase';
+import {
+  getSessionAndProfile,
+  getSessionFast,
+  inferWhoFromEmail,
+  isSupabaseConfigured,
+  signOutSupabase,
+  toFriendlyTurkishError,
+} from './lib/supabase';
 import { formatDayLine, pickGreeting } from './sky/greetings';
 import { PANO, SkyEngine } from './sky/skyRenderer';
 import { currentDecimalHour, formatHour, getSolarTimes, skyAtHour, type SkyPhaseName } from './sky/solar';
@@ -605,7 +612,7 @@ async function sendStarAction(params: {
   } catch (err) {
     showToast(
       'Gönderilemedi',
-      err instanceof Error ? err.message : 'Tekrar dene',
+      toFriendlyTurkishError(err, 'Bağlantını kontrol edip tekrar dene.'),
       PEOPLE[currentMe].color,
       PEOPLE[currentMe].sign
     );
@@ -915,6 +922,7 @@ async function bootstrap(): Promise<void> {
     gardenCtrl = null;
     countdownCtrl?.destroy();
     countdownCtrl = null;
+    composeCtrl?.destroy();
     composeCtrl = null;
     letterCtrl = null;
     openSettingsFn = null;
@@ -1583,4 +1591,7 @@ async function bootstrap(): Promise<void> {
   onboard.show();
 }
 
-void bootstrap();
+void bootstrap().catch(() => {
+  const splashEl = document.getElementById('launch-splash');
+  if (splashEl) splashEl.hidden = true;
+});

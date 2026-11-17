@@ -3,7 +3,7 @@ import type { StarKind, StarRecord, Who } from '../types';
 import { openBytes, openJSON, sealBytes, sealJSON } from './crypto';
 import { triggerPushNotification } from './push';
 import { STORAGE_KEYS, store } from './storage';
-import { getSupabase, isSupabaseConfigured } from './supabase';
+import { getSupabase, isSupabaseConfigured, toFriendlyTurkishError } from './supabase';
 
 export interface StarPayloadData {
   text: string;
@@ -248,13 +248,17 @@ async function getUserWhoMap(): Promise<Map<string, Who>> {
   const sb = getSupabase();
   if (!sb) return map;
 
-  const { data } = await sb.from('profiles').select('id, who');
-  if (data) {
-    for (const row of data as { id: string; who: Who }[]) {
-      map.set(row.id, row.who);
+  try {
+    const { data, error } = await sb.from('profiles').select('id, who');
+    if (!error && data) {
+      for (const row of data as { id: string; who: Who }[]) {
+        map.set(row.id, row.who);
+      }
+      if (map.size >= 2) userIdToWhoCache = map;
     }
+  } catch {
+    // Ağ hatasında önbelleği boş kilitleme, sonraki çağrıda tekrar dene
   }
-  userIdToWhoCache = map;
   return map;
 }
 
@@ -302,18 +306,22 @@ export async function fetchAllStars(me: Who): Promise<StarRecord[]> {
     return clean;
   }
 
-  await syncServerClock();
-  const sb = getSupabase()!;
-  const whoMap = await getUserWhoMap();
-  const { data, error } = await sb
-    .from('stars')
-    .select('id, from_user, kind, x, y, size, once, spent, has_media, created_at, opened_at, unlock_at, unlock_notified, unlock_push_sent')
-    .order('created_at', { ascending: true });
+  try {
+    await syncServerClock();
+    const sb = getSupabase()!;
+    const whoMap = await getUserWhoMap();
+    const { data, error } = await sb
+      .from('stars')
+      .select('id, from_user, kind, x, y, size, once, spent, has_media, created_at, opened_at, unlock_at, unlock_notified, unlock_push_sent')
+      .order('created_at', { ascending: true });
 
-  if (error || !data) {
+    if (error || !data) {
+      return [];
+    }
+    return (data as DbStarRow[]).map((row) => mapDbRow(row, whoMap, me));
+  } catch {
     return [];
   }
-  return (data as DbStarRow[]).map((row) => mapDbRow(row, whoMap, me));
 }
 
 export async function createEncryptedStar(params: {
@@ -368,78 +376,82 @@ export async function createEncryptedStar(params: {
     return localStar;
   }
 
-  const { data: userRes } = await sb.auth.getUser();
-  const uid = userRes.user?.id;
-  if (!uid) throw new Error('Oturum açık değil.');
+  try {
+    const { data: userRes } = await sb.auth.getUser();
+    const uid = userRes.user?.id;
+    if (!uid) throw new Error('Oturum açık değil.');
 
-  if (sealedMedia) {
-    const blob = new Blob([sealedMedia], { type: 'text/plain;charset=utf-8' });
-    const { error: uploadErr } = await sb.storage.from('media').upload(id, blob, {
-      contentType: 'text/plain',
-      upsert: false,
-    });
-    if (uploadErr) {
-      throw new Error('Şifreli medya yüklenemedi.');
+    if (sealedMedia) {
+      const blob = new Blob([sealedMedia], { type: 'text/plain;charset=utf-8' });
+      const { error: uploadErr } = await sb.storage.from('media').upload(id, blob, {
+        contentType: 'text/plain',
+        upsert: false,
+      });
+      if (uploadErr) {
+        throw new Error('Şifreli medya yüklenemedi.');
+      }
     }
-  }
 
-  const { data: inserted, error: insertErr } = await sb
-    .from('stars')
-    .insert({
-      id,
-      from_user: uid,
-      kind: params.kind,
-      x: +params.pos.x.toFixed(2),
-      y: +params.pos.y.toFixed(2),
-      size,
+    const { data: inserted, error: insertErr } = await sb
+      .from('stars')
+      .insert({
+        id,
+        from_user: uid,
+        kind: params.kind,
+        x: +params.pos.x.toFixed(2),
+        y: +params.pos.y.toFixed(2),
+        size,
+        once: Boolean(params.once),
+        spent: false,
+        has_media: Boolean(sealedMedia),
+        unlock_at: unlockAt,
+        unlock_notified: false,
+        unlock_push_sent: false,
+      })
+      .select('id, from_user, kind, x, y, size, once, spent, has_media, created_at, opened_at, unlock_at, unlock_notified, unlock_push_sent')
+      .single();
+
+    if (insertErr || !inserted) {
+      if (sealedMedia) {
+        await sb.storage.from('media').remove([id]).catch(() => undefined);
+      }
+      throw new Error('Yıldız kaydedilemedi.');
+    }
+
+    const { error: secretErr } = await sb.from('star_secrets').insert({
+      star_id: id,
+      payload: sealedPayload,
+      media_path: sealedMedia ? id : null,
       once: Boolean(params.once),
-      spent: false,
-      has_media: Boolean(sealedMedia),
-      unlock_at: unlockAt,
-      unlock_notified: false,
-      unlock_push_sent: false,
-    })
-    .select('id, from_user, kind, x, y, size, once, spent, has_media, created_at, opened_at, unlock_at, unlock_notified, unlock_push_sent')
-    .single();
+    });
 
-  if (insertErr || !inserted) {
-    if (sealedMedia) {
-      await sb.storage.from('media').remove([id]).catch(() => undefined);
+    if (secretErr) {
+      try {
+        await sb.from('stars').delete().eq('id', id);
+      } catch {
+        // Ignore cleanup errors
+      }
+      if (sealedMedia) {
+        await sb.storage.from('media').remove([id]).catch(() => undefined);
+      }
+      throw new Error('Şifreli yıldız içeriği kaydedilemedi.');
     }
-    throw new Error('Yıldız kaydedilemedi.');
+
+    const whoMap = await getUserWhoMap();
+    const star = mapDbRow(inserted as DbStarRow, whoMap, params.from);
+
+    // Karşı tarafa hemen push bildirimi gönder (arka planda; içerik gitmez)
+    void triggerPushNotification({
+      sender: params.from,
+      kind: params.kind,
+      once: Boolean(params.once),
+      unlockAt,
+    });
+
+    return star;
+  } catch (err) {
+    throw new Error(toFriendlyTurkishError(err, 'Yıldız şu an gönderilemedi, tekrar dene.'));
   }
-
-  const { error: secretErr } = await sb.from('star_secrets').insert({
-    star_id: id,
-    payload: sealedPayload,
-    media_path: sealedMedia ? id : null,
-    once: Boolean(params.once),
-  });
-
-  if (secretErr) {
-    try {
-      await sb.from('stars').delete().eq('id', id);
-    } catch {
-      // Ignore cleanup errors
-    }
-    if (sealedMedia) {
-      await sb.storage.from('media').remove([id]).catch(() => undefined);
-    }
-    throw new Error('Şifreli yıldız içeriği kaydedilemedi.');
-  }
-
-  const whoMap = await getUserWhoMap();
-  const star = mapDbRow(inserted as DbStarRow, whoMap, params.from);
-
-  // Karşı tarafa hemen push bildirimi gönder (arka planda; içerik gitmez)
-  void triggerPushNotification({
-    sender: params.from,
-    kind: params.kind,
-    once: Boolean(params.once),
-    unlockAt,
-  });
-
-  return star;
 }
 
 async function fetchStarSecret(
@@ -456,15 +468,19 @@ async function fetchStarSecret(
   }
 
   const sb = getSupabase()!;
-  const { data, error } = await sb
-    .from('star_secrets')
-    .select('payload, media_path')
-    .eq('star_id', star.id)
-    .maybeSingle();
+  try {
+    const { data, error } = await sb
+      .from('star_secrets')
+      .select('payload, media_path')
+      .eq('star_id', star.id)
+      .maybeSingle();
 
-  if (error || !data) return null;
-  const row = data as { payload: string; media_path: string | null };
-  return { payload: row.payload, mediaPath: row.media_path };
+    if (error || !data) return null;
+    const row = data as { payload: string; media_path: string | null };
+    return { payload: row.payload, mediaPath: row.media_path };
+  } catch {
+    return null;
+  }
 }
 
 export async function decryptStarPayload(star: StarRecord, caller?: Who): Promise<StarPayloadData> {
@@ -490,22 +506,26 @@ export async function downloadAndDecryptMedia(
     return openBytes(local);
   }
 
-  const secret = await fetchStarSecret(star, caller);
-  const path = secret?.mediaPath;
-  if (!path) return null;
+  try {
+    const secret = await fetchStarSecret(star, caller);
+    const path = secret?.mediaPath;
+    if (!path) return null;
 
-  const sb = getSupabase()!;
-  // Kısa ömürlü imzalı URL (60 sn) ile indir; Storage RLS de unlock_at'ı kontrol eder
-  const { data: signed, error: signErr } = await sb.storage
-    .from('media')
-    .createSignedUrl(path, 60);
+    const sb = getSupabase()!;
+    // Kısa ömürlü imzalı URL (60 sn) ile indir; Storage RLS de unlock_at'ı kontrol eder
+    const { data: signed, error: signErr } = await sb.storage
+      .from('media')
+      .createSignedUrl(path, 60);
 
-  if (signErr || !signed?.signedUrl) return null;
+    if (signErr || !signed?.signedUrl) return null;
 
-  const res = await fetch(signed.signedUrl);
-  if (!res.ok) return null;
-  const sealedText = await res.text();
-  return openBytes(sealedText);
+    const res = await fetch(signed.signedUrl);
+    if (!res.ok) return null;
+    const sealedText = await res.text();
+    return openBytes(sealedText);
+  } catch {
+    return null;
+  }
 }
 
 export async function markStarOpened(star: StarRecord): Promise<string> {
@@ -520,8 +540,12 @@ export async function markStarOpened(star: StarRecord): Promise<string> {
     return openedAt;
   }
 
-  const sb = getSupabase()!;
-  await sb.from('stars').update({ opened_at: openedAt }).eq('id', star.id);
+  try {
+    const sb = getSupabase()!;
+    await sb.from('stars').update({ opened_at: openedAt }).eq('id', star.id);
+  } catch {
+    // Ağ kesintisinde açma deneyimini kilitleme
+  }
   return openedAt;
 }
 
@@ -538,8 +562,12 @@ export async function markStarUnlockNotified(star: StarRecord): Promise<void> {
     return;
   }
 
-  const sb = getSupabase()!;
-  await sb.from('stars').update({ unlock_notified: true }).eq('id', star.id);
+  try {
+    const sb = getSupabase()!;
+    await sb.from('stars').update({ unlock_notified: true }).eq('id', star.id);
+  } catch {
+    // Sessizce yok say
+  }
 }
 
 export async function destroySpentOneTimeMedia(star: StarRecord): Promise<void> {
@@ -555,9 +583,13 @@ export async function destroySpentOneTimeMedia(star: StarRecord): Promise<void> 
     return;
   }
 
-  const sb = getSupabase()!;
-  await sb.storage.from('media').remove([star.id]);
-  await sb.from('stars').update({ spent: true }).eq('id', star.id);
+  try {
+    const sb = getSupabase()!;
+    await sb.storage.from('media').remove([star.id]);
+    await sb.from('stars').update({ spent: true }).eq('id', star.id);
+  } catch {
+    // Ağ hatasında yakalanmamış ret üretme
+  }
 }
 
 export function saveLocalStarsSnapshot(stars: StarRecord[]): void {

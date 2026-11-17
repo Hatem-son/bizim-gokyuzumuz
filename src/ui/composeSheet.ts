@@ -67,6 +67,7 @@ interface RecSession {
 export interface ComposeController {
   open: (me: Who) => void;
   close: () => void;
+  destroy: () => void;
   isOpen: () => boolean;
   syncIdentity: (me: Who) => void;
   syncViewport: () => void;
@@ -658,9 +659,16 @@ export function initComposeSheet(opts: {
     syncViewport();
   }
 
+  function destroy(): void {
+    stopRec(true);
+    clearAtt();
+    close();
+  }
+
   return {
     open,
     close,
+    destroy,
     isOpen: () => sheet.classList.contains('open'),
     syncIdentity,
     syncViewport,

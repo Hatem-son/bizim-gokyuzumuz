@@ -198,142 +198,146 @@ export function initLetterModal(opts: {
   }): Promise<void> {
     if (busy) return;
     busy = true;
-    const { star, starPos, me, allStars, isPaired } = params;
-
-    let data: StarPayloadData = { text: '' };
-    let url: string | null = null;
-    let isLocked = Boolean(star.unlockAt && Date.parse(star.unlockAt) > Date.now());
     try {
-      data = await decryptStarPayload(star, me);
-      if (star.hasMedia && !star.spent) {
-        const mediaBytes = await downloadAndDecryptMedia(star, me);
-        if (mediaBytes) {
-          url = URL.createObjectURL(new Blob([mediaBytes], { type: data.mime || '' }));
+      const { star, starPos, me, allStars, isPaired } = params;
+
+      let data: StarPayloadData = { text: '' };
+      let url: string | null = null;
+      let isLocked = Boolean(star.unlockAt && Date.parse(star.unlockAt) > Date.now());
+      try {
+        data = await decryptStarPayload(star, me);
+        if (star.hasMedia && !star.spent) {
+          const mediaBytes = await downloadAndDecryptMedia(star, me);
+          if (mediaBytes) {
+            url = URL.createObjectURL(new Blob([mediaBytes], { type: data.mime || '' }));
+          }
         }
+      } catch (err) {
+        const locked = err instanceof Error && err.message === 'LOCKED';
+        if (locked) isLocked = true;
+        data = {
+          text: locked
+            ? 'Bu yıldız henüz kilitli. Zamanı gelince açılacak.'
+            : 'Bu yıldız açılamadı. Gizli kelime farklı olabilir.',
+        };
       }
-    } catch (err) {
-      const locked = err instanceof Error && err.message === 'LOCKED';
-      if (locked) isLocked = true;
-      data = {
-        text: locked
-          ? 'Bu yıldız henüz kilitli. Zamanı gelince açılacak.'
-          : 'Bu yıldız açılamadı. Gizli kelime farklı olabilir.',
-      };
-    }
 
-    current = { star, url, me };
-    const firstTime = !star.openedAt;
+      if (current?.url) URL.revokeObjectURL(current.url);
+      current = { star, url, me };
+      const firstTime = !star.openedAt;
 
-    fillLetter(star, data, url, allStars, isPaired, isLocked);
-    card.getAnimations().forEach((a) => a.cancel());
-    modal.classList.add('open');
-    setInert(modal, false);
+      fillLetter(star, data, url, allStars, isPaired, isLocked);
+      card.getAnimations().forEach((a) => a.cancel());
+      modal.classList.add('open');
+      setInert(modal, false);
 
-    const color = PEOPLE[star.from].color;
-    if (!star.openedAt) {
-      star.openedAt = await markStarOpened(star);
-      opts.onStarUpdated(star);
-    }
+      const color = PEOPLE[star.from].color;
+      if (!star.openedAt) {
+        star.openedAt = await markStarOpened(star);
+        opts.onStarUpdated(star);
+      }
 
-    if (firstTime && !reducedMotion) {
-      resetEnvelope();
-      const flap = env.querySelector('.env-flap') as HTMLElement;
-      const paper = env.querySelector('.env-paper') as HTMLElement;
-      const seal = env.querySelector('.env-seal') as HTMLElement;
-      const er = env.getBoundingClientRect();
+      if (firstTime && !reducedMotion) {
+        resetEnvelope();
+        const flap = env.querySelector('.env-flap') as HTMLElement;
+        const paper = env.querySelector('.env-paper') as HTMLElement;
+        const seal = env.querySelector('.env-seal') as HTMLElement;
+        const er = env.getBoundingClientRect();
 
-      opts.onBurst(starPos.x, starPos.y, color, false);
-      await env
-        .animate(
+        opts.onBurst(starPos.x, starPos.y, color, false);
+        await env
+          .animate(
+            [
+              {
+                transform: `translate(${starPos.x - (er.left + er.width / 2)}px,${
+                  starPos.y - (er.top + er.height / 2)
+                }px) scale(.05) rotate(-14deg)`,
+                opacity: 0,
+              },
+              { opacity: 1, offset: 0.3 },
+              { transform: 'none', opacity: 1 },
+            ],
+            { duration: 700, easing: 'cubic-bezier(.22,1.25,.36,1)', fill: 'forwards' }
+          )
+          .finished.catch(() => undefined);
+
+        await wait(240);
+        const sr = seal.getBoundingClientRect();
+        opts.onBurst(sr.left + sr.width / 2, sr.top + sr.height / 2, color, false);
+        await seal
+          .animate(
+            [
+              { transform: 'scale(1)', opacity: 1 },
+              { transform: 'scale(1.22) rotate(-6deg)', opacity: 1, offset: 0.35 },
+              { transform: 'scale(0) rotate(40deg)', opacity: 0 },
+            ],
+            { duration: 440, easing: 'cubic-bezier(.6,0,.4,1)', fill: 'forwards' }
+          )
+          .finished.catch(() => undefined);
+
+        const flapAnim = flap.animate(
+          [{ transform: 'rotateX(0deg)' }, { transform: 'rotateX(180deg)' }],
+          { duration: 640, easing: 'cubic-bezier(.45,0,.2,1)', fill: 'forwards' }
+        );
+        window.setTimeout(() => {
+          flap.style.zIndex = '0';
+        }, 310);
+        await flapAnim.finished.catch(() => undefined);
+
+        await paper
+          .animate([{ transform: 'translateY(0)' }, { transform: 'translateY(-64%)' }], {
+            duration: 540,
+            easing: 'cubic-bezier(.22,1,.36,1)',
+            fill: 'forwards',
+          })
+          .finished.catch(() => undefined);
+
+        const pr = paper.getBoundingClientRect();
+        const lr = card.getBoundingClientRect();
+        card.style.transformOrigin = '0 0';
+        card.animate(
           [
             {
-              transform: `translate(${starPos.x - (er.left + er.width / 2)}px,${
-                starPos.y - (er.top + er.height / 2)
-              }px) scale(.05) rotate(-14deg)`,
+              transform: `translate(${pr.left - lr.left}px,${pr.top - lr.top}px) scale(${pr.width / lr.width},${
+                pr.height / lr.height
+              })`,
               opacity: 0,
             },
-            { opacity: 1, offset: 0.3 },
+            { opacity: 1, offset: 0.2 },
             { transform: 'none', opacity: 1 },
           ],
-          { duration: 700, easing: 'cubic-bezier(.22,1.25,.36,1)', fill: 'forwards' }
-        )
-        .finished.catch(() => undefined);
-
-      await wait(240);
-      const sr = seal.getBoundingClientRect();
-      opts.onBurst(sr.left + sr.width / 2, sr.top + sr.height / 2, color, false);
-      await seal
-        .animate(
+          { duration: 660, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'forwards' }
+        );
+        env.animate(
           [
-            { transform: 'scale(1)', opacity: 1 },
-            { transform: 'scale(1.22) rotate(-6deg)', opacity: 1, offset: 0.35 },
-            { transform: 'scale(0) rotate(40deg)', opacity: 0 },
+            { transform: 'none', opacity: 1 },
+            { transform: 'translateY(70px) scale(.9)', opacity: 0 },
           ],
-          { duration: 440, easing: 'cubic-bezier(.6,0,.4,1)', fill: 'forwards' }
-        )
-        .finished.catch(() => undefined);
+          { duration: 500, easing: 'cubic-bezier(.5,0,.75,0)', fill: 'forwards' }
+        );
+        fillLetter(star, data, url, allStars, isPaired, isLocked);
+      } else {
+        const lr = card.getBoundingClientRect();
+        card.style.transformOrigin = '50% 50%';
+        card.animate(
+          [
+            {
+              transform: `translate(${starPos.x - (lr.left + lr.width / 2)}px,${
+                starPos.y - (lr.top + lr.height / 2)
+              }px) scale(.05) rotate(-8deg)`,
+              opacity: 0,
+            },
+            { transform: 'none', opacity: 1 },
+          ],
+          { duration: reducedMotion ? 1 : 620, easing: 'cubic-bezier(.22,1.15,.36,1)', fill: 'forwards' }
+        );
+        if (!reducedMotion) opts.onBurst(starPos.x, starPos.y, color, false);
+      }
 
-      const flapAnim = flap.animate(
-        [{ transform: 'rotateX(0deg)' }, { transform: 'rotateX(180deg)' }],
-        { duration: 640, easing: 'cubic-bezier(.45,0,.2,1)', fill: 'forwards' }
-      );
-      window.setTimeout(() => {
-        flap.style.zIndex = '0';
-      }, 310);
-      await flapAnim.finished.catch(() => undefined);
-
-      await paper
-        .animate([{ transform: 'translateY(0)' }, { transform: 'translateY(-64%)' }], {
-          duration: 540,
-          easing: 'cubic-bezier(.22,1,.36,1)',
-          fill: 'forwards',
-        })
-        .finished.catch(() => undefined);
-
-      const pr = paper.getBoundingClientRect();
-      const lr = card.getBoundingClientRect();
-      card.style.transformOrigin = '0 0';
-      card.animate(
-        [
-          {
-            transform: `translate(${pr.left - lr.left}px,${pr.top - lr.top}px) scale(${pr.width / lr.width},${
-              pr.height / lr.height
-            })`,
-            opacity: 0,
-          },
-          { opacity: 1, offset: 0.2 },
-          { transform: 'none', opacity: 1 },
-        ],
-        { duration: 660, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'forwards' }
-      );
-      env.animate(
-        [
-          { transform: 'none', opacity: 1 },
-          { transform: 'translateY(70px) scale(.9)', opacity: 0 },
-        ],
-        { duration: 500, easing: 'cubic-bezier(.5,0,.75,0)', fill: 'forwards' }
-      );
-      fillLetter(star, data, url, allStars, isPaired, isLocked);
-    } else {
-      const lr = card.getBoundingClientRect();
-      card.style.transformOrigin = '50% 50%';
-      card.animate(
-        [
-          {
-            transform: `translate(${starPos.x - (lr.left + lr.width / 2)}px,${
-              starPos.y - (lr.top + lr.height / 2)
-            }px) scale(.05) rotate(-8deg)`,
-            opacity: 0,
-          },
-          { transform: 'none', opacity: 1 },
-        ],
-        { duration: reducedMotion ? 1 : 620, easing: 'cubic-bezier(.22,1.15,.36,1)', fill: 'forwards' }
-      );
-      if (!reducedMotion) opts.onBurst(starPos.x, starPos.y, color, false);
+      closeBtn.focus({ preventScroll: true });
+    } finally {
+      busy = false;
     }
-
-    busy = false;
-    closeBtn.focus({ preventScroll: true });
   }
 
   function close(): void {
