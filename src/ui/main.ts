@@ -291,7 +291,16 @@ let nextMeteor = performance.now() + 30_000;
 let oceanDwell = 0;
 let oceanAt = 180; // sn: ana ekranda kalma süresi / ilk selam eşiği (3 dk)
 
+let lastAliveAt = Date.now();
+
 engine.add((now, dt, s) => {
+  const wallNow = Date.now();
+  const wallGap = wallNow - lastAliveAt;
+  lastAliveAt = wallNow;
+  if (!document.hidden && wallGap >= 3000) {
+    hiddenAt = 0;
+    queueMicrotask(() => handleReturnToForeground(wallGap));
+  }
   const sx = core.scrollX;
   sky.frame(now, s, sx);
   weatherRenderer.frame(now, dt, s, sx);
@@ -845,7 +854,9 @@ async function boot(mode?: 'auth' | 'lock' | 'home') {
   isFirstOpen = first;
 
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const introKind: 'full' | 'short' = first && !reduced ? 'full' : 'short';
+  // Her açılışta sinematik giriş animasyonu (pozlama + kamera kalkışı + yıldızların parlaması) oynatılır;
+  // tekrar açılışlarda ek olarak saate göre selam (showGreeting) gösterilir.
+  const introKind: 'full' | 'short' = reduced ? 'short' : 'full';
   $('#fgWrap').animate([{ transform: 'translate3d(0,90px,0)' }, { transform: 'none' }], {
     duration: introKind === 'short' ? 1260 : 2800,
     easing: 'cubic-bezier(.25,.1,.12,1)',
@@ -853,7 +864,9 @@ async function boot(mode?: 'auth' | 'lock' | 'home') {
   const reveal = playIntro(
     { overlay, sky: $('#skyWrap'), ground: $('#groundWrap'), setStars: (a, b, c) => (sky.intro.stars = [a, b, c]) },
     introKind
-  );
+  ).then(() => {
+    overlay.remove();
+  });
   if (resolved === 'home') {
     await reveal;
     await enterHome(true);
@@ -902,20 +915,110 @@ window.setInterval(() => {
   }
 }, 15_000);
 
+/** Uygulamadan çıkıp tekrar girildiğinde (arka plandan dönüş) logo ekranı olmadan doğrudan sinematik giriş animasyonu oynat. */
+let lastResumeIntroAt = 0;
+
+function playResumeIntro() {
+  const nowTs = Date.now();
+  if (nowTs - lastResumeIntroAt < 3500) return;
+  lastResumeIntroAt = nowTs;
+
+  app.querySelector('.resume-intro-overlay')?.remove();
+  const overlay = h(`<div class="layer resume-intro-overlay" style="background:#05070d;z-index:90;pointer-events:none"></div>`);
+  app.appendChild(overlay);
+  sky.intro.stars = [0, 0, 0];
+  engine.busy(3800);
+
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const kind: 'full' | 'short' = reduced ? 'short' : 'full';
+  const fgEl = $('#fgWrap');
+  fgEl.classList.add('pre');
+  fgEl.animate([{ transform: 'translate3d(0,90px,0)' }, { transform: 'none' }], {
+    duration: kind === 'short' ? 1260 : 2800,
+    easing: 'cubic-bezier(.25,.1,.12,1)',
+  });
+
+  const sorted = [...state.stars].sort((a, b) => a.createdAt - b.createdAt);
+  sorted.forEach((t) => (t.visible = false));
+
+  if (core.homeEl?.isConnected) {
+    const top = [$('.counter', core.homeEl), $('.top-r', core.homeEl)];
+    const dock = $('.dock', core.homeEl);
+    const flora = $('.cnum', core.homeEl);
+    stagger(top, { y: -8, gap: 90, dur: 700, delay: reduced ? 350 : 1350 });
+    drawLily(flora);
+    dock.animate(
+      [{ opacity: 0, transform: 'translate(-50%,16px)' }, { opacity: 1, transform: 'translate(-50%,0)' }],
+      { duration: 700, delay: reduced ? 450 : 1550, easing: 'cubic-bezier(.22,.8,.24,1)', fill: 'backwards' }
+    );
+  }
+
+  window.setTimeout(() => {
+    fgEl.classList.remove('pre');
+    [...document.querySelectorAll('#fgWrap .jar.mine')].forEach((j) =>
+      (j as HTMLElement).animate([{ opacity: 0 }, { opacity: 1 }], { duration: 1200, easing: 'ease-out', fill: 'backwards' })
+    );
+    sorted.forEach((t, i) =>
+      window.setTimeout(() => {
+        if (t.visible) return;
+        const pos = computeStarScreenPos(t);
+        fx.land(pos, { now: performance.now() - 650, tint: PEOPLE[t.from].color, onSettle: () => (t.visible = true) });
+        engine.busy(1200);
+      }, i * 80)
+    );
+    if (inHome && !document.hidden) showGreeting();
+  }, reduced ? 450 : 1350);
+
+  void playIntro(
+    { overlay, sky: $('#skyWrap'), ground: $('#groundWrap'), setStars: (a, b, c) => (sky.intro.stars = [a, b, c]) },
+    kind
+  ).then(() => {
+    overlay.remove();
+    fgEl.classList.remove('pre');
+    sorted.forEach((t) => (t.visible = true));
+  });
+}
+
 let hiddenAt = 0;
+
+function handleReturnToForeground(awayMs: number) {
+  void syncOfflineAndOutbox();
+  if (inHome && awayMs >= BACKGROUND_LOCK_MS && state.settings.faceId && hasBiometric()) {
+    inHome = false;
+    runLock(app, () => {
+      inHome = true;
+      playResumeIntro();
+    });
+    return;
+  }
+  const busyModal = Boolean(app.querySelector('.compose-sheet, .board, .watch, .star-sheet, .auth, .page, .cdpage, .sheet'));
+  if (inHome && !busyModal && awayMs >= 800) {
+    playResumeIntro();
+  }
+}
+
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     hiddenAt = Date.now();
     oceanDwell = 0;
   } else {
-    void syncOfflineAndOutbox();
-    if (inHome && hiddenAt && Date.now() - hiddenAt >= BACKGROUND_LOCK_MS && state.settings.faceId && hasBiometric()) {
-      hiddenAt = 0;
-      inHome = false;
-      runLock(app, () => {
-        inHome = true;
-      });
-    }
+    const awayMs = hiddenAt ? Date.now() - hiddenAt : 0;
+    hiddenAt = 0;
+    lastAliveAt = Date.now();
+    handleReturnToForeground(awayMs);
+  }
+});
+
+window.addEventListener('pagehide', () => {
+  if (!hiddenAt) hiddenAt = Date.now();
+});
+
+window.addEventListener('pageshow', (ev) => {
+  if (ev.persisted || hiddenAt) {
+    const awayMs = hiddenAt ? Date.now() - hiddenAt : 1500;
+    hiddenAt = 0;
+    lastAliveAt = Date.now();
+    handleReturnToForeground(awayMs);
   }
 });
 

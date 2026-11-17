@@ -273,21 +273,32 @@ for (const t of iconTargets) {
   console.log(`Generated icon ${t.name} (${png.length} bytes)`);
 }
 
+// Eski splash-*.png dosyalarını temizle (iOS / tarayıcı eski logolu görseli önbellekten sunmasın)
+for (const f of fs.readdirSync(SPLASH_DIR)) {
+  fs.unlinkSync(path.join(SPLASH_DIR, f));
+}
+
 const splashTargets = [
-  [750, 1334],
-  [1125, 2436],
-  [828, 1792],
-  [1242, 2688],
-  [1170, 2532],
-  [1284, 2778],
-  [1179, 2556],
-  [1290, 2796],
-  [1206, 2622],
-  [1320, 2868],
+  [640, 1136],   // 320x568 @2 (SE1 / Display Zoom)
+  [750, 1334],   // 375x667 @2 (SE2/SE3/8)
+  [828, 1792],   // 414x896 @2 (XR/11)
+  [960, 2079],   // 320x693 @3 (14 Pro/15/16 Display Zoom)
+  [1080, 2340],  // 360x780 @3 (12 mini/13 mini & Display Zoom)
+  [1125, 2436],  // 375x812 @3 (X/XS/11 Pro & Pro Max Display Zoom)
+  [1152, 2496],  // 384x832 @3 (16 Pro/Pro Max Display Zoom)
+  [1170, 2532],  // 390x844 @3 (12/13/14/16e)
+  [1179, 2556],  // 393x852 @3 (14 Pro/15/15 Pro/16)
+  [1206, 2622],  // 402x874 @3 (16 Pro)
+  [1242, 2208],  // 414x736 @3 (8 Plus)
+  [1242, 2688],  // 414x896 @3 (XS Max/11 Pro Max)
+  [1260, 2736],  // 420x912 @3 (iPhone Air)
+  [1284, 2778],  // 428x926 @3 (12 Pro Max/13 Pro Max/14 Plus)
+  [1290, 2796],  // 430x932 @3 (14 Pro Max/15 Plus/15 Pro Max/16 Plus)
+  [1320, 2868],  // 440x956 @3 (16 Pro Max)
 ];
 
 for (const [w, h] of splashTargets) {
-  const name = `splash-${w}x${h}.png`;
+  const name = `dark-${w}x${h}-v16.png`;
   const png = renderSplash(w, h);
   fs.writeFileSync(path.join(SPLASH_DIR, name), png);
   console.log(`Generated splash ${name} (${png.length} bytes)`);
