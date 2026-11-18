@@ -34,7 +34,7 @@ const openStar = (st: Star) => lazyPages().then((m) => m.openStar(st));
 const openArchive = () => void lazyPages().then((m) => m.openArchive());
 const openSettings = () => void lazyPages().then((m) => m.openSettings());
 const openCountdown = () => void lazyPages().then((m) => m.openCountdown());
-setTimeout(() => void lazyPages(), 4000); // boşta önceden ısıt
+setTimeout(() => void lazyPages(), 400); // hemen önceden ısıt
 import { runAuth, runLock, applyPersona } from './auth';
 import { I } from './icons';
 import { registerServiceWorker } from '../lib/pwa';
@@ -723,13 +723,14 @@ addEventListener('pointerup', (e) => {
 addEventListener('pointercancel', () => { drag = null; });
 
 function tapSky(e: PointerEvent) {
+  if (app.querySelector('.sheet,.page,.board,.watch,.auth,.cdpage')) return;
   const r = app.getBoundingClientRect();
   const tx = e.clientX - r.left, ty = e.clientY - r.top;
   if (ty > geom.horizonY && ty < beach.shoreY && ocean.start(performance.now(), core.scrollX)) {
     engine.busy(1000);
     return;
   }
-  let best: Star | null = null, bd = 30;
+  let best: Star | null = null, bd = 34;
   let bestPos = { x: 0, y: 0 };
   for (const t of state.stars) {
     if (!t.visible) continue;
@@ -740,8 +741,7 @@ function tapSky(e: PointerEvent) {
   if (best) {
     fx.land(bestPos, { now: performance.now() - 700, tint: PEOPLE[best.from].color });
     engine.busy(800);
-    const chosen = best;
-    setTimeout(() => core.openStar(chosen), 120);
+    core.openStar(best);
   }
 }
 
@@ -1022,6 +1022,7 @@ async function enterHome(preloaded = false, fadeDelay = 150) {
   core.refreshHome();
   ensureRealtimeStarted();
   void syncOfflineAndOutbox();
+  void lazyPages().then((m) => m.warmStarsInBackground(state.stars));
 
   const sp = new URLSearchParams(location.search);
   const targetStarId = sp.get('star');

@@ -39,6 +39,7 @@ const LOCAL_SECRET_PREFIX = 'gokyuzu.secret.v5.';
 const STARS_CACHE_PREFIX = 'gokyuzu.starsCache.v1.';
 const localMediaMem: Record<string, string> = {};
 const localSecretMem: Record<string, string> = {};
+const secretRowCache = new Map<string, { payload: string; mediaPath: string | null }>();
 
 let serverClockOffsetMs = 0;
 let lastFetchFailed = false;
@@ -84,6 +85,7 @@ export function lastStarsFetchError(): boolean {
 export function clearStarsMetadataCache(): void {
   store.del(`${STARS_CACHE_PREFIX}hamham`);
   store.del(`${STARS_CACHE_PREFIX}beto`);
+  secretRowCache.clear();
 }
 
 export interface PreparedStarEnvelope {
@@ -745,6 +747,7 @@ export async function uploadPreparedStar(env: PreparedStarEnvelope): Promise<Sta
     const whoMap = await getUserWhoMap();
     const star = mapDbRow(inserted as DbStarRow, whoMap, env.from);
     if (env.kind === 'draw') star.kind = 'draw';
+    secretRowCache.set(env.id, { payload: env.sealedPayload, mediaPath: storagePath });
 
     void triggerPushNotification({
       sender: env.from,
@@ -777,6 +780,31 @@ export async function createEncryptedStar(params: {
   return uploadPreparedStar(env);
 }
 
+/** Gökyüzündeki yıldızların şifreli içeriklerini tek sorguda arka planda önbelleğe alır (yıldıza dokununca 0 ms'de anında açılır). */
+export async function prefetchStarSecrets(starIds: string[]): Promise<void> {
+  if (!isSupabaseConfigured || !starIds.length) return;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+  const missing = starIds.filter((id) => id && !secretRowCache.has(id));
+  if (!missing.length) return;
+  const sb = getSupabase();
+  if (!sb) return;
+  try {
+    const { data, error } = await sb
+      .from('star_secrets')
+      .select('star_id, payload, media_path')
+      .in('star_id', missing);
+    if (!error && Array.isArray(data)) {
+      for (const row of data as { star_id: string; payload: string; media_path: string | null }[]) {
+        if (row.star_id && row.payload) {
+          secretRowCache.set(row.star_id, { payload: row.payload, mediaPath: row.media_path });
+        }
+      }
+    }
+  } catch {
+    // Arka plan ısıtma hatası yok sayılır
+  }
+}
+
 async function fetchStarSecret(
   star: StarRecord,
   caller?: Who
@@ -789,6 +817,9 @@ async function fetchStarSecret(
     if (!payload) return null;
     return { payload, mediaPath: star.hasMedia ? star.id : null };
   }
+
+  const cached = secretRowCache.get(star.id);
+  if (cached) return cached;
 
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     throw new Error('NETWORK');
@@ -808,7 +839,9 @@ async function fetchStarSecret(
     }
     if (!data) return null;
     const row = data as { payload: string; media_path: string | null };
-    return { payload: row.payload, mediaPath: row.media_path };
+    const result = { payload: row.payload, mediaPath: row.media_path };
+    secretRowCache.set(star.id, result);
+    return result;
   } catch (err) {
     if (err instanceof Error && err.message === 'NETWORK') throw err;
     if (isOfflineLikeError(err)) throw new Error('NETWORK');

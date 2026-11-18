@@ -1,6 +1,6 @@
 // Yıldız açma: zarf + mühür seremonisi, mektup türleri (yazı, polaroid fotoğraf, gerçek ses oynatıcı, çizim yeniden oynatma),
 // kilitli yıldız geri sayımı ve kendi gönderdiğin yıldız görünümü.
-import { h, $, $$, openSheet, popPage, toast, reduced } from './ui';
+import { h, $, $$, openSheet, popPage, toast, reduced, Sheet } from './ui';
 import { I } from './icons';
 import { state, PEOPLE, Star, Who, fmtDate, untilParts, toDbWho } from './state';
 import { core } from './core';
@@ -12,6 +12,7 @@ import {
   downloadAndDecryptMedia,
   markStarOpened,
   getServerNowMs,
+  prefetchStarSecrets,
 } from '../lib/stars';
 
 /* ===================== mühür ve zarf ===================== */
@@ -118,18 +119,93 @@ async function ensureDecrypted(st: Star): Promise<'ok' | 'locked' | 'network'> {
   }
 }
 
+function isStarReadyInMemory(st: Star): boolean {
+  if (!st.raw) return true;
+  return (
+    (st.kind === 'text' && st.text !== undefined) ||
+    (st.kind === 'photo' && st.photo !== undefined) ||
+    (st.kind === 'voice' && st.voiceUrl !== undefined) ||
+    (st.kind === 'draw' && st.draw !== undefined)
+  );
+}
+
+/** Gökyüzündeki yıldızları arka planda tek sorguyla ısıtır; kullanıcı yıldıza dokunduğunda ağ beklemesi olmadan 0 ms'de açılır. */
+export async function warmStarsInBackground(stars: Star[]): Promise<void> {
+  const now = getServerNowMs();
+  const candidates = stars.filter(
+    (s) =>
+      s.raw &&
+      !(s.unlockAt && s.unlockAt > now) &&
+      (s.from !== state.me || s.kind === 'draw')
+  );
+  if (!candidates.length) return;
+  await prefetchStarSecrets(candidates.map((s) => s.id));
+  for (const s of candidates) {
+    if (!isStarReadyInMemory(s)) {
+      await ensureDecrypted(s).catch(() => undefined);
+    }
+  }
+}
+
 /* ===================== yıldız açma ===================== */
+let activeStarSheet: Sheet | null = null;
+let openStarSeq = 0;
+
 export async function openStar(st: Star, onOpened?: () => void) {
+  const mySeq = ++openStarSeq;
+  if (activeStarSheet) {
+    const prev = activeStarSheet;
+    activeStarSheet = null;
+    void prev.close(true);
+  }
+
   const fromP = PEOPLE[st.from];
   const mine = st.from === state.me;
   const locked = Boolean(st.unlockAt && st.unlockAt > getServerNowMs());
   let cleanupTimer = () => {};
   let activeAudio: HTMLAudioElement | null = null;
-  let content: HTMLElement;
 
-  if (mine && st.kind === 'draw' && !locked && st.collab === undefined) {
-    await ensureDecrypted(st);
+  const host = h(`<div></div>`);
+  const sheet = openSheet(host, {
+    cls: 'star-sheet',
+    onClose: () => {
+      if (activeStarSheet === sheet) activeStarSheet = null;
+      cleanupTimer();
+      if (activeAudio) {
+        activeAudio.pause();
+        activeAudio = null;
+      }
+    },
+  });
+  activeStarSheet = sheet;
+
+  const needsAsync =
+    !locked &&
+    Boolean(st.raw) &&
+    !isStarReadyInMemory(st) &&
+    (!mine || (st.kind === 'draw' && st.collab === undefined));
+
+  if (needsAsync) {
+    host.innerHTML = `<div class="locked" style="padding:36px 16px">
+      <div class="lk" style="color:${fromP.color}">${I.starFill(26)}</div>
+      <div class="h2">${fromP.from}</div>
+      <p class="small" style="margin:8px 0 0">Yıldız açılıyor…</p>
+    </div>`;
+    const preStatus = await ensureDecrypted(st);
+    if (mySeq !== openStarSeq || !host.isConnected) return;
+    if (preStatus === 'network' && !mine) {
+      void sheet.close(true);
+      toast('Bağlantı yok · yıldızı açmak için internet gerekli', I.cloud(14), 3200);
+      return;
+    }
+    if (preStatus === 'locked' && !mine) {
+      void sheet.close(true);
+      toast('Bu yıldız henüz kilitli', I.lock(14), 2600);
+      return;
+    }
   }
+
+  let content: HTMLElement;
 
   if (mine && !(st.kind === 'draw' && st.collab)) {
     content = h(`<div class="locked">
@@ -166,11 +242,14 @@ export async function openStar(st: Star, onOpened?: () => void) {
     cleanupTimer = () => clearInterval(iv);
   } else {
     const status = await ensureDecrypted(st);
+    if (mySeq !== openStarSeq || !host.isConnected) return;
     if (status === 'network') {
+      void sheet.close(true);
       toast('Bağlantı yok · yıldızı açmak için internet gerekli', I.cloud(14), 3200);
       return;
     }
     if (status === 'locked') {
+      void sheet.close(true);
       toast('Bu yıldız henüz kilitli', I.lock(14), 2600);
       return;
     }
@@ -298,16 +377,8 @@ export async function openStar(st: Star, onOpened?: () => void) {
     });
   }
 
-  const sheet = openSheet(content, {
-    cls: 'star-sheet',
-    onClose: () => {
-      cleanupTimer();
-      if (activeAudio) {
-        activeAudio.pause();
-        activeAudio = null;
-      }
-    },
-  });
+  host.innerHTML = '';
+  host.appendChild(content);
 
   const letter = content.querySelector('.letter') as HTMLElement | null;
   const env = content.querySelector('.env') as HTMLElement | null;
