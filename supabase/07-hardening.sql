@@ -60,6 +60,25 @@ alter policy "media_delete_allowed" on storage.objects to authenticated;
 -- 5) Storage: bucket private
 update storage.buckets set public = false where id = 'media';
 
+-- 5b) Özel Realtime kanalları ('pair:live' ve 'pair:draw'): yalnızca iki izinli profil
+alter table realtime.messages enable row level security;
+drop policy if exists "pair_realtime_select_allowed" on realtime.messages;
+create policy "pair_realtime_select_allowed"
+  on realtime.messages for select
+  to authenticated
+  using (
+    realtime.topic() in ('pair:live', 'pair:draw')
+    and public.is_allowed_user()
+  );
+drop policy if exists "pair_realtime_insert_allowed" on realtime.messages;
+create policy "pair_realtime_insert_allowed"
+  on realtime.messages for insert
+  to authenticated
+  with check (
+    realtime.topic() in ('pair:live', 'pair:draw')
+    and public.is_allowed_user()
+  );
+
 -- 6) Kullanılmayan/geniş politika kalmadığından emin ol: `using (true)` olanlar listelenir (BOŞ dönmeli)
 select schemaname, tablename, policyname, roles, qual, with_check
 from pg_policies
@@ -78,3 +97,4 @@ select table_schema, table_name, privilege_type from information_schema.role_tab
 where grantee = 'anon' and table_schema = 'public';
 -- e) cron işinde gerçek service_role yazılı mı? (cron.job yalnızca postgres rolüne açık; yine de 'SERVICE_ROLE_BURAYA' dışı bir anahtar kullanıldıysa vault/secret'a taşı)
 select jobname, schedule, left(command, 60) as command_head from cron.job;
+

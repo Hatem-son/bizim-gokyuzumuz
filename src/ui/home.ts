@@ -111,6 +111,10 @@ export function buildForeground(P: number, H: number, shoreY: number, x0: number
   };
   const L1 = lantern(me, 193, 113, 64, 'mine');
   const L2 = lantern(pa, 145, 128, 92, 'partner');
+  if (partnerIsOnline) {
+    L2.classList.add('on');
+    L2.querySelector('.jar')?.classList.add('on');
+  }
   (main.firstElementChild as HTMLElement).style.position = 'relative';
   main.firstElementChild!.append(L2, L1);
   const mine = L1.querySelector('.jar') as HTMLElement, theirs = L2.querySelector('.jar') as HTMLElement;
@@ -140,7 +144,9 @@ export function placeForeground(fg: HTMLElement, g: { W: number; panoW: number }
   }
 }
 
+let partnerIsOnline = false;
 export const partnerOnline = (on: boolean) => {
+  partnerIsOnline = on;
   document.querySelector('.jar.partner')?.classList.toggle('on', on);
   document.querySelector('.lantern.partner')?.classList.toggle('on', on);
 };
