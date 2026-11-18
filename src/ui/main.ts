@@ -62,31 +62,19 @@ window.addEventListener('scroll', () => {
   if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
 });
 
-// iOS Ana Ekran PWA'da (black-translucent) fixed inset:0 ve innerHeight alt safe-area (34px) kadar kısa döner →
-// screen.height + calc(100% + env(safe-area-inset-bottom)) ile telefonun fiziksel en alt pikseline kadar kilitlenir.
-const lvhProbe = document.createElement('div');
-lvhProbe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:100lvh;pointer-events:none;visibility:hidden';
-const safeProbe = document.createElement('div');
-safeProbe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:calc(100% + env(safe-area-inset-bottom, 0px));pointer-events:none;visibility:hidden';
-document.body.append(lvhProbe, safeProbe);
-
+const standalone = () =>
+  (navigator as Navigator & { standalone?: boolean }).standalone === true ||
+  matchMedia('(display-mode: standalone)').matches;
 function fitViewport() {
-  const standalone = matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
-  const innerH = Math.round(window.innerHeight || 0);
-  const clientH = Math.round(document.documentElement.clientHeight || 0);
-  const lvhH = Math.round(lvhProbe.offsetHeight || 0);
-  const safeH = Math.round(safeProbe.offsetHeight || 0);
-  const rawScreenH = Math.round(
-    window.innerWidth > innerH && window.screen ? Math.min(window.screen.width, window.screen.height) : window.screen?.height || 0
-  );
-  const screenH = rawScreenH >= innerH && rawScreenH - innerH < 220 ? rawScreenH : 0;
-  const fullH = standalone ? Math.max(innerH, clientH, lvhH, safeH, screenH) : Math.max(innerH, clientH, lvhH);
-  const uiB = standalone ? 0 : Math.max(0, fullH - innerH);
-  document.documentElement.style.setProperty('--app-h', `${fullH}px`);
-  document.documentElement.style.setProperty('--ui-b', `${uiB}px`);
-  return { fullH, visH: standalone ? fullH : innerH || fullH };
+  if (document.documentElement.classList.contains('kb-open')) return;
+  const h = standalone()
+    ? Math.max(window.innerHeight, window.screen.width > window.screen.height ? 0 : window.screen.height)
+    : window.innerHeight;
+  document.documentElement.style.setProperty('--app-h', Math.round(h) + 'px');
 }
-const vp0 = fitViewport();
+fitViewport();
+addEventListener('resize', fitViewport);
+addEventListener('pageshow', fitViewport);
 addEventListener('orientationchange', () =>
   setTimeout(() => {
     fitViewport();
@@ -98,14 +86,24 @@ initKeyboard({
   hideWhenOpen: () => [...app.querySelectorAll<HTMLElement>('.dock, .gk-cons, .gk-edge, .gk-hint-txt')],
 });
 
-// GERÇEK ekran boyutu: tuvaller telefonun fiziksel en altına kadar kesintisiz iner (+96px alt kumsal tamponu)
-const W = Math.max(320, Math.round(app.clientWidth || window.innerWidth || 390));
-const H = Math.max(520, Math.round(vp0.fullH || app.clientHeight || window.innerHeight || 844));
-const HORIZON = Math.round(Math.max(480, vp0.visH) * 0.71);
-
+// GERÇEK ekran boyutu: tuvaller hep tüm ekranı kaplar (alt kısım eksik kalmaz)
+const W = Math.round(app.clientWidth || 390);
+const H = Math.round(
+  standalone()
+    ? Math.max(
+        app.clientHeight || 0,
+        window.innerHeight || 0,
+        window.screen.width > window.screen.height ? 0 : window.screen.height || 0
+      )
+    : app.clientHeight || 844
+);
+const HORIZON = Math.round(H * 0.71);
 const st = document.createElement('style');
 st.textContent = ART_CSS + PALM_CSS + LILY_CSS + '@keyframes spin{to{transform:rotate(360deg)}}';
 document.head.appendChild(st);
+fitViewport();
+addEventListener('resize', fitViewport);
+addEventListener('pageshow', fitViewport);
 initUI(app);
 
 // ---------- katmanlar ----------
@@ -1231,19 +1229,22 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-// Ekran boyutu önemli ölçüde değişirse (döndürme vb.; klavye hariç) sahneyi yeniden kur
+// Ekran boyutu önemli ölçüde değişirse (iOS standalone 54pt geç genişleme veya döndürme; klavye hariç) sahneyi yeniden kur
 let resizeTimer = 0;
-window.addEventListener('resize', () => {
+const onViewportChange = () => {
+  fitViewport();
   clearTimeout(resizeTimer);
   resizeTimer = window.setTimeout(() => {
     if (document.documentElement.classList.contains('kb-open')) return;
     const nw = app.clientWidth;
     const nh = app.clientHeight;
-    if (nw > 0 && nh > 0 && (Math.abs(nw - W) > 40 || (Math.abs(nh - H) > 160 && nh > H))) {
+    if (nw > 0 && nh > 0 && (Math.abs(nw - W) > 24 || (Math.abs(nh - H) > 24 && nh > H))) {
       location.reload();
     }
-  }, 400);
-});
+  }, 250);
+};
+window.addEventListener('resize', onViewportChange);
+window.addEventListener('pageshow', onViewportChange);
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('message', (ev) => {

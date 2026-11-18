@@ -58,11 +58,13 @@ svg { display: block; }
 /* ---------- tam ekran PWA / Safari uygulama çerçevesi ---------- */
 #app {
   position: fixed;
-  top: 0;
   left: 0;
   right: 0;
-  height: var(--app-h, calc(100% + env(safe-area-inset-bottom, 0px)));
-  min-height: calc(100% + env(safe-area-inset-bottom, 0px));
+  top: 0;
+  bottom: 0;
+  width: 100%;
+  height: var(--app-h, 100%);
+  min-height: 100%;
   overflow: hidden;
   overflow: clip;
   background: var(--ground-bot, var(--boot-bot, #070a16));
@@ -73,8 +75,20 @@ svg { display: block; }
   line-height: 1.4;
   letter-spacing: -.005em;
   --safe-t: env(safe-area-inset-top, 0px);
-  --safe-b: max(env(safe-area-inset-bottom, 0px), var(--ui-b, 0px));
+  --safe-b: env(safe-area-inset-bottom, 0px);
   --island-top: 11px;
+}
+@media (display-mode: standalone) {
+  #app {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: auto;
+    height: var(--app-h, auto);
+    min-height: 100%;
+  }
 }
 #app input, #app textarea { -webkit-user-select: text; user-select: text; touch-action: manipulation; }
 .layer { position: absolute; inset: 0; }
