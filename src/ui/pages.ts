@@ -64,27 +64,46 @@ async function ensureDecrypted(st: Star): Promise<'ok' | 'locked' | 'network'> {
 
   try {
     const payload = await decryptStarPayload(st.raw, toDbWho(state.me));
-    if (payload.subkind === 'draw' || payload.mime === 'application/gzip' || payload.collab) {
+    // HOTFIX 23: Alıcıda yıldız türü (kind) alan önceliğine göre değil, doğrudan kind'a göre belirlenir ve çizilir.
+    if (
+      st.raw.kind === 'draw' ||
+      (st.raw.kind === 'note' && st.raw.hasMedia && payload.subkind === 'draw')
+    ) {
       st.kind = 'draw';
       st.raw.kind = 'draw';
+    } else if (st.raw.kind === 'photo') {
+      st.kind = 'photo';
+    } else if (st.raw.kind === 'voice') {
+      st.kind = 'voice';
+    } else {
+      st.kind = 'text';
     }
-    if (payload.collab) {
-      st.collab = true;
-    }
-    st.text = payload.text || (st.raw.kind === 'miss' ? 'Seni düşündüm.' : '');
-    st.caption = payload.caption;
-    if (payload.dur) st.voiceSec = payload.dur;
-    if (payload.peaks) st.voicePeaks = payload.peaks;
 
-    if (st.raw.hasMedia || payload.inlineMedia) {
-      const bytes = await downloadAndDecryptMedia(st.raw, toDbWho(state.me));
-      if (bytes) {
-        if (st.kind === 'photo') {
+    if (st.kind === 'text') {
+      st.text = payload.text || (st.raw.kind === 'miss' ? 'Seni düşündüm.' : '');
+    } else if (st.kind === 'photo') {
+      st.caption = payload.caption;
+      if (st.raw.hasMedia || payload.inlineMedia) {
+        const bytes = await downloadAndDecryptMedia(st.raw, toDbWho(state.me));
+        if (bytes) {
           st.photo = URL.createObjectURL(new Blob([bytes], { type: payload.mime || 'image/jpeg' }));
-        } else if (st.kind === 'voice') {
+        }
+      }
+    } else if (st.kind === 'voice') {
+      if (payload.dur) st.voiceSec = payload.dur;
+      if (payload.peaks) st.voicePeaks = payload.peaks;
+      if (st.raw.hasMedia || payload.inlineMedia) {
+        const bytes = await downloadAndDecryptMedia(st.raw, toDbWho(state.me));
+        if (bytes) {
           const audioMime = detectAudioMime(bytes, payload.mime || 'audio/mp4');
           st.voiceUrl = URL.createObjectURL(new Blob([bytes], { type: audioMime }));
-        } else if (st.kind === 'draw') {
+        }
+      }
+    } else if (st.kind === 'draw') {
+      if (payload.collab) st.collab = true;
+      if (st.raw.hasMedia || payload.inlineMedia) {
+        const bytes = await downloadAndDecryptMedia(st.raw, toDbWho(state.me));
+        if (bytes) {
           st.draw = await core.decodeDrawing(bytes);
           if (!st.collab && Array.isArray(st.draw) && st.draw.some((s: any) => s?.by && s.by !== st.from)) {
             st.collab = true;

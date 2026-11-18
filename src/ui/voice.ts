@@ -1,5 +1,8 @@
-// HOTFIX 20 — Gerçek mikrofon ses kaydı (iPhone Safari AAC / audio/mp4 öncelikli, WebM/Opus yedekli).
-// KURAL: start() yalnızca kullanıcı dokunuşunun (click) içinden çağrılmalı; kutu kapanınca cleanup() mikrofonu hemen bırakır.
+// HOTFIX 20 & 23 — Gerçek mikrofon ses kaydı (iPhone Safari AAC / audio/mp4 öncelikli, WebM/Opus yedekli).
+// KURAL:
+// 1) start() yalnızca kullanıcı dokunuşunun (click) içinden çağrılmalı; kutu kapanınca cleanup() mikrofonu hemen bırakır.
+// 2) iPhone/iOS'ta kayıt sürerken AudioContext AÇILMAZ (iOS AVAudioSession'ı bozup kaydı sessiz/kısa bırakmaması için);
+//    dalga göstergesi simüle edilir ama MediaRecorder kaydı tamamen gerçektir.
 
 export interface RecordedVoice {
   bytes: Uint8Array<ArrayBuffer>;
@@ -8,6 +11,14 @@ export interface RecordedVoice {
   mime: string;
   dur: number;
   peaks: number[];
+}
+
+function isIOSDevice(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
 }
 
 export function detectAudioMime(bytes: Uint8Array, fallback = 'audio/mp4'): string {
@@ -62,6 +73,7 @@ export class VoiceRecorder {
   private peakHistory: number[] = [];
   private startedAt = 0;
   private chosenMime = 'audio/mp4';
+  private recordError: Error | null = null;
 
   async start(): Promise<void> {
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
@@ -81,13 +93,14 @@ export class VoiceRecorder {
     }
 
     const candidates = ['audio/mp4', 'audio/mp4;codecs=mp4a.40.2', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg'];
-    const supported = candidates.find((m) => {
-      try {
-        return typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(m);
-      } catch {
-        return false;
-      }
-    }) || '';
+    const supported =
+      candidates.find((m) => {
+        try {
+          return typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(m);
+        } catch {
+          return false;
+        }
+      }) || '';
 
     try {
       const opts: MediaRecorderOptions = { audioBitsPerSecond: 48_000 };
@@ -106,35 +119,55 @@ export class VoiceRecorder {
     this.chosenMime = rawMime.startsWith('audio/mp4') ? 'audio/mp4' : rawMime;
     this.chunks = [];
     this.peakHistory = [];
+    this.recordError = null;
+
     this.recorder.ondataavailable = (ev) => {
       if (ev.data && ev.data.size > 0) this.chunks.push(ev.data);
     };
+    this.recorder.onerror = (ev) => {
+      const errObj = (ev as unknown as { error?: Error })?.error;
+      this.recordError = errObj ? new Error(friendlyMicError(errObj)) : new Error('Ses kaydı sırasında hata oluştu.');
+    };
 
-    try {
-      const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (AC) {
-        this.audioCtx = new AC();
-        if (this.audioCtx.state === 'suspended') {
-          void this.audioCtx.resume().catch(() => undefined);
+    // HOTFIX 23: iPhone'da kayıt sürerken AudioContext açılmaz (iOS ses oturumunu bozup kaydı sessiz/çok kısa bırakabiliyor)
+    if (!isIOSDevice()) {
+      try {
+        const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (AC) {
+          this.audioCtx = new AC();
+          if (this.audioCtx.state === 'suspended') {
+            void this.audioCtx.resume().catch(() => undefined);
+          }
+          const src = this.audioCtx.createMediaStreamSource(this.stream);
+          this.analyser = this.audioCtx.createAnalyser();
+          this.analyser.fftSize = 128;
+          src.connect(this.analyser);
+          this.timeBuf = new Uint8Array(new ArrayBuffer(this.analyser.fftSize));
         }
-        const src = this.audioCtx.createMediaStreamSource(this.stream);
-        this.analyser = this.audioCtx.createAnalyser();
-        this.analyser.fftSize = 128;
-        src.connect(this.analyser);
-        this.timeBuf = new Uint8Array(new ArrayBuffer(this.analyser.fftSize));
+      } catch {
+        // Ses seviyesi ölçülemezse dalga simüle edilir, kayıt devam eder
       }
-    } catch {
-      // Ses seviyesi ölçülemezse kayıt yine de devam eder
     }
 
     this.startedAt = performance.now();
-    this.recorder.start(200);
+    try {
+      this.recorder.start(400);
+    } catch {
+      this.recorder.start();
+    }
   }
 
-  /** Canlı mikrofon dalga çubuğu seviyeleri (0..1 arası 30 değer). */
+  /** Canlı mikrofon dalga çubuğu seviyeleri (0..1 arası 30 değer). iOS'ta AudioContext açılmadığı için doğal dalga simüle edilir. */
   readBars(count = 30): number[] {
     if (!this.analyser || !this.timeBuf) {
-      return Array.from({ length: count }, (_, i) => 0.18 + 0.14 * Math.abs(Math.sin(performance.now() / 160 + i)));
+      const t = performance.now() / 150;
+      const simPeak = 0.28 + 0.52 * Math.abs(Math.sin(t * 0.7) * Math.cos(t * 0.43));
+      this.peakHistory.push(simPeak);
+      return Array.from({ length: count }, (_, i) => {
+        const w1 = Math.sin(t + i * 0.45);
+        const w2 = Math.cos(t * 1.3 - i * 0.28);
+        return Math.min(1, Math.max(0.16, 0.22 + 0.58 * Math.abs(w1 * 0.65 + w2 * 0.35)));
+      });
     }
     this.analyser.getByteTimeDomainData(this.timeBuf);
     let sum = 0;
@@ -166,23 +199,31 @@ export class VoiceRecorder {
   async stop(): Promise<RecordedVoice> {
     const rec = this.recorder;
     if (!rec) throw new Error('Kayıt aktif değil.');
-    const dur = Math.max(1, Math.round(this.elapsedSec()));
+    if (this.recordError) {
+      const err = this.recordError;
+      this.cleanup();
+      throw err;
+    }
+    const elapsed = this.elapsedSec();
+    const dur = Math.max(1, Math.round(elapsed));
 
     const rawBlob = await new Promise<Blob>((resolve, reject) => {
       const timer = window.setTimeout(() => {
         resolve(new Blob(this.chunks, { type: this.chosenMime }));
       }, 2500);
-      rec.onerror = () => {
+      rec.onerror = (ev) => {
         clearTimeout(timer);
-        reject(new Error('Ses kaydı sırasında hata oluştu.'));
+        const errObj = (ev as unknown as { error?: Error })?.error;
+        reject(errObj ? new Error(friendlyMicError(errObj)) : new Error('Ses kaydı sırasında hata oluştu.'));
       };
       rec.onstop = () => {
         clearTimeout(timer);
         resolve(new Blob(this.chunks, { type: this.chosenMime }));
       };
       try {
-        if (rec.state === 'recording') {
+        if (rec.state === 'recording' || rec.state === 'paused') {
           try {
+            // Safari son parçayı kaybetmesin diye durdurmadan önce requestData()
             rec.requestData();
           } catch {
             // Ignore
@@ -202,8 +243,8 @@ export class VoiceRecorder {
     this.cleanup();
 
     const ab = await rawBlob.arrayBuffer();
-    if (ab.byteLength < 800) {
-      throw new Error('Ses alınamadı, tekrar dene');
+    if (ab.byteLength < 800 || elapsed < 0.45) {
+      throw new Error('Ses alınamadı (kayıt çok kısa veya mikrofon sesi gelmedi), tekrar dene.');
     }
 
     const bytes = new Uint8Array(new ArrayBuffer(ab.byteLength));

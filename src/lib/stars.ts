@@ -420,6 +420,75 @@ export async function fetchAllStars(me: Who): Promise<StarRecord[]> {
   }
 }
 
+/** HOTFIX 23: Gönderilecek yıldızın türüne (kind) göre alanları sıkı doğrular ve yabancı sekme alanlarını reddeder. */
+function buildStrictKindPayload(
+  kind: StarKind,
+  data: StarPayloadData,
+  hasMediaBytes: boolean,
+  sealedMedia: string | null
+): StarPayloadData {
+  const inline = sealedMedia && sealedMedia.length <= 1_400_000 ? { inlineMedia: sealedMedia } : {};
+  if (kind === 'note' || kind === 'text' || kind === 'miss') {
+    if (
+      hasMediaBytes ||
+      data.inlineMedia ||
+      data.caption !== undefined ||
+      data.dur !== undefined ||
+      data.peaks !== undefined ||
+      data.collab !== undefined
+    ) {
+      throw new Error('Yazı yıldızında fotoğraf, ses veya çizim alanı bulunamaz.');
+    }
+    const text = (data.text || '').trim();
+    if (kind !== 'miss' && !text) {
+      throw new Error('Yazı yıldızı boş olamaz.');
+    }
+    return {
+      text,
+      ...(kind === 'miss' && data.held ? { held: data.held } : {}),
+      subkind: kind === 'miss' ? 'miss' : 'text',
+    };
+  }
+  if (kind === 'photo') {
+    if (!hasMediaBytes || (data.text && data.text.trim()) || data.dur !== undefined || data.peaks !== undefined || data.collab !== undefined) {
+      throw new Error('Fotoğraf yıldızında geçersiz alan veya eksik görsel.');
+    }
+    return {
+      text: '',
+      ...(data.caption?.trim() ? { caption: data.caption.trim() } : {}),
+      mime: data.mime || 'image/jpeg',
+      subkind: 'photo',
+      ...inline,
+    };
+  }
+  if (kind === 'voice') {
+    if (!hasMediaBytes || (data.text && data.text.trim()) || data.caption !== undefined || data.collab !== undefined) {
+      throw new Error('Ses yıldızında geçersiz alan veya eksik ses verisi.');
+    }
+    return {
+      text: '',
+      mime: data.mime || 'audio/mp4',
+      dur: Math.max(1, Number(data.dur) || 1),
+      ...(Array.isArray(data.peaks) && data.peaks.length ? { peaks: data.peaks } : {}),
+      subkind: 'voice',
+      ...inline,
+    };
+  }
+  if (kind === 'draw') {
+    if (!hasMediaBytes || (data.text && data.text.trim()) || data.caption !== undefined || data.dur !== undefined || data.peaks !== undefined) {
+      throw new Error('Çizim yıldızında geçersiz alan veya eksik çizim verisi.');
+    }
+    return {
+      text: '',
+      mime: 'application/gzip',
+      subkind: 'draw',
+      ...(data.collab ? { collab: true } : {}),
+      ...inline,
+    };
+  }
+  throw new Error('Geçersiz yıldız türü.');
+}
+
 export async function prepareEncryptedStar(params: {
   id?: string;
   from: Who;
@@ -431,20 +500,17 @@ export async function prepareEncryptedStar(params: {
   unlockAt?: string | null;
 }): Promise<PreparedStarEnvelope> {
   const id = params.id ? sessionToStarUuid(params.id) : generateId();
-  const textLen = (params.data.text || '').length;
+  const isTextLike = params.kind === 'note' || params.kind === 'text' || params.kind === 'miss';
+  const hasMediaBytes = Boolean(params.mediaBytes && params.mediaBytes.byteLength > 0);
+  const sealedMedia = !isTextLike && hasMediaBytes && params.mediaBytes ? await sealBytes(params.mediaBytes) : null;
+  const payloadWithInline = buildStrictKindPayload(params.kind, params.data, hasMediaBytes, sealedMedia);
+  const textLen = (payloadWithInline.text || '').length;
   const size =
     params.kind === 'miss'
       ? +Math.min(10.5, 6.5 + (Math.min(3, params.data.held || 0) / 3) * 4).toFixed(1)
-      : params.kind === 'note'
+      : params.kind === 'note' || params.kind === 'text'
         ? +Math.min(10.5, 7.5 + textLen / 120).toFixed(1)
         : 9;
-
-  const sealedMedia = params.mediaBytes ? await sealBytes(params.mediaBytes) : null;
-  const payloadWithInline: StarPayloadData = {
-    ...params.data,
-    subkind: params.kind,
-    ...(sealedMedia && sealedMedia.length <= 1_400_000 ? { inlineMedia: sealedMedia } : {}),
-  };
   const sealedPayload = await sealJSON(payloadWithInline);
 
   return {
@@ -464,6 +530,12 @@ export async function prepareEncryptedStar(params: {
 }
 
 export async function uploadPreparedStar(env: PreparedStarEnvelope): Promise<StarRecord> {
+  if ((env.kind === 'note' || env.kind === 'text' || env.kind === 'miss') && (env.hasMedia || env.sealedMedia)) {
+    throw new Error('Yazı yıldızında medya verisi gönderilemez.');
+  }
+  if ((env.kind === 'photo' || env.kind === 'voice' || env.kind === 'draw') && (!env.hasMedia || !env.sealedMedia)) {
+    throw new Error('Medya yıldızında içerik verisi eksik.');
+  }
   const sb = getSupabase();
   if (!sb || !isSupabaseConfigured) {
     const localStar: StarRecord = {

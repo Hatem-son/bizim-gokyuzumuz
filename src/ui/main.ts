@@ -941,15 +941,21 @@ function ensureRealtimeStarted() {
         if (!stNew.unlockAt || stNew.unlockAt <= getServerNowMs()) {
           void decryptStarPayload(rec, dbMe)
             .then((pl) => {
-              if (pl.subkind === 'draw' || pl.mime === 'application/gzip' || pl.collab) {
+              if (rec.kind === 'draw' || (rec.kind === 'note' && rec.hasMedia && pl.subkind === 'draw')) {
                 stNew.kind = 'draw';
                 rec.kind = 'draw';
+                if (pl.collab) stNew.collab = true;
+              } else if (rec.kind === 'photo') {
+                stNew.kind = 'photo';
+                stNew.caption = pl.caption;
+              } else if (rec.kind === 'voice') {
+                stNew.kind = 'voice';
+                if (pl.dur) stNew.voiceSec = pl.dur;
+                if (pl.peaks) stNew.voicePeaks = pl.peaks;
+              } else {
+                stNew.kind = 'text';
+                stNew.text = pl.text || undefined;
               }
-              if (pl.collab) stNew.collab = true;
-              stNew.text = pl.text || undefined;
-              stNew.caption = pl.caption;
-              if (pl.dur) stNew.voiceSec = pl.dur;
-              if (pl.peaks) stNew.voicePeaks = pl.peaks;
             })
             .catch(() => undefined);
         }

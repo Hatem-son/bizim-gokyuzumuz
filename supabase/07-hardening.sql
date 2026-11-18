@@ -79,7 +79,7 @@ create policy "pair_realtime_insert_allowed"
     and public.is_allowed_user()
   );
 
--- 5c) public.stars.kind kısıtına 'draw' ve 'text' türlerini ekle (06-draw-kind.sql)
+-- 5c) public.stars.kind kısıtına 'draw' ve 'text' türlerini ekle + kind ile has_media tutarlılığını zorla (HOTFIX 23)
 do $$
 declare
   r record;
@@ -95,7 +95,11 @@ begin
   end loop;
   alter table public.stars
     add constraint stars_kind_check
-    check (kind in ('note', 'miss', 'text', 'photo', 'voice', 'draw'));
+    check (
+      kind in ('note', 'miss', 'text', 'photo', 'voice', 'draw')
+      and (kind not in ('text', 'miss') or has_media = false)
+      and (kind not in ('photo', 'voice', 'draw') or has_media = true)
+    );
 end $$;
 
 -- 6) Kullanılmayan/geniş politika kalmadığından emin ol: `using (true)` olanlar listelenir (BOŞ dönmeli)

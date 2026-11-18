@@ -23,6 +23,13 @@ import type { StarKind } from '../types';
 
 const QUICK = ['Seni özledim', 'Günaydın', 'İyi geceler', 'Aklımdasın', 'Seni seviyorum', '9 Ocak yakında'];
 
+const SEND_LABELS: Record<Kind, string> = {
+  text: 'Yazıyı bırak',
+  photo: 'Fotoğrafı bırak',
+  voice: 'Sesi bırak',
+  draw: 'Çizimi bırak',
+};
+
 export type ComposeDraft = {
   mode: Kind;
   text: string;
@@ -38,9 +45,10 @@ export type ComposeDraft = {
 export function openCompose(initial: Kind = 'text', restored?: ComposeDraft) {
   const p = PEOPLE[state.partner];
   const draftKey = `${STORAGE_KEYS.draftPrefix}${toDbWho(state.me)}`;
+  const captionDraftKey = `${draftKey}.caption`;
   let mode: Kind = restored?.mode ?? initial;
   let savedText = restored?.text ?? store.get<string>(draftKey, '');
-  let savedCaption = restored?.caption ?? '';
+  let savedCaption = restored?.caption ?? store.get<string>(captionDraftKey, '');
   let photo: CompressedPhoto | null = restored?.photo ?? null;
   let voice: RecordedVoice | null = restored?.voice ?? null;
   let drawing: unknown[] | null = restored?.drawing ?? loadSavedDrawingDraft();
@@ -63,7 +71,7 @@ export function openCompose(initial: Kind = 'text', restored?: ComposeDraft) {
     <div class="c-foot">
       <button type="button" class="chip ${timed ? 'on' : ''}" data-timed>${I.clock(16)}<span>Zamanlı</span></button>
       <span class="grow"></span>
-      <button type="button" class="btn btn-primary send" data-send disabled>${I.star(17)}<span>Gökyüzüne bırak</span></button>
+      <button type="button" class="btn btn-primary send" data-send disabled>${I.star(17)}<span>${SEND_LABELS[mode]}</span></button>
     </div>
     <div class="lockline small">${I.lock(14)}<span>Bu yıldızı sadece ${p.name} açabilir. Gönderdikten sonra sen de okuyamazsın.</span></div>
   </div>`);
@@ -103,7 +111,10 @@ export function openCompose(initial: Kind = 'text', restored?: ComposeDraft) {
           : mode === 'voice'
             ? Boolean(voice && voice.dur > 0)
             : Boolean(drawing && drawing.length > 0);
-    send.disabled = !ok;
+    if (!handingOff) {
+      send.innerHTML = `${I.star(17)}<span>${SEND_LABELS[mode]}</span>`;
+      send.disabled = !ok;
+    }
   };
 
   function render() {
@@ -172,6 +183,7 @@ export function openCompose(initial: Kind = 'text', restored?: ComposeDraft) {
         capTa.addEventListener('focus', () => core.setMyLiveActivity('photo'));
         capTa.addEventListener('input', () => {
           savedCaption = capTa.value;
+          store.set(captionDraftKey, savedCaption);
           capCnt.textContent = `${capTa.value.length} / 120`;
           core.setMyLiveActivity('photo');
         });
@@ -218,14 +230,15 @@ export function openCompose(initial: Kind = 'text', restored?: ComposeDraft) {
           void sheet.close(true);
           return;
         }
-        if (res.strokes.length) {
+          if (res.strokes.length) {
           drawing = res.strokes;
           drawSid = res.sid;
           drawCollab = res.collab;
+          saveDrawingDraft(res.strokes);
           render();
           valid();
-          // Bitti'ye basıldığında çizim yıldız olarak doğrudan gönderilir
-          if (!send.disabled) send.click();
+          // Beraber çizimde "Bitti"ye basıldıysa dfin zaten karşıya gitti; doğrudan kaydet
+          if (res.collab && !send.disabled) send.click();
         }
       });
       body.appendChild(v);
@@ -288,20 +301,23 @@ export function openCompose(initial: Kind = 'text', restored?: ComposeDraft) {
     const origHtml = send.innerHTML;
     send.innerHTML = `<svg width="17" height="17" viewBox="0 0 24 24" style="animation:spin .8s linear infinite"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="40 20" stroke-linecap="round"/></svg><span>Gönderiliyor…</span>`;
     handingOff = true;
+    // HOTFIX 23: Yük YALNIZCA seçili sekmeden (mode) kurulur; diğer sekmelerin taslakları yıldıza HİÇ girmez
     const snapshot: ComposeDraft = {
       mode,
-      text: savedText,
-      caption: savedCaption,
-      photo,
-      voice,
-      drawing,
-      drawSid,
-      drawCollab,
+      text: mode === 'text' ? savedText.trim() : '',
+      caption: mode === 'photo' ? savedCaption.trim() : '',
+      photo: mode === 'photo' ? photo : null,
+      voice: mode === 'voice' ? voice : null,
+      drawing: mode === 'draw' ? drawing : null,
+      drawSid: mode === 'draw' ? drawSid : undefined,
+      drawCollab: mode === 'draw' ? drawCollab : false,
       timed,
     };
     const ok = await flyAway(sheet, snapshot, () => {
-      if (snapshot.mode === 'text') store.del(draftKey);
-      if (snapshot.mode === 'draw') saveDrawingDraft(null);
+      // Gönderilen yıldızdan sonra taslaklar silinir
+      store.del(draftKey);
+      store.del(captionDraftKey);
+      saveDrawingDraft(null);
     });
     if (!ok) {
       handingOff = false;
@@ -354,18 +370,37 @@ async function flyAway(sheet: Sheet, draft: ComposeDraft, onClearDraft: () => vo
       core.markDrawSessionLanded(deterministicId);
     }
 
+    // HOTFIX 23: Yalnızca seçili sekmeye (draft.mode) ait alanlar şifreli yüke girer
+    const payloadData =
+      draft.mode === 'text'
+        ? { text: draft.text.trim(), subkind: 'text' as const }
+        : draft.mode === 'photo'
+          ? {
+              text: '',
+              ...(draft.caption.trim() ? { caption: draft.caption.trim() } : {}),
+              mime: draft.photo?.mime || 'image/jpeg',
+              subkind: 'photo' as const,
+            }
+          : draft.mode === 'voice'
+            ? {
+                text: '',
+                mime: draft.voice?.mime || 'audio/mp4',
+                dur: draft.voice?.dur || 1,
+                peaks: draft.voice?.peaks,
+                subkind: 'voice' as const,
+              }
+            : {
+                text: '',
+                mime: 'application/gzip',
+                subkind: 'draw' as const,
+                ...(draft.drawCollab ? { collab: true } : {}),
+              };
+
     const env = await prepareEncryptedStar({
       id: deterministicId,
       from: dbFrom,
       kind: dbKind,
-      data: {
-        text: draft.mode === 'text' ? draft.text.trim() : '',
-        caption: draft.mode === 'photo' ? draft.caption.trim() || undefined : undefined,
-        mime: draft.mode === 'photo' ? draft.photo?.mime : draft.mode === 'voice' ? draft.voice?.mime : 'application/gzip',
-        dur: draft.mode === 'voice' ? draft.voice?.dur : undefined,
-        peaks: draft.mode === 'voice' ? draft.voice?.peaks : undefined,
-        collab: draft.mode === 'draw' && draft.drawCollab ? true : undefined,
-      },
+      data: payloadData,
       pos: { x: xPct, y: yPct },
       mediaBytes,
       once: false,
@@ -453,11 +488,14 @@ async function flyAway(sheet: Sheet, draft: ComposeDraft, onClearDraft: () => vo
     id: res.id,
     from: state.me,
     kind: draft.mode,
-    voiceUrl: draft.mode === 'voice' ? draft.voice?.previewUrl : undefined,
-    voiceSec: draft.mode === 'voice' ? draft.voice?.dur : undefined,
-    voicePeaks: draft.mode === 'voice' ? draft.voice?.peaks : undefined,
-    draw: draft.mode === 'draw' ? draft.drawing ?? undefined : undefined,
-    collab: draft.mode === 'draw' && draft.drawCollab ? true : undefined,
+    ...(draft.mode === 'text' ? { text: draft.text.trim() } : {}),
+    ...(draft.mode === 'photo' ? { photo: draft.photo?.preview, caption: draft.caption.trim() || undefined } : {}),
+    ...(draft.mode === 'voice'
+      ? { voiceUrl: draft.voice?.previewUrl, voiceSec: draft.voice?.dur, voicePeaks: draft.voice?.peaks }
+      : {}),
+    ...(draft.mode === 'draw'
+      ? { draw: draft.drawing ?? undefined, ...(draft.drawCollab ? { collab: true } : {}) }
+      : {}),
     createdAt: res.record ? Date.parse(res.record.createdAt) : Date.now(),
     unlockAt: draft.timed ?? undefined,
     opened: false,
