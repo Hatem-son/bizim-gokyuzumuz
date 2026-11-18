@@ -3,9 +3,10 @@ import { rng } from '../gokyuzu/util';
 
 type P = { x: number; y: number };
 
-export function palmSVG(o: { seed: number; base: P; top: P; bend: number; trunkW: number; fronds: number; frondLen: number; cls?: string; w: number; h: number }) {
+export function palmSVG(o: { seed: number; base: P; top: P; bend: number; trunkW: number; fronds: number; frondLen: number; cls?: string; w: number; h: number; extendBase?: number }) {
   const r = rng(o.seed);
   const { base, top } = o;
+  const ext = o.extendBase ?? 0;
   const ctrl = { x: (base.x + top.x) / 2 + o.bend, y: (base.y + top.y) / 2 };
   const at = (t: number) => {
     const u = 1 - t;
@@ -13,6 +14,16 @@ export function palmSVG(o: { seed: number; base: P; top: P; bend: number; trunkW
   };
   const N = 40;
   const left: P[] = [], right: P[] = [];
+  if (ext > 0) {
+    const q0 = at(0.02);
+    const dx = base.x - q0.x, dy = Math.max(1, base.y - q0.y);
+    const bx = base.x + (dx / dy) * ext, by = base.y + ext;
+    let nx = -(q0.y - base.y), ny = q0.x - base.x;
+    const l = Math.hypot(nx, ny) || 1; nx /= l; ny /= l;
+    const w0 = o.trunkW * 1.32;
+    left.push({ x: bx + (nx * w0) / 2, y: by });
+    right.push({ x: bx - (nx * w0) / 2, y: by });
+  }
   for (let i = 0; i <= N; i++) {
     const t = i / N, p = at(t), q = at(Math.min(1, t + 0.01)), p0 = at(Math.max(0, t - 0.01));
     let nx = -(q.y - p0.y), ny = q.x - p0.x;
@@ -23,6 +34,17 @@ export function palmSVG(o: { seed: number; base: P; top: P; bend: number; trunkW
   }
   const trunk = `M${left.map((p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L')} L${right.reverse().map((p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L')} Z`;
   let rings = '';
+  if (ext > 0) {
+    const q0 = at(0.02);
+    const dx = base.x - q0.x, dy = Math.max(1, base.y - q0.y);
+    let nx = -(q0.y - base.y), ny = q0.x - base.x;
+    const l = Math.hypot(nx, ny) || 1; nx /= l; ny /= l;
+    const w0 = o.trunkW * 0.62;
+    for (let ey = 12; ey < ext; ey += 13) {
+      const px = base.x + (dx / dy) * ey, py = base.y + ey;
+      rings += `M${(px + nx * w0).toFixed(1)} ${(py + ny * w0).toFixed(1)} Q${px.toFixed(1)} ${(py + 1.2).toFixed(1)} ${(px - nx * w0).toFixed(1)} ${(py - ny * w0).toFixed(1)} `;
+    }
+  }
   for (let t = 0.04; t < 0.97; t += 0.028 + r() * 0.01) {
     const p = at(t), q = at(t + 0.01);
     let nx = -(q.y - p.y), ny = q.x - p.x;
@@ -86,7 +108,8 @@ export function palmSVG(o: { seed: number; base: P; top: P; bend: number; trunkW
   }
   const coco = [[-6, 7, 4.4], [0, 10, 4.6], [5.5, 6.5, 4.2], [-1, 4, 3.8]].map(([dx, dy, rr]) =>
     `<circle cx="${top.x + dx}" cy="${top.y + dy}" r="${rr}" fill="url(#coco${o.seed})"/><circle cx="${top.x + dx - rr * 0.35}" cy="${top.y + dy - rr * 0.35}" r="${rr * 0.28}" fill="var(--palm-coco-hi)" opacity=".5"/>`).join('');
-  return `<svg class="palm ${o.cls ?? ''}" width="${o.w}" height="${o.h}" viewBox="0 0 ${o.w} ${o.h}" aria-hidden="true">
+  const svgH = o.h + ext;
+  return `<svg class="palm ${o.cls ?? ''}" width="${o.w}" height="${svgH}" viewBox="0 0 ${o.w} ${svgH}" aria-hidden="true">
     <defs><linearGradient id="trunk${o.seed}" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0" stop-color="var(--palm-trunk-2)"/><stop offset=".45" stop-color="var(--palm-trunk)"/><stop offset="1" stop-color="var(--palm-trunk-2)"/></linearGradient>
       <radialGradient id="coco${o.seed}" cx=".35" cy=".35" r=".7"><stop offset="0" stop-color="var(--palm-coco-hi)"/><stop offset="1" stop-color="var(--palm-coco)"/></radialGradient></defs>

@@ -44,10 +44,12 @@ html, body {
   padding: 0;
   width: 100%;
   height: 100%;
+  height: max(var(--app-h, 100%), 100lvh, 100%);
+  min-height: 100lvh;
   overflow: hidden;
   overflow: clip;
   overscroll-behavior: none;
-  background: #070a16;
+  background: var(--ground-bot, #070a16);
   color: var(--text);
   font-family: var(--sans);
 }
@@ -58,12 +60,14 @@ svg { display: block; }
 /* ---------- tam ekran PWA / Safari uygulama çerçevesi ---------- */
 #app {
   position: fixed;
-  inset: 0 auto auto 0;
-  width: 100vw;
-  height: var(--app-h, 100svh);
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  height: max(var(--app-h, 100%), 100lvh, 100%);
+  min-height: 100lvh;
   overflow: hidden;
   overflow: clip;
-  background: var(--sky-bottom, #070a16);
+  background: var(--ground-bot, #070a16);
   -webkit-user-select: none;
   user-select: none;
   touch-action: none;
@@ -71,7 +75,7 @@ svg { display: block; }
   line-height: 1.4;
   letter-spacing: -.005em;
   --safe-t: env(safe-area-inset-top, 0px);
-  --safe-b: max(env(safe-area-inset-bottom), 0px);
+  --safe-b: max(env(safe-area-inset-bottom, 0px), var(--ui-b, 0px));
   --island-top: 11px;
 }
 #app input, #app textarea { -webkit-user-select: text; user-select: text; touch-action: manipulation; }

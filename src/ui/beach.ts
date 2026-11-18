@@ -97,7 +97,7 @@ export class Beach {
     const d = Math.min(devicePixelRatio || 1, 2);
     this.sand = document.createElement('canvas');
     this.sand.width = Math.ceil(o.skyW * d);
-    this.sand.height = Math.ceil((o.H - this.shoreY + 20) * d);
+    this.sand.height = Math.ceil((o.H - this.shoreY + 116) * d);
     this.sand.getContext('2d')!.scale(d, d);
     // gren dokusu
     const g = document.createElement('canvas');
@@ -128,12 +128,15 @@ export class Beach {
   private drawSand(hor: RGB, top: RGB, day: number, sun: RGB) {
     const c = this.sand.getContext('2d')!;
     const { skyW } = this.o;
-    const h = this.o.H - this.shoreY + 20;
+    const h = this.o.H - this.shoreY + 116;
     // kum rengi: gündüz sıcak bej (güneş ışığı rengine göre), gece gökyüzü renginde soğuk ve koyu
     const dayS: RGB = [222 * (0.75 + 0.25 * sun[0]), 202 * (0.75 + 0.25 * sun[1]), 168 * (0.7 + 0.3 * sun[2])];
     const nightS: RGB = mix([28, 30, 40], top, 0.25);
     const base = mix(nightS, dayS, Math.pow(day, 0.8));
     const near = mix(base, [0, 0, 0], 0.22 + 0.2 * (1 - day));
+    const groundBot = css(mix(near, [4, 6, 14], 0.26));
+    document.documentElement.style.setProperty('--ground-bot', groundBot);
+    document.documentElement.style.backgroundColor = groundBot;
     c.clearRect(0, 0, skyW, h);
     const g = c.createLinearGradient(0, 0, 0, h);
     g.addColorStop(0, css(mix(base, hor, 0.15)));
@@ -355,7 +358,7 @@ export class Beach {
     const c = this.c, { W, H, horizonY } = this.o;
     const hor = parse(colors.hor), top = parse(colors.top);
     const shore = this.shoreY;
-    c.clearRect(0, horizonY - 140, W, H - horizonY + 140);
+    c.clearRect(0, horizonY - 140, W, H + 96 - horizonY + 140);
     { const key = `${Math.round(day * 16)}|${hor.map((v) => v >> 3).join()}|${Math.round(sun[0] * 8)}`;
       const bigJump = Math.abs(day - this.mtDay) > 0.35;
       if (!this.mt || (key !== this.mtKey && (bigJump || now - this.mtAt > 2500))) { this.mtKey = key; this.mtAt = now; this.mtDay = day; this.buildMountains(hor, day, sun); } }
@@ -475,7 +478,7 @@ export class Beach {
     // ---- kum
     const key = colors.hor + colors.top + Math.round(day * 30) + sun.map((v) => v.toFixed(1)).join();
     if (key !== this.sandKey) { this.sandKey = key; this.drawSand(hor, top, day, sun); }
-    { const P = this.o.skyW; for (let sx = -(((scrollX % P) + P) % P); sx < W; sx += P) c.drawImage(this.sand, Math.round(sx), shore - 6, P, H - shore + 20); }
+    { const P = this.o.skyW; for (let sx = -(((scrollX % P) + P) % P); sx < W; sx += P) c.drawImage(this.sand, Math.round(sx), shore - 6, P, H - shore + 116); }
 
     // ---- kıyı (6.5 sn döngü; yukarıdaki kabarmalarla aynı faz: sırt kıyıya varınca kırılır)
     const reachOf = (n: number) => 34 * (0.78 + 0.3 * hash(n)) * (1 + 0.7 * wk);   // her dalga farklı mesafeye çıkar; rüzgârda daha uzağa

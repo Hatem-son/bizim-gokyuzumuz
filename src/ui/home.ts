@@ -78,11 +78,11 @@ export function buildForeground(P: number, H: number, shoreY: number, x0: number
   };
   const sc = (k: number) => `opacity:.85;transform:scale(${k});transform-origin:bottom left`;
   // ana palmiye (fenerler bunun dalında) + sağ orta + uzak küçükler; çemberin etrafında seyrek ek palmiyeler
-  const main = add(x0 - 215, H - 470, 300, palmSVG({ seed: 3, base: { x: 18, y: 470 }, top: { x: 120, y: 92 }, bend: -46, trunkW: 15, fronds: 12, frondLen: 132, w: 300, h: 470 }), '', 6);
-  add(x0 + 100, H - 360, 220, palmSVG({ seed: 9, base: { x: 160, y: 360 }, top: { x: 92, y: 120 }, bend: 34, trunkW: 11, fronds: 10, frondLen: 98, w: 220, h: 360 }), '', 73);
+  const main = add(x0 - 215, H - 470, 300, palmSVG({ seed: 3, base: { x: 18, y: 470 }, top: { x: 120, y: 92 }, bend: -46, trunkW: 15, fronds: 12, frondLen: 132, w: 300, h: 470, extendBase: 96 }), '', 6);
+  add(x0 + 100, H - 360, 220, palmSVG({ seed: 9, base: { x: 160, y: 360 }, top: { x: 92, y: 120 }, bend: 34, trunkW: 11, fronds: 10, frondLen: 98, w: 220, h: 360, extendBase: 96 }), '', 73);
   add(x0 - 520, shoreY + 34 - 300 * 0.55, 132, palmSVG({ seed: 21, base: { x: 60, y: 300 }, top: { x: 110, y: 70 }, bend: -20, trunkW: 12, fronds: 10, frondLen: 100, w: 240, h: 300 }), sc(0.55));
   add(x0 + 430, shoreY + 34 - 300 * 0.5, 120, palmSVG({ seed: 33, base: { x: 120, y: 300 }, top: { x: 80, y: 60 }, bend: 24, trunkW: 12, fronds: 10, frondLen: 100, w: 240, h: 300 }), sc(0.5));
-  // Palmiyeler iç içe geçmesin ve denize kaymasın: aralar >= ~250 px, küçüklerin dibi kumda (shoreY + 24 + 30k), büyüklerin dibi ekran altında.
+  // Palmiyeler iç içe geçmesin ve denize kaymasın: aralar >= ~250 px, küçüklerin dibi kumda (shoreY + 24 + 30k), büyüklerin gövdesi ekran altına +96px kesintisiz uzanır.
   const extra: [number, number, number, number, number][] = [
     [-330, 73, -14, 0.4, 1], [560, 107, -30, 0.8, 0], [900, 113, 22, 0.42, 1],
     [1000, 41, 28, 0.7, 0], [1300, 47, -22, 0.5, 1], [1690, 53, 30, 0.82, 0], [1900, 59, -26, 0.45, 1],
@@ -92,9 +92,9 @@ export function buildForeground(P: number, H: number, shoreY: number, x0: number
     const hgt = kind ? 300 : 380, wd = kind ? 240 : 230;
     add(
       x0 + dx,
-      kind ? shoreY + 24 + 30 * k - 300 * k : H - 380 * k - 10,
+      kind ? shoreY + 24 + 30 * k - 300 * k : H - 380 * k,
       wd * k,
-      palmSVG({ seed, base: { x: wd / 2, y: hgt }, top: { x: wd / 2 + bend * 1.4, y: 80 }, bend, trunkW: kind ? 12 : 11, fronds: 10, frondLen: kind ? 100 : 98, w: wd, h: hgt }),
+      palmSVG({ seed, base: { x: wd / 2, y: hgt }, top: { x: wd / 2 + bend * 1.4, y: 80 }, bend, trunkW: kind ? 12 : 11, fronds: 10, frondLen: kind ? 100 : 98, w: wd, h: hgt, extendBase: kind ? 0 : 140 }),
       sc(k)
     );
   }

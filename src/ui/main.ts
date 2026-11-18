@@ -62,12 +62,31 @@ window.addEventListener('scroll', () => {
   if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
 });
 
-// GÖRÜNÜR yükseklik (Safari sekmesinde üst/alt çubuklar hariç). 100vh KULLANILMAZ: iOS'ta araç çubuğunun arkasına taşar, dock kesilir.
-// innerHeight klavye açılınca küçülmez (visualViewport küçülür) → yalnızca açılışta ve döndürmede ölçülür.
+// Tam ekran yüksekliği: iOS Ana Ekran PWA'da window.innerHeight safe-area kadar kısa dönebiliyor → 100lvh ve screen.height ile telefonun en altına kadar indirilir.
+// Safari sekmesinde ise kumsal yine 100lvh boyunca telefonun en altına kadar kesintisiz iner; aradaki fark (--ui-b) yalnızca dock menüsünü Safari çubuğunun üstünde tutar.
+const lvhProbe = document.createElement('div');
+lvhProbe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:100lvh;pointer-events:none;visibility:hidden';
+const fixedProbe = document.createElement('div');
+fixedProbe.style.cssText = 'position:fixed;top:0;bottom:0;left:0;width:0;pointer-events:none;visibility:hidden';
+document.body.append(lvhProbe, fixedProbe);
+
 function fitViewport() {
-  document.documentElement.style.setProperty('--app-h', Math.round(window.innerHeight) + 'px');
+  const standalone = matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
+  const innerH = Math.round(window.innerHeight || 0);
+  const clientH = Math.round(document.documentElement.clientHeight || 0);
+  const lvhH = Math.round(lvhProbe.offsetHeight || 0);
+  const fixedH = Math.round(fixedProbe.offsetHeight || 0);
+  const rawScreenH = Math.round(
+    window.innerWidth > innerH && window.screen ? Math.min(window.screen.width, window.screen.height) : window.screen?.height || 0
+  );
+  const screenH = rawScreenH >= innerH && rawScreenH - innerH < 220 ? rawScreenH : 0;
+  const fullH = standalone ? Math.max(innerH, clientH, lvhH, fixedH, screenH) : Math.max(innerH, clientH, lvhH, fixedH);
+  const uiB = standalone ? 0 : Math.max(0, fullH - innerH);
+  document.documentElement.style.setProperty('--app-h', `${fullH}px`);
+  document.documentElement.style.setProperty('--ui-b', `${uiB}px`);
+  return { fullH, visH: standalone ? fullH : innerH || fullH };
 }
-fitViewport();
+const vp0 = fitViewport();
 addEventListener('orientationchange', () =>
   setTimeout(() => {
     fitViewport();
@@ -79,10 +98,10 @@ initKeyboard({
   hideWhenOpen: () => [...app.querySelectorAll<HTMLElement>('.dock, .gk-cons, .gk-edge, .gk-hint-txt')],
 });
 
-// GERÇEK ekran boyutu: tuvaller hep tüm ekranı kaplar (alt kısım eksik kalmaz)
+// GERÇEK ekran boyutu: tuvaller telefonun en altına kadar kesintisiz iner (+96px alt kumsal tamponu)
 const W = Math.max(320, Math.round(app.clientWidth || window.innerWidth || 390));
-const H = Math.max(520, Math.round(app.clientHeight || window.innerHeight || 844));
-const HORIZON = Math.round(H * 0.71);
+const H = Math.max(520, Math.round(vp0.fullH || app.clientHeight || window.innerHeight || 844));
+const HORIZON = Math.round(Math.max(480, vp0.visH) * 0.71);
 
 const st = document.createElement('style');
 st.textContent = ART_CSS + PALM_CSS + LILY_CSS + '@keyframes spin{to{transform:rotate(360deg)}}';
@@ -101,13 +120,14 @@ app.insertAdjacentHTML(
   <div id="flash" class="layer" style="background:#dfe6ff;opacity:0;pointer-events:none;z-index:6"></div>`
 );
 
-function cv(id: string, maxDpr = 1.5) {
+function cv(id: string, maxDpr = 1.5, extraH = 0) {
   const d = Math.min(devicePixelRatio || 1, maxDpr);
   const c = document.getElementById(id) as HTMLCanvasElement;
+  const ch = H + extraH;
   c.width = Math.round(W * d);
-  c.height = Math.round(H * d);
+  c.height = Math.round(ch * d);
   c.style.width = `${W}px`;
-  c.style.height = `${H}px`;
+  c.style.height = `${ch}px`;
   const x = c.getContext('2d')!;
   x.scale(d, d);
   return x;
@@ -123,7 +143,7 @@ const engine = new Engine(defaultLocation, geom);
 const sky = new SkyRenderer(cv('cSky', 1.5), geom, worker);
 sky.moonTint = null;
 
-// Safari üst/alt çubuk rengi = gökyüzünün üst rengi (çubuklar sahneyle birleşir, gri/siyah bant kalmaz)
+// Safari üst çubuk rengi = gökyüzünün üst rengi (alt zemin rengi beach.ts içinde kumsal rengine eşitlenir)
 const themeMeta = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
 let chromeAt = 0;
 let chromeCol = '';
@@ -134,12 +154,11 @@ function syncChrome(now: number) {
   if (!col || col === chromeCol) return;
   chromeCol = col;
   themeMeta?.setAttribute('content', col);
-  document.documentElement.style.backgroundColor = col;
 }
 
 const weatherRenderer = new WeatherRenderer(worker, cv('cWBack', 1.5), cv('cWFront', 1.5), $('#flash'), geom, engine.weather);
 weatherRenderer.lightningEnabled = state.settings.lightning;
-const beach = new Beach(cv('cGround', 1.5), { W, H, horizonY: HORIZON, skyW: P, x0: X0 });
+const beach = new Beach(cv('cGround', 1.5, 96), { W, H, horizonY: HORIZON, skyW: P, x0: X0 });
 const ocean = new OceanHeart(cv('cOcean', 1.5), geom, beach.shoreY);
 let fg: HTMLElement | null = null;
 const wind = new Wind();
@@ -369,7 +388,6 @@ engine.add((now, dt, s) => {
   if (beach.whale.active) engine.busy(200);
   wind.frame(dt);
 
-  const appLeft = app.getBoundingClientRect().left;
   const moonPos = s.moonAlpha > 0.02 ? skyToScreen(geom, s.moonDisp, s.moonVaz, sx) : null;
   const glints: { x: number; k: number; warm: boolean }[] = [];
   if (moonPos) {
@@ -382,13 +400,16 @@ engine.add((now, dt, s) => {
       warm: s.sunAlt < 12,
     });
   }
-  // fenerler: denize sıcak ışık yolu (gece belirgin)
+  // fenerler: denize sıcak ışık yolu — DÜNYA KOORDİNATINA SABİT (palmiye ekran dışına çıkıp display:none olduğunda x=0'da solda takılı kalmaz!)
   if (fg && !fg.parentElement?.classList.contains('pre')) {
-    for (const l of fg.querySelectorAll('.lantern')) {
-      if (l.classList.contains('partner') && !l.classList.contains('on')) continue;
-      const lx = (l as HTMLElement).getBoundingClientRect().left - appLeft;
-      if (lx > -60 && lx < W + 60) {
-        glints.push({ x: lx, k: 0.42 * (1 - s.daylight) + 0.05, warm: true });
+    const mineX = wrapX(geom, mod(X0 - 22, P), sx);
+    if (mineX > -120 && mineX < W + 120) {
+      glints.push({ x: mineX, k: 0.42 * (1 - s.daylight) + 0.05, warm: true });
+    }
+    if (fg.querySelector('.lantern.partner.on')) {
+      const partnerX = wrapX(geom, mod(X0 - 70, P), sx);
+      if (partnerX > -120 && partnerX < W + 120) {
+        glints.push({ x: partnerX, k: 0.42 * (1 - s.daylight) + 0.05, warm: true });
       }
     }
   }
