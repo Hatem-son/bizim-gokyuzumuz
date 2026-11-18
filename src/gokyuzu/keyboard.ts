@@ -1,5 +1,5 @@
 // iOS klavyesi ve form araç çubuğu (▲ ▼ ✓).
-// Kök yüksekliği (#app, html, body) ASLA değiştirilmez (position: fixed; inset: 0; height: 100%).
+// Kök yüksekliği (--app-h) main.ts fitViewport'ta ayarlanır; burada yalnızca klavye yüksekliği (--kb) hesaplanır.
 
 const OPEN_THRESHOLD = 120; // px; bundan fazla küçülme = klavye açık
 

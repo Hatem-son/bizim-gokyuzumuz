@@ -62,6 +62,27 @@ window.addEventListener('scroll', () => {
   if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
 });
 
+// iOS 26: ana ekran uygulamasında fixed + inset:0 alt ~48pt'yi boş bırakır → standalone'da gerçek ekran yüksekliği (--app-h)
+const standalone = () =>
+  (navigator as Navigator & { standalone?: boolean }).standalone === true ||
+  matchMedia('(display-mode: standalone)').matches;
+function fitViewport() {
+  const h = standalone() ? Math.max(window.innerHeight, window.screen.height) : window.innerHeight;
+  document.documentElement.style.setProperty('--app-h', Math.round(h) + 'px');
+  // iOS'a yeniden ölçtür (klavye açıkken/yazı alanı odaktayken yapma: display:none odağı düşürür)
+  const ae = document.activeElement as HTMLElement | null;
+  const typing = !!ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName);
+  if (standalone() && !typing && !document.documentElement.classList.contains('kb-open')) {
+    app.style.display = 'none';
+    void app.offsetHeight;
+    app.style.display = '';
+  }
+}
+fitViewport();
+addEventListener('resize', fitViewport);
+addEventListener('pageshow', fitViewport);
+setTimeout(fitViewport, 300);
+
 initKeyboard({
   hideWhenOpen: () => [...app.querySelectorAll<HTMLElement>('.dock, .gk-cons, .gk-edge, .gk-hint-txt')],
 });
