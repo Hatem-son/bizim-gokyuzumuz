@@ -38,7 +38,7 @@ setTimeout(() => void lazyPages(), 4000); // boşta önceden ısıt
 import { runAuth, runLock, applyPersona } from './auth';
 import { I } from './icons';
 import { registerServiceWorker } from '../lib/pwa';
-import { isSupabaseConfigured, getSessionFast, getSessionAndProfile, inferWhoFromEmail, signOutSupabase } from '../lib/supabase';
+import { isSupabaseConfigured, getSessionAndProfile, inferWhoFromEmail, signOutSupabase } from '../lib/supabase';
 import { loadSavedKey, clearActiveKey } from '../lib/crypto';
 import { hasBiometric, BACKGROUND_LOCK_MS } from '../lib/lock';
 import { STORAGE_KEYS, store } from '../lib/storage';
