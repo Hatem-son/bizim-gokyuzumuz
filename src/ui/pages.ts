@@ -48,6 +48,12 @@ function envelope(owner: Who) {
 }
 
 async function ensureDecrypted(st: Star): Promise<'ok' | 'locked' | 'network'> {
+  if (st.kind === 'draw' && Array.isArray(st.draw) && st.draw.length > 0) {
+    if (!st.collab && st.draw.some((s: any) => s?.by && s.by !== st.from)) {
+      st.collab = true;
+    }
+    return 'ok';
+  }
   if (!st.raw) return 'ok';
   const alreadyLoaded =
     (st.kind === 'text' && st.text !== undefined) ||
@@ -58,9 +64,12 @@ async function ensureDecrypted(st: Star): Promise<'ok' | 'locked' | 'network'> {
 
   try {
     const payload = await decryptStarPayload(st.raw, toDbWho(state.me));
-    if (payload.subkind === 'draw' || payload.mime === 'application/gzip') {
+    if (payload.subkind === 'draw' || payload.mime === 'application/gzip' || payload.collab) {
       st.kind = 'draw';
       st.raw.kind = 'draw';
+    }
+    if (payload.collab) {
+      st.collab = true;
     }
     st.text = payload.text || (st.raw.kind === 'miss' ? 'Seni düşündüm.' : '');
     st.caption = payload.caption;
@@ -77,6 +86,9 @@ async function ensureDecrypted(st: Star): Promise<'ok' | 'locked' | 'network'> {
           st.voiceUrl = URL.createObjectURL(new Blob([bytes], { type: audioMime }));
         } else if (st.kind === 'draw') {
           st.draw = await core.decodeDrawing(bytes);
+          if (!st.collab && Array.isArray(st.draw) && st.draw.some((s: any) => s?.by && s.by !== st.from)) {
+            st.collab = true;
+          }
         }
       }
     }
@@ -96,7 +108,11 @@ export async function openStar(st: Star, onOpened?: () => void) {
   let activeAudio: HTMLAudioElement | null = null;
   let content: HTMLElement;
 
-  if (mine) {
+  if (mine && st.kind === 'draw' && !locked && st.collab === undefined) {
+    await ensureDecrypted(st);
+  }
+
+  if (mine && !(st.kind === 'draw' && st.collab)) {
     content = h(`<div class="locked">
       <div class="lk" style="color:${PEOPLE[state.me].color}">${I.starFill(26)}</div>
       <div class="h2">Bu yıldızı sen bıraktın</div>
@@ -152,12 +168,12 @@ export async function openStar(st: Star, onOpened?: () => void) {
             ? `<div class="player"><button type="button" class="pbtn" aria-label="Oynat">${I.play(18)}</button><div class="wave grow">${peaks.map((pk) => `<i style="transform:scaleY(${(0.2 + pk * 0.8).toFixed(2)})"></i>`).join('')}</div><span class="num" style="font:500 13px var(--sans);color:var(--paper-ink-2)" data-vtime>${fmtSec(st.voiceSec ?? 10)}</span></div>`
             : `<div class="draw-view"><canvas></canvas></div><div class="row-flex" style="justify-content:center;margin-top:10px"><button type="button" class="chip" data-replay style="color:var(--paper-ink);border-color:rgba(28,31,54,.2)">${I.play(14)}<span>Yeniden oynat</span></button></div>`;
 
-    const sealed = !st.opened;
+    const sealed = !st.opened && !mine;
     content = h(`<div class="env-wrap">
       ${sealed ? envelope(st.from) : ''}
       <article class="letter from-${st.from}">
         ${sealed ? '' : `<div class="mini-seal" style="position:absolute;right:16px;top:14px;width:34px;height:34px">${waxSeal(st.from, 34, true)}</div>`}
-        <div class="row-flex"><div class="from">${fromP.from}</div><span class="grow"></span>${st.hazel ? `<span class="meta" style="color:#a07a3c;margin-right:40px">ela yıldız</span>` : ''}</div>
+        <div class="row-flex"><div class="from">${st.collab ? 'Birlikte çizdiniz' : fromP.from}</div><span class="grow"></span>${st.hazel ? `<span class="meta" style="color:#a07a3c;margin-right:40px">ela yıldız</span>` : ''}</div>
         <div class="meta" style="margin-top:8px">${fmtDate(st.createdAt)}</div>
         ${body}
       </article>

@@ -13,6 +13,7 @@ import {
   OfflineNetworkError,
   isOfflineLikeError,
   getServerNowMs,
+  sessionToStarUuid,
 } from '../lib/stars';
 import { enqueueEncryptedStar } from '../lib/outbox';
 import { isStarHazel } from '../lib/hazel';
@@ -29,6 +30,8 @@ export type ComposeDraft = {
   photo: CompressedPhoto | null;
   voice: RecordedVoice | null;
   drawing: unknown[] | null;
+  drawSid?: string;
+  drawCollab?: boolean;
   timed: number | null;
 };
 
@@ -41,6 +44,8 @@ export function openCompose(initial: Kind = 'text', restored?: ComposeDraft) {
   let photo: CompressedPhoto | null = restored?.photo ?? null;
   let voice: RecordedVoice | null = restored?.voice ?? null;
   let drawing: unknown[] | null = restored?.drawing ?? loadSavedDrawingDraft();
+  let drawSid: string | undefined = restored?.drawSid;
+  let drawCollab = Boolean(restored?.drawCollab);
   let timed: number | null = restored?.timed ?? null;
   let activeRecorder: VoiceRecorder | null = null;
   let stopPreviewAudio: (() => void) | null = null;
@@ -205,8 +210,18 @@ export function openCompose(initial: Kind = 'text', restored?: ComposeDraft) {
       if (drawing?.length) core.renderDrawingPreview($<HTMLCanvasElement>('canvas', v), drawing);
       v.addEventListener('click', async () => {
         const res = await core.openBoard(drawing);
-        if (res && res.length) {
-          drawing = res;
+        if (!res) return;
+        if (res.remoteFin) {
+          // Beraber çizimde karşı taraf "Bitti"ye bastı: yazma kartını sessizce kapat, yıldız onCollabFin ile gökyüzüne düşüyor
+          saveDrawingDraft(null);
+          handingOff = true;
+          void sheet.close(true);
+          return;
+        }
+        if (res.strokes.length) {
+          drawing = res.strokes;
+          drawSid = res.sid;
+          drawCollab = res.collab;
           render();
           valid();
           // Bitti'ye basıldığında çizim yıldız olarak doğrudan gönderilir
@@ -280,6 +295,8 @@ export function openCompose(initial: Kind = 'text', restored?: ComposeDraft) {
       photo,
       voice,
       drawing,
+      drawSid,
+      drawCollab,
       timed,
     };
     const ok = await flyAway(sheet, snapshot, () => {
@@ -331,7 +348,14 @@ async function flyAway(sheet: Sheet, draft: ComposeDraft, onClearDraft: () => vo
     else if (draft.mode === 'voice' && draft.voice) mediaBytes = draft.voice.bytes;
     else if (draft.mode === 'draw' && draft.drawing) mediaBytes = await core.encodeDrawing(draft.drawing);
 
+    const deterministicId =
+      draft.mode === 'draw' && draft.drawSid ? sessionToStarUuid(draft.drawSid) : undefined;
+    if (deterministicId) {
+      core.markDrawSessionLanded(deterministicId);
+    }
+
     const env = await prepareEncryptedStar({
+      id: deterministicId,
       from: dbFrom,
       kind: dbKind,
       data: {
@@ -340,6 +364,7 @@ async function flyAway(sheet: Sheet, draft: ComposeDraft, onClearDraft: () => vo
         mime: draft.mode === 'photo' ? draft.photo?.mime : draft.mode === 'voice' ? draft.voice?.mime : 'application/gzip',
         dur: draft.mode === 'voice' ? draft.voice?.dur : undefined,
         peaks: draft.mode === 'voice' ? draft.voice?.peaks : undefined,
+        collab: draft.mode === 'draw' && draft.drawCollab ? true : undefined,
       },
       pos: { x: xPct, y: yPct },
       mediaBytes,
@@ -431,6 +456,8 @@ async function flyAway(sheet: Sheet, draft: ComposeDraft, onClearDraft: () => vo
     voiceUrl: draft.mode === 'voice' ? draft.voice?.previewUrl : undefined,
     voiceSec: draft.mode === 'voice' ? draft.voice?.dur : undefined,
     voicePeaks: draft.mode === 'voice' ? draft.voice?.peaks : undefined,
+    draw: draft.mode === 'draw' ? draft.drawing ?? undefined : undefined,
+    collab: draft.mode === 'draw' && draft.drawCollab ? true : undefined,
     createdAt: res.record ? Date.parse(res.record.createdAt) : Date.now(),
     unlockAt: draft.timed ?? undefined,
     opened: false,

@@ -13,6 +13,7 @@ export interface StarPayloadData {
   dur?: number;
   peaks?: number[];
   subkind?: StarKind;
+  collab?: boolean;
   inlineMedia?: string;
 }
 
@@ -254,6 +255,26 @@ function generateId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/** Çizim oturumu kimliğinden (sid) her iki cihazda birebir aynı deterministik UUID üretir (çift yıldız oluşmasını önler). */
+export function sessionToStarUuid(sid?: string): string {
+  if (sid && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sid.trim())) {
+    return sid.trim().toLowerCase();
+  }
+  if (!sid || !sid.trim()) {
+    return generateId();
+  }
+  const str = sid.trim();
+  const h = [0x811c9dc5, 0xcbf29ce4, 0x1b873593, 0xcc9e2d51];
+  for (let i = 0; i < str.length; i++) {
+    const c = str.charCodeAt(i);
+    for (let j = 0; j < 4; j++) {
+      h[j] = Math.imul(h[j] ^ (c + j * 31), 0x01000193) >>> 0;
+    }
+  }
+  const hex = h.map((n) => n.toString(16).padStart(8, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
 export function bandY(f: number): number {
   return 0.5 + 0.26 * Math.sin(f * Math.PI * 2 * 1.15 + 0.6) + 0.07 * Math.sin(f * Math.PI * 2 * 3.1 + 2);
 }
@@ -400,6 +421,7 @@ export async function fetchAllStars(me: Who): Promise<StarRecord[]> {
 }
 
 export async function prepareEncryptedStar(params: {
+  id?: string;
   from: Who;
   kind: StarKind;
   data: StarPayloadData;
@@ -408,7 +430,7 @@ export async function prepareEncryptedStar(params: {
   once?: boolean;
   unlockAt?: string | null;
 }): Promise<PreparedStarEnvelope> {
-  const id = generateId();
+  const id = params.id ? sessionToStarUuid(params.id) : generateId();
   const textLen = (params.data.text || '').length;
   const size =
     params.kind === 'miss'
@@ -464,6 +486,8 @@ export async function uploadPreparedStar(env: PreparedStarEnvelope): Promise<Sta
     putLocalSecret(env.id, env.sealedPayload);
     if (env.sealedMedia) putLocalMedia(env.id, env.sealedMedia);
     const list = store.get<StarRecord[]>(STORAGE_KEYS.starsLocal, []);
+    const existingLocal = list.find((s) => s.id === env.id);
+    if (existingLocal) return existingLocal;
     list.push(localStar);
     store.set(STORAGE_KEYS.starsLocal, list);
     return localStar;
@@ -496,14 +520,30 @@ export async function uploadPreparedStar(env: PreparedStarEnvelope): Promise<Sta
       unlock_push_sent: false,
     });
 
+    const isDuplicateErr = (err: { code?: string; message?: string } | null) =>
+      Boolean(err && (err.code === '23505' || /duplicate key|unique constraint/i.test(err.message || '')));
+
     let { data: inserted, error: insertErr } = await sb
       .from('stars')
       .insert(buildStarInsert(env.kind))
       .select('id, from_user, kind, x, y, size, once, spent, has_media, created_at, opened_at, unlock_at, unlock_notified, unlock_push_sent')
       .single();
 
+    // İki taraf beraber çizimde aynı anda "Bitti"ye bastıysa (aynı oturum UUID'si): ilk yazan kazanır, çift yıldız oluşmaz
+    if (isDuplicateErr(insertErr)) {
+      const { data: existingRow } = await sb
+        .from('stars')
+        .select('id, from_user, kind, x, y, size, once, spent, has_media, created_at, opened_at, unlock_at, unlock_notified, unlock_push_sent')
+        .eq('id', env.id)
+        .maybeSingle();
+      if (existingRow) {
+        const whoMap = await getUserWhoMap();
+        return mapDbRow(existingRow as DbStarRow, whoMap, env.from);
+      }
+    }
+
     // 06-draw-kind.sql henüz çalıştırılmadıysa stars_kind_check 'draw'/'text' değerini reddedebilir → 'note' ile kaydet (şifreli payload içinde subkind:'draw' korunur)
-    if ((insertErr || !inserted) && (env.kind === 'draw' || env.kind === 'text') && !isOfflineLikeError(insertErr)) {
+    if ((insertErr || !inserted) && !isDuplicateErr(insertErr) && (env.kind === 'draw' || env.kind === 'text') && !isOfflineLikeError(insertErr)) {
       const retry = await sb
         .from('stars')
         .insert(buildStarInsert('note'))
@@ -511,6 +551,17 @@ export async function uploadPreparedStar(env: PreparedStarEnvelope): Promise<Sta
         .single();
       inserted = retry.data;
       insertErr = retry.error;
+      if (isDuplicateErr(insertErr)) {
+        const { data: existingRow } = await sb
+          .from('stars')
+          .select('id, from_user, kind, x, y, size, once, spent, has_media, created_at, opened_at, unlock_at, unlock_notified, unlock_push_sent')
+          .eq('id', env.id)
+          .maybeSingle();
+        if (existingRow) {
+          const whoMap = await getUserWhoMap();
+          return mapDbRow(existingRow as DbStarRow, whoMap, env.from);
+        }
+      }
     }
 
     if (insertErr || !inserted) {

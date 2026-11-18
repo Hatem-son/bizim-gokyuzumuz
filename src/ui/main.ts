@@ -25,7 +25,7 @@ import { core } from './core';
 import { initUI, $, $$, h, toast, sleep, clearPageStack, closeIsland, island } from './ui';
 import { state, PEOPLE, Star, Kind, setMe, toUiWho, toDbWho } from './state';
 import { buildHome, buildForeground, placeForeground, showLive, sendHeart, partnerOnline } from './home';
-import { openCompose } from './compose';
+import { openCompose, freeSpot } from './compose';
 import { openBoard, openWatch, renderDrawing, Stroke, DrawLivePacket } from './draw';
 import { encodeDrawingBytes, decodeDrawingBytes } from '../lib/drawCodec';
 // Ayarlar/arşiv/yıldız sayfaları ilk çizimden SONRA, ilk kullanımda yüklenir (ana paket küçülür)
@@ -47,12 +47,14 @@ import {
   getServerNowMs,
   subscribeStarsRealtime,
   markStarUnlockNotified,
+  prepareEncryptedStar,
   uploadPreparedStar,
   decryptStarPayload,
+  sessionToStarUuid,
   OfflineNetworkError,
   isOfflineLikeError,
 } from '../lib/stars';
-import { listQueuedStars, removeQueuedStar } from '../lib/outbox';
+import { listQueuedStars, removeQueuedStar, enqueueEncryptedStar } from '../lib/outbox';
 import { PairRealtime } from '../lib/realtime';
 import { isStarHazel } from '../lib/hazel';
 import type { StarRecord } from '../types';
@@ -227,16 +229,161 @@ const plane = new Plane({
 });
 const tickPlane = schedulePlane(plane, () => engine.weather.kind !== 'thunder' && engine.weather.fog < 0.65);
 
+let shownAct: { a: string; t: number } | null = null;
+const landedDrawIds = new Set<string>();
+
+function landDrawing(strokes: Stroke[], sid?: string, collab = false) {
+  if (!strokes || !strokes.length) return;
+  const starId = sessionToStarUuid(sid);
+  const isCollab = collab || strokes.some((s) => s.by && s.by !== state.partner);
+  const existing = state.stars.find((s) => s.id === starId);
+  if (existing) {
+    existing.kind = 'draw';
+    existing.draw = strokes;
+    if (isCollab) existing.collab = true;
+    core.refreshHome();
+    return;
+  }
+  if (landedDrawIds.has(starId)) return;
+  landedDrawIds.add(starId);
+
+  const target = freeSpot();
+  const starX = mod(target.x + core.scrollX, P);
+  const starY = target.y;
+  const stNew: Star = {
+    id: starId,
+    from: state.partner,
+    kind: 'draw',
+    draw: strokes,
+    collab: isCollab || undefined,
+    createdAt: Date.now(),
+    opened: false,
+    x: starX,
+    y: starY,
+    visible: false,
+  };
+  state.stars.push(stNew);
+  engine.busy(2600);
+  fx.incoming(
+    { x: Math.max(36, Math.min(W - 36, target.x)), y: target.y },
+    {
+      now: performance.now(),
+      tint: PEOPLE[state.partner].color,
+      onSettle: () => {
+        stNew.visible = true;
+        stNew.arrivedAt = performance.now();
+      },
+    }
+  );
+  showLive('left', { star: stNew });
+  core.refreshHome();
+}
+
+async function landMyDrawing(strokes: Stroke[], sid?: string, collab = true) {
+  if (!strokes || !strokes.length) return;
+  const starId = sessionToStarUuid(sid);
+  if (landedDrawIds.has(starId) || state.stars.some((s) => s.id === starId)) return;
+  landedDrawIds.add(starId);
+
+  const target = freeSpot();
+  const starX = mod(target.x + core.scrollX, P);
+  const starY = target.y;
+  const xPct = Math.max(0.05, Math.min(99.95, (starX / Math.max(1, P)) * 100));
+  const yPct = Math.max(2, Math.min(96, ((starY - 70) / Math.max(1, HORIZON - 130)) * 100));
+
+  const isCollab = collab || strokes.some((s) => s.by && s.by !== state.me);
+  let uploadedRec: StarRecord | null = null;
+  try {
+    const mediaBytes = await encodeDrawingBytes(strokes);
+    const env = await prepareEncryptedStar({
+      id: starId,
+      from: toDbWho(state.me),
+      kind: 'draw',
+      data: {
+        text: '',
+        mime: 'application/gzip',
+        collab: isCollab ? true : undefined,
+      },
+      pos: { x: xPct, y: yPct },
+      mediaBytes,
+      once: false,
+      unlockAt: null,
+    });
+    try {
+      uploadedRec = await uploadPreparedStar(env);
+    } catch (err) {
+      if (err instanceof OfflineNetworkError || isOfflineLikeError(err)) {
+        await enqueueEncryptedStar(env);
+        core.onOutboxChange();
+      } else {
+        throw err;
+      }
+    }
+  } catch {
+    toast('Çizim gönderilemedi · tekrar dene', I.info(14), 3400);
+    landedDrawIds.delete(starId);
+    return;
+  }
+
+  const star: Star = {
+    id: starId,
+    from: state.me,
+    kind: 'draw',
+    draw: strokes,
+    collab: isCollab || undefined,
+    createdAt: uploadedRec ? Date.parse(uploadedRec.createdAt) : Date.now(),
+    opened: false,
+    x: starX,
+    y: starY,
+    visible: false,
+    raw: uploadedRec ?? undefined,
+  };
+  if (!state.stars.some((s) => s.id === star.id)) {
+    state.stars.push(star);
+  }
+  engine.busy(2400);
+  fx.land(target, {
+    now: performance.now(),
+    tint: PEOPLE[state.me].color,
+    onSettle: () => {
+      star.visible = true;
+      star.arrivedAt = performance.now();
+    },
+  });
+  core.refreshHome();
+  const me = PEOPLE[state.me];
+  island({
+    avatar: I.starFill(18),
+    color: me.color,
+    title: isCollab ? 'Ortak çizim gökyüzünde' : `${PEOPLE[state.partner].of} gökyüzünde`,
+    sub: `${PEOPLE[state.partner].name} haber alacak`,
+    ms: 3200,
+  });
+}
+
 const pairRealtime = new PairRealtime({
   onPartnerOnline: (online) => partnerOnline(online),
-  onPartnerActivity: (act) => {
+  onPartnerActivity: (act, explicit) => {
     if (!inHome) return;
     if (act === 'idle') {
+      if (explicit) shownAct = null;
       void closeIsland();
       return;
     }
+    // HOTFIX 22: İzleme ekranı / çizim tahtası açıkken hiçbir "yazıyor/çiziyor" kartı çıkmaz
+    if (pairRealtime.inDrawView) return;
+    const now = Date.now();
+    // Aynı etkinlik için kart 60 sn içinde ikinci kez çıkmaz (gönderen gerçekten null yollayınca sıfırlanır)
+    if (shownAct && shownAct.a === act && now - shownAct.t < 60_000) return;
+    shownAct = { a: act, t: now };
     if (act === 'drawing') {
-      showLive('drawing', { onWatch: () => openWatch() });
+      showLive('drawing', {
+        onWatch: () => {
+          shownAct = { a: 'drawing', t: Date.now() };
+          void closeIsland();
+          openWatch();
+        },
+      });
       return;
     }
     showLive(act);
@@ -248,6 +395,7 @@ const pairRealtime = new PairRealtime({
     toast(`${PEOPLE[state.partner].name} sana bir kalp gönderdi · sen de mumuna dokun`, I.heartFill(14), 3400);
   },
 });
+pairRealtime.onCollabFin = (strokes, sid, collab) => landDrawing(strokes, sid, collab);
 
 let stopStarsRealtime: (() => void) | null = null;
 let realtimeActiveWho: string | null = null;
@@ -320,13 +468,25 @@ Object.assign(core, {
   openSettings,
   openCountdown,
   openStar: (stObj: Star) => void openStar(stObj),
-  openBoard: (existing?: unknown[] | null) => openBoard((existing as Stroke[] | null) ?? null),
+  openBoard: (existing?: unknown[] | null, opts?: { collab?: boolean; sid?: string }) =>
+    openBoard((existing as Stroke[] | null) ?? null, opts),
   renderDrawingPreview: (cvEl: HTMLCanvasElement, strokes: unknown[], upTo?: number) =>
     renderDrawing(cvEl, strokes as Stroke[], 1, upTo ?? Infinity),
   encodeDrawing: (strokes: unknown[]) => encodeDrawingBytes(strokes as Stroke[]),
   decodeDrawing: (bytes: Uint8Array<ArrayBuffer>) => decodeDrawingBytes(bytes),
   sendDrawPacket: (pkt: DrawLivePacket) => void pairRealtime.sendDrawPacket(pkt),
   onDrawPacket: (cb: (pkt: DrawLivePacket) => void) => pairRealtime.onDrawPacket(cb),
+  requestDraw: () => pairRealtime.requestDraw(),
+  setInDrawView: (v: boolean) => {
+    pairRealtime.inDrawView = v;
+  },
+  onCollabFin: (strokes: Stroke[], sid?: string, collab?: boolean) =>
+    pairRealtime.onCollabFin?.(strokes, sid, collab),
+  landMyDrawing: (strokes: Stroke[], sid?: string, collab?: boolean) =>
+    landMyDrawing(strokes, sid, collab),
+  markDrawSessionLanded: (sidOrStarId: string) => {
+    landedDrawIds.add(sessionToStarUuid(sidOrStarId));
+  },
   onSendHeart: () => pairRealtime.sendHeart(),
   onOutboxChange: () => void syncOfflineAndOutbox(),
   setMyLiveActivity: (act: 'writing' | 'sending' | 'drawing' | 'photo' | 'voice' | 'idle') =>
@@ -741,7 +901,15 @@ function ensureRealtimeStarted() {
   stopStarsRealtime?.();
   stopStarsRealtime = subscribeStarsRealtime(dbMe, {
     onInsert: (rec) => {
-      if (state.stars.some((s) => s.id === rec.id)) return;
+      const existing = state.stars.find((s) => s.id === rec.id);
+      if (existing) {
+        existing.raw = rec;
+        if (rec.kind === 'draw' || (rec.kind === 'note' && rec.hasMedia)) {
+          existing.kind = 'draw';
+        }
+        core.refreshHome();
+        return;
+      }
       const tRecv = performance.now();
       const allRecs = [...(state.stars.map((s) => s.raw).filter(Boolean) as StarRecord[]), rec];
       const stNew = mapRecordToStar(rec, allRecs, false);
@@ -773,10 +941,11 @@ function ensureRealtimeStarted() {
         if (!stNew.unlockAt || stNew.unlockAt <= getServerNowMs()) {
           void decryptStarPayload(rec, dbMe)
             .then((pl) => {
-              if (pl.subkind === 'draw' || pl.mime === 'application/gzip') {
+              if (pl.subkind === 'draw' || pl.mime === 'application/gzip' || pl.collab) {
                 stNew.kind = 'draw';
                 rec.kind = 'draw';
               }
+              if (pl.collab) stNew.collab = true;
               stNew.text = pl.text || undefined;
               stNew.caption = pl.caption;
               if (pl.dur) stNew.voiceSec = pl.dur;

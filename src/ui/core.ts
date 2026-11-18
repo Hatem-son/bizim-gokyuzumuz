@@ -7,7 +7,7 @@ import type { WeatherRenderer } from '../gokyuzu/weatherRender';
 import type { SkyWorker } from '../gokyuzu/workerClient';
 import type { Plane } from '../gokyuzu/plane';
 import type { Kind, Star } from './state';
-import type { DrawLivePacket } from './draw';
+import type { BoardResult, DrawLivePacket, Stroke } from './draw';
 
 export const core = {
   engine: null as unknown as Engine,
@@ -34,12 +34,17 @@ export const core = {
   openSettings: () => {},
   openCountdown: () => {},
   openStar: (_st: Star) => {},
-  openBoard: async (_existing?: unknown[] | null): Promise<unknown[] | null> => null,
+  openBoard: async (_existing?: unknown[] | null, _opts?: { collab?: boolean; sid?: string }): Promise<BoardResult | null> => null,
   renderDrawingPreview: (_cv: HTMLCanvasElement, _strokes: unknown[], _upTo?: number) => {},
   encodeDrawing: async (_strokes: unknown[]): Promise<Uint8Array<ArrayBuffer>> => new Uint8Array(new ArrayBuffer(0)),
   decodeDrawing: async (_bytes: Uint8Array<ArrayBuffer>): Promise<unknown[]> => [],
   sendDrawPacket: (_pkt: DrawLivePacket) => {},
   onDrawPacket: (_cb: (pkt: DrawLivePacket) => void): (() => void) => () => {},
+  requestDraw: () => {},
+  setInDrawView: (_v: boolean) => {},
+  onCollabFin: (_strokes: Stroke[], _sid?: string, _collab?: boolean) => {},
+  landMyDrawing: async (_strokes: Stroke[], _sid?: string, _collab?: boolean): Promise<void> => {},
+  markDrawSessionLanded: (_sidOrStarId: string) => {},
   onSendHeart: () => {},
   onOutboxChange: () => {},
   setMyLiveActivity: (_act: 'writing' | 'sending' | 'drawing' | 'photo' | 'voice' | 'idle') => {},

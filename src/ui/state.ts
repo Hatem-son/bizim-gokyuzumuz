@@ -19,6 +19,7 @@ export type Star = {
   voicePeaks?: number[];
   voiceUrl?: string;
   draw?: [string, string, number, [number, number, number][]][] | unknown;
+  collab?: boolean;
   createdAt: number;
   unlockAt?: number;
   opened: boolean;

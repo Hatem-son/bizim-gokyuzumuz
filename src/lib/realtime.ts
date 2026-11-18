@@ -4,7 +4,7 @@
 // 3) Canlı çizim ('draw'): AES-GCM-256 (her mesajda yeni 12 bayt IV, { iv, ct }) ile uçtan uca şifreli, seq numaralı, en çok 1 bekleyen paket kuyruğu (~80 ms).
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import type { Who as DbWho } from '../types';
-import type { DrawLivePacket } from '../ui/draw';
+import type { DrawLivePacket, Stroke } from '../ui/draw';
 import { getSupabase, isSupabaseConfigured } from './supabase';
 import { hasActiveKey, sealJSON, openJSON } from './crypto';
 
@@ -14,7 +14,7 @@ export type LiveActivity = 'writing' | 'sending' | 'drawing' | 'photo' | 'voice'
 
 export interface PairRealtimeHandlers {
   onPartnerOnline: (online: boolean) => void;
-  onPartnerActivity: (activity: Exclude<LiveActivity, 'heart'>) => void;
+  onPartnerActivity: (activity: Exclude<LiveActivity, 'heart'>, explicit?: boolean) => void;
   onPartnerHeart: () => void;
 }
 
@@ -77,8 +77,9 @@ export class PairRealtime {
   private reconnectAttempt = 0;
   private connectSeq = 0;
   private drawSending = false;
-  private queuedDrawPkt: DrawLivePacket | null = null;
+  private drawQueue: DrawLivePacket[] = [];
   private drawListeners = new Set<(pkt: DrawLivePacket) => void>();
+  private _inDrawView = false;
 
   live = false;
   isOnline = false;
@@ -86,6 +87,18 @@ export class PairRealtime {
   onActivity?: (act: Exclude<LiveActivity, 'heart'> | null) => void;
   onDraw?: (pkt: DrawLivePacket) => void;
   onDrawRequest?: () => void;
+  onCollabFin?: (strokes: Stroke[], sid?: string, collab?: boolean) => void;
+
+  get inDrawView(): boolean {
+    if (this._inDrawView && typeof document !== 'undefined' && !document.querySelector('.board,.watch')) {
+      this._inDrawView = false;
+    }
+    return this._inDrawView;
+  }
+
+  set inDrawView(v: boolean) {
+    this._inDrawView = v;
+  }
 
   constructor(private handlers: PairRealtimeHandlers) {
     document.addEventListener('visibilitychange', this.onVis);
@@ -267,7 +280,7 @@ export class PairRealtime {
           this.presPingId = window.setInterval(() => {
             if (!document.hidden && this.active && this.subscribed) {
               void ch.track({ at: Date.now(), who: this.me }).catch(() => undefined);
-              void this.sendRaw('act', { t: 'act', a: this.myAct === 'idle' ? null : this.myAct, pres: true });
+              void this.sendRaw('act', { t: 'act', pres: true });
             }
           }, 8000);
         } else if (status === 'CLOSED' || status === 'TIMED_OUT' || status === 'CHANNEL_ERROR') {
@@ -303,7 +316,7 @@ export class PairRealtime {
       if (data.pres === false) {
         this.partnerSeenAt = 0;
         this.setOnline(false);
-        this.handlers.onPartnerActivity('idle');
+        this.handlers.onPartnerActivity('idle', true);
         this.onActivity?.(null);
         return;
       }
@@ -311,7 +324,7 @@ export class PairRealtime {
       this.setOnline(true);
       this.armPresenceWatchdog();
       if (data.reply) {
-        void this.sendRaw('act', { t: 'act', a: this.myAct === 'idle' ? null : this.myAct, pres: true, reply: false });
+        void this.sendRaw('act', { t: 'act', pres: true, reply: false });
       }
       if (!('a' in data) && !('activity' in data)) return;
       const act = (data.a ?? data.activity ?? null) as LiveActivity | null;
@@ -321,15 +334,15 @@ export class PairRealtime {
       }
       clearTimeout(this.partnerWatchdogId);
       if (!act || act === 'idle') {
-        this.handlers.onPartnerActivity('idle');
+        this.handlers.onPartnerActivity('idle', true);
         this.onActivity?.(null);
         return;
       }
-      this.handlers.onPartnerActivity(act);
+      this.handlers.onPartnerActivity(act, false);
       this.onActivity?.(act);
-      // 6.5 sn sinyal gelmezse alıcı tarafta kendiliğinden kapanır
+      // 6.5 sn sinyal gelmezse alıcı tarafta kendiliğinden kapanır (ancak shownAct yalnızca gönderen gerçekten null yollayınca sıfırlanır)
       this.partnerWatchdogId = window.setTimeout(() => {
-        this.handlers.onPartnerActivity('idle');
+        this.handlers.onPartnerActivity('idle', false);
         this.onActivity?.(null);
       }, 6500);
       return;
@@ -340,7 +353,7 @@ export class PairRealtime {
       this.setOnline(true);
       this.armPresenceWatchdog();
       const pkt = data as DrawLivePacket;
-      if (pkt.t === 'hello') {
+      if (pkt.t === 'hello' || pkt.t === 'dreq') {
         this.onDrawRequest?.();
       }
       this.onDraw?.(pkt);
@@ -357,7 +370,7 @@ export class PairRealtime {
     this.presWatchdogId = 0;
     clearTimeout(this.partnerWatchdogId);
     this.partnerWatchdogId = 0;
-    this.queuedDrawPkt = null;
+    this.drawQueue.length = 0;
     this.drawSending = false;
 
     if (notifyLeave) {
@@ -385,11 +398,11 @@ export class PairRealtime {
     this.ch = null;
   }
 
-  /** HOTFIX 19 Item 3: en çok 2.5 sn'de bir mesaj yollar; null/'idle' anında gider. */
+  /** HOTFIX 19 & 22: en çok 2.5 sn'de bir mesaj yollar; null/'idle' anında gider (arka planda sonsuz döngü kurmaz). */
   activity(act: Exclude<LiveActivity, 'heart'> | null) {
     const norm: Exclude<LiveActivity, 'heart'> = !act ? 'idle' : act;
     const now = performance.now();
-    if (norm !== 'idle' && norm === this.lastActSent && now - this.lastActSentAt < 2500 && this.heartbeatId !== 0) {
+    if (norm !== 'idle' && norm === this.lastActSent && now - this.lastActSentAt < 2500) {
       return;
     }
     this.myAct = norm;
@@ -398,17 +411,6 @@ export class PairRealtime {
     clearInterval(this.heartbeatId);
     this.heartbeatId = 0;
     void this.sendRaw('act', { t: 'act', a: norm === 'idle' ? null : norm, pres: true });
-    if (norm !== 'idle') {
-      this.heartbeatId = window.setInterval(() => {
-        if (document.hidden || this.myAct === 'idle') {
-          clearInterval(this.heartbeatId);
-          this.heartbeatId = 0;
-          return;
-        }
-        this.lastActSentAt = performance.now();
-        void this.sendRaw('act', { t: 'act', a: this.myAct, pres: true });
-      }, 2500);
-    }
   }
 
   setMyActivity(act: Exclude<LiveActivity, 'heart'>) {
@@ -419,49 +421,37 @@ export class PairRealtime {
     void this.sendRaw('act', { t: 'act', a: 'heart', pres: true });
   }
 
-  /** HOTFIX 19 Item 1 & 4: kuyrukta en çok 1 bekleyen çizim paketi tut (noktaları birleştir, hız sınırını aşma). */
+  /** HOTFIX 19 & 22: sıralı çizim kuyruğu (dstart, dpts, dundo, dclear, djoin, dsnap, dleave, dfin paketlerini sıra bozmadan yollar). */
   draw(pkt: DrawLivePacket) {
     if (document.hidden || !this.active) return;
-    if (this.drawSending) {
-      if (
-        pkt.t === 'pts' &&
-        this.queuedDrawPkt &&
-        this.queuedDrawPkt.t === 'pts' &&
-        this.queuedDrawPkt.si === pkt.si
-      ) {
-        this.queuedDrawPkt = {
-          ...pkt,
-          pts: [...this.queuedDrawPkt.pts, ...pkt.pts],
-        };
-      } else {
-        this.queuedDrawPkt = pkt;
-      }
-      return;
+    this.drawQueue.push(pkt);
+    if (!this.drawSending) {
+      void this.flushDrawQueue();
     }
-    void this.flushDrawQueue(pkt);
   }
 
   drawForce(pkt: DrawLivePacket) {
-    this.queuedDrawPkt = null;
-    void this.sendRaw('draw', pkt);
+    if (!this.active) return;
+    if (pkt.t === 'dclear' || pkt.t === 'clear' || pkt.t === 'dfin' || pkt.t === 'done' || pkt.t === 'dleave' || pkt.t === 'bye') {
+      this.drawQueue = this.drawQueue.filter((p) => p.t !== 'dpts' && p.t !== 'pts');
+    }
+    this.drawQueue.push(pkt);
+    if (!this.drawSending) {
+      void this.flushDrawQueue();
+    }
   }
 
   requestDraw() {
-    this.drawForce({ t: 'hello', seq: Date.now() });
+    this.drawForce({ t: 'dreq', seq: Date.now() });
   }
 
-  private async flushDrawQueue(initial: DrawLivePacket): Promise<void> {
+  private async flushDrawQueue(): Promise<void> {
+    if (this.drawSending) return;
     this.drawSending = true;
-    let next: DrawLivePacket | null = initial;
     try {
-      while (next) {
-        const cur = next;
-        next = null;
+      while (this.drawQueue.length > 0) {
+        const cur = this.drawQueue.shift()!;
         await this.sendRaw('draw', cur);
-        if (this.queuedDrawPkt) {
-          next = this.queuedDrawPkt;
-          this.queuedDrawPkt = null;
-        }
       }
     } finally {
       this.drawSending = false;
@@ -469,7 +459,7 @@ export class PairRealtime {
   }
 
   async sendDrawPacket(pkt: DrawLivePacket): Promise<void> {
-    if (pkt.t === 'pts') {
+    if (pkt.t === 'dpts' || pkt.t === 'pts') {
       this.draw(pkt);
     } else {
       this.drawForce(pkt);

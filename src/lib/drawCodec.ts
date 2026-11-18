@@ -14,6 +14,7 @@ type PackedStroke = {
   c: string;
   s: number;
   d: number[]; // [x0, y0, t0, dx1, dy1, dt1, ...]
+  by?: 'ham' | 'beto';
 };
 
 type PackedDoc = {
@@ -82,6 +83,7 @@ export function clampStrokes(strokes: Stroke[]): Stroke[] {
       c: st.c,
       s: Math.round(st.s * 10) / 10,
       p: simplified.slice(0, allow).map(([x, y, t]) => [Math.round(x), Math.round(y), Math.max(0, Math.round(t))]),
+      ...(st.by ? { by: st.by } : {}),
     });
     totalPts += allow;
   }
@@ -104,7 +106,7 @@ function packDelta(strokes: Stroke[]): PackedDoc {
         }
         px = x; py = y; pt = t;
       }
-      return { k: st.k, c: st.c, s: st.s, d };
+      return { k: st.k, c: st.c, s: st.s, d, ...(st.by ? { by: st.by } : {}) };
     }),
   };
 }
@@ -128,7 +130,8 @@ function unpackDelta(doc: PackedDoc): Stroke[] {
     }
     if (pts.length) {
       const k = st.k === 'glow' || st.k === 'erase' ? st.k : 'pen';
-      out.push({ k, c: String(st.c || '#ffffff'), s: Number(st.s) || 8, p: pts });
+      const by = st.by === 'ham' || st.by === 'beto' ? st.by : undefined;
+      out.push({ k, c: String(st.c || '#ffffff'), s: Number(st.s) || 8, p: pts, ...(by ? { by } : {}) });
     }
   }
   return out;
