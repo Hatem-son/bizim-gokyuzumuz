@@ -46,12 +46,4 @@ export const core = {
   onPersona: () => {},
   triggerOcean: () => {},
   lastInsertLatencyMs: null as number | null,
-  /** Ayarlar > Test paneli: main.ts doldurur. YALNIZCA bu telefonda görsel simülasyon; karşı tarafa/sunucuya hiçbir şey gitmez. */
-  test: null as null | {
-    groups: { title: string; items: { label: string; run: () => void; leave?: boolean }[] }[];
-    weatherKinds: { k: string; label: string }[];
-    setWeather: (k: string | null) => void;
-    setHour: (h: number | null) => void;
-    hourNow: () => number;
-  },
 };

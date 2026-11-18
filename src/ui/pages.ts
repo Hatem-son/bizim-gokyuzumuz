@@ -449,7 +449,7 @@ export function openSettings() {
       </div>
       <div class="eyebrow group-title">Gökyüzü</div>
       <div class="group">
-        <button type="button" class="set-row" data-wx><span class="si">${I.cloud(17)}</span><span class="st">Hava durumu</span><span class="sv"><span data-wxv>${wxLabel()}</span>${I.chevron(16)}</span></button>
+        <button type="button" class="set-row" data-wx><span class="si">${I.cloud(17)}</span><span class="st">Hava durumu</span><span class="sv"><span data-wxv>${esc(wxLabel())}</span>${I.chevron(16)}</span></button>
         <button type="button" class="set-row" data-k="live"><span class="si">${I.star(17)}</span><span class="st">Canlı gösterge<div class="small" style="margin-top:3px">“${PEOPLE[state.partner].name} yıldız gönderiyor”</div></span>${tg(S.live)}</button>
         <button type="button" class="set-row" data-k="lightning"><span class="si">${I.bolt(17)}</span><span class="st">Şimşek efekti</span>${tg(S.lightning)}</button>
       </div>
@@ -555,70 +555,6 @@ export function openSettings() {
   pushPage(page, core.homeEl);
 }
 
-/* ===================== test paneli (yönetici) ===================== */
-// Önizlemedeki demo panelinin AYNISI, uygulamanın içinde. Her şey yalnızca bu telefonda oynatılır (sahte veri, ağ yok).
-export function openTestPanel(under: HTMLElement) {
-  const T = core.test;
-  if (!T) return;
-  const hh = T.hourNow();
-  const page = h(`<div class="page" role="dialog" aria-label="Test paneli">
-    <div class="page-head"><button type="button" class="icon-btn" data-back aria-label="Geri">${I.back()}</button></div>
-    <div class="page-body" data-scroll>
-      <div class="title" style="font-size:38px;margin:2px 4px 4px">Test paneli</div>
-      <p class="small" style="margin:0 4px 14px">Sadece bu telefonda görünür. ${PEOPLE[state.partner].name}'ya hiçbir şey gitmez, yıldızlar kaydedilmez.</p>
-      <div class="eyebrow group-title">Saat</div>
-      <div class="group" style="padding:14px 16px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><span class="st">Gökyüzü saati</span><span class="sv" data-hl></span></div>
-        <input type="range" min="0" max="23.99" step="0.05" value="${hh}" data-hour style="width:100%;touch-action:pan-x">
-        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-          ${[['Gece', 23], ['Şafak', 6.3], ['Öğle', 13], ['Gün batımı', 18.2]].map(([l, v]) => `<button type="button" class="chip" data-hp="${v}">${l}</button>`).join('')}
-          <button type="button" class="chip" data-hnow>Şimdi</button></div>
-      </div>
-      <div class="eyebrow group-title">Hava</div>
-      <div class="group" style="padding:14px 12px;display:flex;flex-wrap:wrap;gap:8px">
-        ${T.weatherKinds.map((w) => `<button type="button" class="chip" data-wk="${w.k}">${w.label}</button>`).join('')}
-        <button type="button" class="chip" data-wk="">Gerçek hava</button>
-      </div>
-      ${T.groups.map((g, gi) => `<div class="eyebrow group-title">${g.title}</div><div class="group">${g.items.map((it, i) => `<button type="button" class="set-row" data-a="${gi}:${i}"><span class="st">${it.label}</span><span class="sv">${I.play(14)}</span></button>`).join('')}</div>`).join('')}
-      <p class="small center" style="margin-top:22px">Bu panel test içindir; uygulama kapanınca her şey gerçek haline döner.</p>
-    </div></div>`);
-  const hl = $('[data-hl]', page);
-  const fmt = (v: number) => `${String(Math.floor(v) % 24).padStart(2, '0')}:${String(Math.floor((v % 1) * 60)).padStart(2, '0')}`;
-  const range = $<HTMLInputElement>('[data-hour]', page);
-  const setH = (v: number | null) => {
-    T.setHour(v);
-    hl.textContent = v === null ? 'şimdi' : fmt(v);
-    if (v !== null) range.value = String(v);
-  };
-  hl.textContent = core.engine.timeOverride
-    ? fmt(core.engine.timeOverride.getHours() + core.engine.timeOverride.getMinutes() / 60)
-    : 'şimdi';
-  range.addEventListener('input', () => setH(+range.value));
-  $$('[data-hp]', page).forEach((b) => b.addEventListener('click', () => setH(+b.dataset.hp!)));
-  $('[data-hnow]', page).addEventListener('click', () => {
-    setH(null);
-    range.value = String(T.hourNow());
-  });
-  $$('[data-wk]', page).forEach((b) =>
-    b.addEventListener('click', () => {
-      $$('[data-wk]', page).forEach((x) => x.classList.toggle('on', x === b));
-      T.setWeather(b.dataset.wk || null);
-    })
-  );
-  $$('[data-a]', page).forEach((b) =>
-    b.addEventListener('click', async () => {
-      const [gi, ii] = b.dataset.a!.split(':').map(Number);
-      const it = T.groups[gi].items[ii];
-      if (it.leave) {
-        await popPage(under);
-        await popPage(core.homeEl);
-      }
-      it.run();
-    })
-  );
-  $('[data-back]', page).addEventListener('click', () => void popPage(under));
-  pushPage(page, under);
-}
 
 export function weatherSheet(done: () => void) {
   const S = state.settings;

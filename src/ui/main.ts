@@ -12,7 +12,7 @@ import { Effects, drawUserStar } from '../gokyuzu/effects';
 import { Plane, schedulePlane } from '../gokyuzu/plane';
 import { SwipeHint } from '../gokyuzu/swipeHint';
 import { playIntro } from '../gokyuzu/intro';
-import { Weather, WeatherKind, kindFromCode, KIND_TR, startWeather } from '../gokyuzu/weather';
+import { startWeather } from '../gokyuzu/weather';
 import { clamp, hash } from '../gokyuzu/util';
 import { initKeyboard } from '../gokyuzu/keyboard';
 import { Beach } from './beach';
@@ -25,8 +25,8 @@ import { core } from './core';
 import { initUI, $, $$, h, toast, sleep, clearPageStack, closeIsland, island } from './ui';
 import { state, PEOPLE, Star, Kind, setMe, toUiWho, toDbWho } from './state';
 import { buildHome, buildForeground, placeForeground, showLive, sendHeart, partnerOnline } from './home';
-import { openCompose, freeSpot } from './compose';
-import { openBoard, openWatch, renderDrawing, demoDrawing, Stroke, DrawLivePacket } from './draw';
+import { openCompose } from './compose';
+import { openBoard, openWatch, renderDrawing, Stroke, DrawLivePacket } from './draw';
 import { encodeDrawingBytes, decodeDrawingBytes } from '../lib/drawCodec';
 // Ayarlar/arşiv/yıldız sayfaları ilk çizimden SONRA, ilk kullanımda yüklenir (ana paket küçülür)
 const lazyPages = () => import('./pages');
@@ -35,7 +35,7 @@ const openArchive = () => void lazyPages().then((m) => m.openArchive());
 const openSettings = () => void lazyPages().then((m) => m.openSettings());
 const openCountdown = () => void lazyPages().then((m) => m.openCountdown());
 setTimeout(() => void lazyPages(), 4000); // boşta önceden ısıt
-import { runAuth, runLock, applyPersona, faceAuth } from './auth';
+import { runAuth, runLock, applyPersona } from './auth';
 import { I } from './icons';
 import { registerServiceWorker } from '../lib/pwa';
 import { isSupabaseConfigured, getSessionFast, inferWhoFromEmail, signOutSupabase } from '../lib/supabase';
@@ -849,33 +849,12 @@ async function enterHome(preloaded = false, fadeDelay = 150) {
   }
 }
 
-function firstRunNudge(force = false) {
-  let n = 0;
-  try {
-    n = +(localStorage.getItem('gk.nudge') || 0);
-    localStorage.setItem('gk.nudge', String(n + 1));
-  } catch {
-    // Ignore
-  }
-  if ((n >= 2 && !force) || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  setTimeout(() => {
-    if (drag || !inHome) return;
-    const from = core.scrollX;
-    hint?.onScrollStart();
-    hint?.showText(2600);
-    core.scrollTo(from + 46, 520);
-    setTimeout(() => {
-      core.scrollTo(from, 820);
-      hint?.onScrollEnd();
-    }, 560);
-  }, 3200);
-}
 
 const urlQuery = new URLSearchParams(location.search);
 
 async function boot(mode?: 'auth' | 'lock' | 'home') {
   // Ayarlar → "Face ID ile aç" kapalıysa kilit ekranı hiç gelmez: oturum açıksa doğrudan ana ekran (iPhone'un kendi kilidi korur).
-  if (mode === 'lock' && !state.settings.faceId && !faceAuth.sim) mode = 'home';
+  if (mode === 'lock' && !state.settings.faceId) mode = 'home';
   clearPageStack();
   $$('.screen.home,.auth,.page,.sheet,.backdrop,.board,.watch,.cdpage,.scene-fg,.island-pop').forEach((x) => x.remove());
   core.homeEl = null as unknown as HTMLElement;
@@ -895,7 +874,7 @@ async function boot(mode?: 'auth' | 'lock' | 'home') {
 
   const sessionTask = (async () => {
     let resolved = mode ?? (await resolveBootMode());
-    if (resolved === 'lock' && !state.settings.faceId && !faceAuth.sim) resolved = 'home';
+    if (resolved === 'lock' && !state.settings.faceId) resolved = 'home';
     applyPersona();
     if (resolved === 'home' || resolved === 'lock') {
       ensureRealtimeStarted();
@@ -979,241 +958,22 @@ core.logout = async () => {
   await signOutSupabase();
   await clearActiveKey();
   store.del(STORAGE_KEYS.me);
+  store.del(STORAGE_KEYS.starsLocal);
+  store.del(STORAGE_KEYS.verifyLocal);
+  try {
+    // taslaklar (gokyuzu.draft.v4.*) ve Supabase oturum belirteçleri (sb-*) yerelden silinir
+    for (const k of Object.keys(localStorage)) {
+      if (k.startsWith(STORAGE_KEYS.draftPrefix) || k.startsWith('sb-')) localStorage.removeItem(k);
+    }
+    // service worker önbelleği (yalnızca uygulama kabuğu tutulur; yine de çıkışta boşaltılır)
+    if ('caches' in window) for (const name of await caches.keys()) await caches.delete(name);
+  } catch {
+    // Ignore storage errors
+  }
   state.stars = [];
   await boot('auth');
 };
 
-// ---------- Test paneli (Ayarlar → Uygulama → Test paneli): YALNIZCA bu telefonda görsel simülasyon ----------
-const PRE: Record<WeatherKind, [number, number, number, number, number]> = {
-  clear: [0, 0, 0.1, 15000, 0], partly: [2, 35, 0.2, 15000, 0], cloudy: [3, 70, 0.3, 12000, 0], overcast: [3, 98, 0.3, 9000, 0],
-  fog: [45, 60, 0.05, 400, 0], drizzle: [53, 90, 0.2, 6000, 0.25], rain: [63, 95, 0.35, 5000, 0.6], heavyRain: [65, 100, 0.6, 2500, 0.95],
-  showers: [81, 80, 0.45, 6000, 0.6], snow: [73, 95, 0.15, 3000, 0.55], heavySnow: [75, 100, 0.4, 900, 0.9], sleet: [67, 100, 0.3, 3000, 0.55], thunder: [95, 100, 0.7, 3000, 0.95],
-};
-
-function applyWxKind(kk: WeatherKind) {
-  wxOverridden = true;
-  const [code, cloud, wnd, vis, precip] = PRE[kk];
-  const wx: Weather = {
-    kind: kindFromCode(code, cloud / 100),
-    cloud: cloud / 100,
-    precip,
-    wind: wnd,
-    windSign: -1,
-    fog: vis < 1000 ? 0.85 : 0,
-    temp: [13, 16, 12, 11, 9, 10, 9, 8, 10, 1, -1, 2, 11][Object.keys(PRE).indexOf(kk)],
-    ts: Date.now(),
-  };
-  engine.setWeather(wx, 3000);
-  weatherRenderer.setWeather(wx);
-  if (state.settings.weather === 'off') state.settings.weather = 'geo';
-  core.refreshHome();
-}
-
-function setHourOverride(hh: number | null) {
-  if (hh === null) {
-    engine.timeOverride = null;
-    engine.retarget(1200);
-    return;
-  }
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  d.setTime(d.getTime() + hh * 3600_000);
-  engine.timeOverride = d;
-  engine.retarget(600);
-}
-
-async function partnerSends() {
-  if (!home || !inHome) return;
-  partnerOnline(true);
-  showLive('writing');
-  await sleep(3200);
-  if (!inHome) return;
-  showLive('sending');
-  await sleep(1600);
-  if (!inHome) return;
-  const spot = freeSpot();
-  const s: Star = {
-    id: 'sim-p-' + Date.now(),
-    from: state.partner,
-    kind: 'text',
-    text: 'Şu an gökyüzümüze bakıyorum, sen de bak.',
-    createdAt: Date.now(),
-    opened: false,
-    x: mod(spot.x + core.scrollX, P),
-    y: spot.y,
-    visible: false,
-  };
-  state.stars.push(s);
-  engine.busy(2600);
-  fx.incoming(spot, {
-    now: performance.now(),
-    tint: PEOPLE[state.partner].color,
-    onSettle: () => {
-      s.visible = true;
-      s.arrivedAt = performance.now();
-    },
-  });
-  showLive('left', { star: s });
-  core.refreshHome();
-}
-
-async function partnerDraws() {
-  if (!home || !inHome) return;
-  partnerOnline(true);
-  const simStrokes = demoDrawing();
-  const landDrawing = () => {
-    const spot = freeSpot();
-    const s: Star = {
-      id: 'sim-d-' + Date.now(),
-      from: state.partner,
-      kind: 'draw',
-      draw: simStrokes,
-      createdAt: Date.now(),
-      opened: false,
-      x: mod(spot.x + core.scrollX, P),
-      y: spot.y,
-      visible: false,
-    };
-    state.stars.push(s);
-    fx.land(spot, {
-      now: performance.now(),
-      tint: PEOPLE[state.partner].color,
-      onSettle: () => {
-        s.visible = true;
-        s.arrivedAt = performance.now();
-      },
-    });
-    engine.busy(1500);
-    showLive('left', { star: s });
-    core.refreshHome();
-  };
-  showLive('drawing', { onWatch: () => openWatch(() => landDrawing(), simStrokes) });
-}
-
-function showWhale() {
-  beach.whale.start(performance.now(), core.scrollX, W);
-  engine.busy(1000);
-}
-
-function offlineToast() {
-  const b = h(`<div class="offline toast glass-strong" style="top:calc(var(--safe-t) + 6px);bottom:auto">${I.cloud(14)}<span>Çevrimdışı · yıldızların bağlantı gelince gidecek</span></div>`);
-  app.appendChild(b);
-  b.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300 });
-  setTimeout(() => b.remove(), 3500);
-}
-
-core.test = {
-  weatherKinds: (Object.keys(PRE) as WeatherKind[]).map((k) => ({ k, label: KIND_TR[k] })),
-  setWeather: (k) => {
-    if (k) applyWxKind(k as WeatherKind);
-    else core.reloadWeather();
-  },
-  setHour: (hh) => setHourOverride(hh),
-  hourNow: () => {
-    const n = new Date();
-    return n.getHours() + n.getMinutes() / 60;
-  },
-  get groups() {
-    return [
-      {
-        title: 'Açılış ve giriş',
-        items: [
-          {
-            label: 'Açılış animasyonu (ilk açılış)',
-            leave: true,
-            run: () => {
-              try { localStorage.removeItem('gk.seen'); } catch {}
-              void boot('home');
-            },
-          },
-          {
-            label: 'Açılış animasyonu (tekrar açılış)',
-            leave: true,
-            run: () => {
-              try { localStorage.setItem('gk.seen', '1'); } catch {}
-              void boot('home');
-            },
-          },
-          {
-            label: 'Face ID kilidi',
-            leave: true,
-            run: () => {
-              faceAuth.sim = 'ok';
-              void boot('lock');
-              setTimeout(() => { faceAuth.sim = null; }, 4500);
-            },
-          },
-          {
-            label: 'Face ID okuyamazsa → şifre',
-            leave: true,
-            run: () => {
-              faceAuth.sim = 'fail';
-              void boot('lock');
-              setTimeout(() => { faceAuth.sim = null; }, 4500);
-            },
-          },
-          {
-            label: 'İlk kurulum (giriş akışı)',
-            leave: true,
-            run: () => void boot('auth'),
-          },
-        ],
-      },
-      {
-        title: `${PEOPLE[state.partner].name} (canlı)`,
-        items: [
-          { label: 'Yazıyor → yıldız bırakır', leave: true, run: () => void partnerSends() },
-          { label: 'Çiziyor → canlı izle', leave: true, run: () => void partnerDraws() },
-          {
-            label: 'Uygulamaya girdi / çıktı (mum)',
-            leave: true,
-            run: () => {
-              const on = !document.querySelector('.jar.partner.on');
-              partnerOnline(on);
-            },
-          },
-          {
-            label: 'Mumdan kalp gönderir',
-            leave: true,
-            run: () => {
-              if (!home) return;
-              partnerOnline(true);
-              sendHeart(true);
-              toast(`${PEOPLE[state.partner].name} sana bir kalp gönderdi · sen de mumuna dokun`, I.heartFill(14), 3400);
-            },
-          },
-        ],
-      },
-      {
-        title: 'Gökyüzü ve deniz',
-        items: [
-          {
-            label: 'Deniz selamı (seni seviyorum)',
-            leave: true,
-            run: () => {
-              ocean.resetCooldown();
-              ocean.start(performance.now(), core.scrollX);
-              engine.busy(1000);
-            },
-          },
-          { label: 'Balina', leave: true, run: () => showWhale() },
-          { label: 'Uyuyan Kadın dağına git', leave: true, run: () => core.scrollTo(X0 + 400 - W / 2, 1600) },
-          { label: 'Uçak', leave: true, run: () => void plane.launch() },
-          {
-            label: 'Meteor',
-            leave: true,
-            run: () => {
-              fx.decorative(performance.now());
-              engine.busy(1200);
-            },
-          },
-          { label: 'Kaydırma ipucu', leave: true, run: () => firstRunNudge(true) },
-          { label: 'Çevrimdışı uyarısı', leave: true, run: offlineToast },
-        ],
-      },
-    ];
-  },
-};
 
 // Zamanlı yıldızların kilit açılma anı kontrolü (sekme açıkken)
 window.setInterval(() => {

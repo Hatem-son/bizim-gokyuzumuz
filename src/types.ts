@@ -50,5 +50,5 @@ export interface BiometricRecord {
 export interface ProfileRow {
   id: string;
   who: Who;
-  push_subscription: Record<string, unknown> | null;
+  push_subscription?: Record<string, unknown> | null; // istemci okumaz (yalnızca yazar); sunucu tarafında kolon okuması kapalı
 }

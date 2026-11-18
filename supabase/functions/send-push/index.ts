@@ -38,6 +38,28 @@ const ALLOWED_ORIGINS = (Deno.env.get('APP_ORIGIN') ?? '')
   .map((s: string) => s.trim())
   .filter(Boolean);
 
+const MAX_BODY_BYTES = 2048;
+const ALLOWED_KINDS = new Set(['text', 'note', 'miss', 'photo', 'voice', 'draw']);
+const RATE_WINDOW_MS = 60_000;
+const RATE_MAX = 20;
+const rateHits = new Map<string, number[]>();
+
+/** Kullanıcı başına dakikada en çok RATE_MAX istek (örnek başına bellek içi; kötüye kullanım freni). */
+function rateLimited(userId: string): boolean {
+  const now = Date.now();
+  const hits = (rateHits.get(userId) ?? []).filter((t) => now - t < RATE_WINDOW_MS);
+  hits.push(now);
+  rateHits.set(userId, hits);
+  return hits.length > RATE_MAX;
+}
+
+function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
 function json(
   data: unknown,
   status: number,
@@ -187,11 +209,29 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return json({ error: 'Unauthorized' }, 401, corsHeaders);
     }
 
-    const body = (await req.json().catch(() => ({}))) as PushRequestBody;
+    // Tarayıcı kaynaklı istekler yalnızca izinli alan adından (APP_ORIGIN); gövde boyutu sınırlı
+    const reqOrigin = req.headers.get('Origin')?.trim() ?? '';
+    if (reqOrigin && ALLOWED_ORIGINS.length > 0 && !ALLOWED_ORIGINS.includes(reqOrigin)) {
+      return json({ error: 'Forbidden origin' }, 403, corsHeaders);
+    }
+    if (Number(req.headers.get('Content-Length') ?? '0') > MAX_BODY_BYTES) {
+      return json({ error: 'Payload too large' }, 413, corsHeaders);
+    }
+
+    const rawBody = await req.text();
+    if (rawBody.length > MAX_BODY_BYTES) {
+      return json({ error: 'Payload too large' }, 413, corsHeaders);
+    }
+    let body: PushRequestBody = {};
+    try {
+      body = rawBody ? (JSON.parse(rawBody) as PushRequestBody) : {};
+    } catch {
+      return json({ error: 'Bad request' }, 400, corsHeaders);
+    }
     const admin: any = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     if (body.mode === 'check_unlocks') {
-      if (jwt !== SUPABASE_SERVICE_ROLE_KEY) {
+      if (!safeEqual(jwt, SUPABASE_SERVICE_ROLE_KEY)) {
         return json({ error: 'Forbidden' }, 403, corsHeaders);
       }
       const result = await processPendingUnlocks(admin);
@@ -201,6 +241,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const { data: userData, error: userErr } = await admin.auth.getUser(jwt);
     if (userErr || !userData.user) {
       return json({ error: 'Invalid token' }, 401, corsHeaders);
+    }
+    if (rateLimited(userData.user.id)) {
+      return json({ error: 'Too many requests' }, 429, corsHeaders);
+    }
+    if (body.kind !== undefined && !ALLOWED_KINDS.has(String(body.kind))) {
+      return json({ error: 'Bad request' }, 400, corsHeaders);
+    }
+    if (body.unlockAt != null && Number.isNaN(Date.parse(String(body.unlockAt)))) {
+      return json({ error: 'Bad request' }, 400, corsHeaders);
     }
 
     const { data: senderProfile } = await admin
@@ -252,11 +301,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
 
     return json(res, 200, corsHeaders);
-  } catch (err: unknown) {
-    return json(
-      { error: err instanceof Error ? err.message : 'Unexpected error' },
-      500,
-      corsHeaders
-    );
+  } catch (_err: unknown) {
+    // iç hata ayrıntısı istemciye sızdırılmaz
+    return json({ error: 'Unexpected error' }, 500, corsHeaders);
   }
 });

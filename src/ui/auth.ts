@@ -14,6 +14,7 @@ import {
   inferWhoFromEmail,
 } from '../lib/supabase';
 import { unlockWithSecret, loadSavedKey } from '../lib/crypto';
+import { lockedFor, recordFail, recordOk, waitMessage } from '../lib/throttle';
 import { enrollBiometric, verifyBiometricDetailed, hasBiometric } from '../lib/lock';
 import { subscribePushNotifications, getNotificationPermission } from '../lib/push';
 
@@ -103,6 +104,8 @@ export function runAuth(app: HTMLElement, onDone: () => void) {
     n.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!inp.value) return err(n, 'Şifreni yazmalısın.');
+      const wait = lockedFor('pw');
+      if (wait > 0) return err(n, waitMessage(wait));
       const b = $<HTMLButtonElement>('[type=submit]', n);
       b.innerHTML = spinner();
       b.disabled = true;
@@ -112,9 +115,11 @@ export function runAuth(app: HTMLElement, onDone: () => void) {
         b.disabled = false;
         b.textContent = 'Devam';
         if (!res.ok) {
-          err(n, res.error);
+          if (res.error === 'Şifre doğru değil, tekrar dene') err(n, `${res.error}. ${waitMessage(recordFail('pw'))}`);
+          else err(n, res.error);
           return;
         }
+        recordOk('pw');
       } else {
         await sleep(350);
         b.disabled = false;
@@ -144,6 +149,8 @@ export function runAuth(app: HTMLElement, onDone: () => void) {
     n.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (inp.value.trim().length < 3) return err(n, 'Gizli kelime en az 3 harf olmalı.');
+      const wait = lockedFor('secret');
+      if (wait > 0) return err(n, waitMessage(wait));
       const b = $<HTMLButtonElement>('[type=submit]', n);
       b.innerHTML = `${spinner()} Yıldızlar açılıyor`;
       b.disabled = true;
@@ -152,9 +159,10 @@ export function runAuth(app: HTMLElement, onDone: () => void) {
         if (!ok) {
           b.disabled = false;
           b.innerHTML = `${I.star(17)} Gökyüzüne gir`;
-          err(n, 'Bu kelime gökyüzümüzün gizli kelimesiyle eşleşmiyor.');
+          err(n, `Bu kelime gökyüzümüzün gizli kelimesiyle eşleşmiyor. ${waitMessage(recordFail('secret'))}`);
           return;
         }
+        recordOk('secret');
       } catch (unlockErr) {
         b.disabled = false;
         b.innerHTML = `${I.star(17)} Gökyüzüne gir`;
@@ -184,14 +192,7 @@ export function runAuth(app: HTMLElement, onDone: () => void) {
  *  'ok' = tanındı · 'fail' = okunamadı/iptal · 'gesture' = iOS dokunuş istedi (otomatik başlatılamadı). */
 export type FaceResult = 'ok' | 'fail' | 'gesture';
 export const faceAuth = {
-  /** Test paneli simülasyonu; null iken gerçek WebAuthn çalışır */
-  sim: null as null | 'ok' | 'fail',
   async verify(): Promise<FaceResult> {
-    if (faceAuth.sim !== null) {
-      const s = faceAuth.sim;
-      await sleep(1100);
-      return s;
-    }
     if (hasBiometric()) {
       return verifyBiometricDetailed();
     }
@@ -293,6 +294,8 @@ export function runPasswordUnlock(app: HTMLElement, onDone: () => void) {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!inp.value) return err(form, 'Şifreni yazmalısın.');
+    const wait = lockedFor('pw');
+    if (wait > 0) return err(form, waitMessage(wait));
     (document.activeElement as HTMLElement | null)?.blur();
     const b = $<HTMLButtonElement>('[type=submit]', form);
     b.innerHTML = `${spinner()} Açılıyor`;
@@ -303,9 +306,11 @@ export function runPasswordUnlock(app: HTMLElement, onDone: () => void) {
       if (!res.ok) {
         b.disabled = false;
         b.innerHTML = `${I.star(17)} Gökyüzüne gir`;
-        err(form, 'Şifre yanlış.');
+        if (res.error === 'Şifre doğru değil, tekrar dene') err(form, `Şifre yanlış. ${waitMessage(recordFail('pw'))}`);
+        else err(form, res.error);
         return;
       }
+      recordOk('pw');
       await loadSavedKey();
     } else {
       await sleep(500);

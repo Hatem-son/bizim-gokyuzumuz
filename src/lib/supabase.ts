@@ -137,7 +137,7 @@ export async function getSessionAndProfile(): Promise<{
   try {
     const { data: profileData, error: profileErr } = await sb
       .from('profiles')
-      .select('id, who, push_subscription')
+      .select('id, who')
       .eq('id', session.user.id)
       .maybeSingle();
 
@@ -181,7 +181,7 @@ export async function signInWithPassword(
 
   const { data: profile, error: profErr } = await sb
     .from('profiles')
-    .select('id, who, push_subscription')
+    .select('id, who')
     .eq('id', data.user.id)
     .maybeSingle();
 
