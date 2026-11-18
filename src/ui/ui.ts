@@ -181,9 +181,9 @@ export function stagger(els: Element[], o: { y?: number; delay?: number; gap?: n
       { duration: o.dur ?? 520, delay: (o.delay ?? 0) + i * (o.gap ?? 45), easing: E_OUT, fill: 'backwards' }));
 }
 
-/* ---------------- çentik (Dynamic Island) bildirimi ----------------
-   black-translucent durum çubuğunda uygulama çentiğin arkasına kadar çizer.
-   Yalnızca transform ve opacity kullanarak çentikten yaylı iner (620 ms) ve kapanır (420 ms). */
+/* ---------------- canlı bildirim kartı ----------------
+   Durum çubuğunun altında, yukarıdan yaylanarak iner; içerik değişince yumuşakça yer değiştirir; yukarı süzülerek kapanır.
+   Kartı yukarı itince de kapanır. (Gerçek Dynamic Island'a web'den çizilemez; onu taklit eden kapsül saatin üstüne biniyordu.) */
 export type IslandOpts = {
   avatar: string;
   title: string;
@@ -198,28 +198,51 @@ let islandT = 0;
 
 export function island(o: IslandOpts) {
   clearTimeout(islandT);
+  if (islandEl && !islandEl.isConnected) islandEl = null;
+  const col = o.color ?? 'var(--partner)';
   const content = `
-    <span class="is-av" style="color:${o.color ?? 'var(--partner)'}">${o.avatar}</span>
+    <span class="is-av" style="color:${col}">${o.avatar}</span>
     <span class="is-tx"><b>${o.title}</b>${o.sub ? `<i>${o.sub}</i>` : ''}</span>
-    ${o.loader === 'dots' ? `<span class="is-dots" style="color:${o.color ?? 'var(--partner)'}"><i></i><i></i><i></i></span>` : ''}
-    ${o.loader === 'ring' ? `<span class="is-ring" style="color:${o.color ?? 'var(--partner)'}"></span>` : ''}
+    ${o.loader === 'dots' ? `<span class="is-dots" style="color:${col}"><i></i><i></i><i></i></span>` : ''}
+    ${o.loader === 'ring' ? `<span class="is-ring" style="color:${col}"></span>` : ''}
     ${o.action ? `<button type="button" class="is-act">${o.action.label}</button>` : ''}`;
+  const fresh = !islandEl;
   if (!islandEl) {
     islandEl = h(`<div class="island-pop" role="status" aria-live="polite"><div class="is-in"></div></div>`);
     app.appendChild(islandEl);
-    islandEl.animate([
-      { transform: 'translateX(-50%) translateY(4px) scale(.38)', opacity: 0.92 },
-      { transform: 'translateX(-50%) scale(1.02)', opacity: 1, offset: 0.75 },
-      { transform: 'translateX(-50%) scale(1)', opacity: 1 },
-    ], { duration: reduced() ? 120 : 620, easing: 'cubic-bezier(.3,1.1,.4,1)', fill: 'forwards' });
+    const el = islandEl;
+    el.animate(
+      [
+        { transform: 'translate3d(0,-110%,0) scale(.94)', opacity: 0 },
+        { transform: 'translate3d(0,4px,0) scale(1.01)', opacity: 1, offset: 0.7 },
+        { transform: 'none', opacity: 1 },
+      ],
+      { duration: reduced() ? 160 : 560, easing: 'cubic-bezier(.22,1,.36,1)' }
+    );
+    // yukarı kaydırınca kapanır (hem gerçek dokunuş hem pointer sürüklemesi)
+    let y0 = 0;
+    let pActive = false;
+    el.addEventListener('touchstart', (e) => { y0 = e.touches[0].clientY; }, { passive: true });
+    el.addEventListener('touchmove', (e) => { if (y0 - e.touches[0].clientY > 18) void closeIsland(); }, { passive: true });
+    el.addEventListener('pointerdown', (e) => {
+      if ((e.target as HTMLElement).closest('button')) return;
+      pActive = true;
+      y0 = e.clientY;
+    });
+    el.addEventListener('pointermove', (e) => {
+      if (pActive && y0 - e.clientY > 18) {
+        pActive = false;
+        void closeIsland();
+      }
+    });
+    el.addEventListener('pointerup', () => { pActive = false; });
+    el.addEventListener('pointercancel', () => { pActive = false; });
   }
   const inner = islandEl.querySelector('.is-in') as HTMLElement;
   inner.innerHTML = content;
-  inner.animate(
-    [{ opacity: 0, transform: 'scale(.94)' }, { opacity: 1, transform: 'none' }],
-    { duration: 320, delay: islandEl.dataset.open ? 0 : 120, easing: 'ease-out', fill: 'backwards' }
-  );
-  islandEl.dataset.open = '1';
+  if (!fresh) {
+    inner.animate([{ opacity: 0, transform: 'translate3d(0,6px,0)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: 'ease-out' });
+  }
   const btn = inner.querySelector('.is-act');
   if (btn && o.action) {
     btn.addEventListener('click', (e) => {
@@ -238,11 +261,11 @@ export async function closeIsland() {
   if (!el) return;
   islandEl = null;
   clearTimeout(islandT);
-  (el.querySelector('.is-in') as HTMLElement).animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, fill: 'forwards' });
-  await el.animate([
-    { transform: 'translateX(-50%) scale(1)', opacity: 1 },
-    { transform: 'translateX(-50%) translateY(4px) scale(.38)', opacity: 0 },
-  ], { duration: reduced() ? 120 : 420, delay: 100, easing: 'cubic-bezier(.5,0,.3,1)', fill: 'forwards' }).finished;
+  if (!el.isConnected) return;
+  await el.animate(
+    [{ transform: 'none', opacity: 1 }, { transform: 'translate3d(0,-120%,0) scale(.96)', opacity: 0 }],
+    { duration: reduced() ? 120 : 380, easing: 'cubic-bezier(.5,0,.75,0)', fill: 'forwards' }
+  ).finished;
   el.remove();
 }
 

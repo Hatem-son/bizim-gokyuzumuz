@@ -134,7 +134,7 @@ export class Beach {
     const nightS: RGB = mix([28, 30, 40], top, 0.25);
     const base = mix(nightS, dayS, Math.pow(day, 0.8));
     const near = mix(base, [0, 0, 0], 0.22 + 0.2 * (1 - day));
-    const groundBot = css(mix(near, [4, 6, 14], 0.26));
+    const groundBot = css(mix(near, [4, 6, 14], 0.55));
     document.documentElement.style.setProperty('--ground-bot', groundBot);
     document.documentElement.style.backgroundColor = groundBot;
     c.clearRect(0, 0, skyW, h);

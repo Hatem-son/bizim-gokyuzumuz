@@ -12,7 +12,7 @@ function stampServiceWorkerVersion() {
     closeBundle() {
       const swOut = path.resolve(__dirname, 'dist', 'sw.js');
       if (!fs.existsSync(swOut)) return;
-      const stamped = `gokyuzu-shell-v${pkg.version ?? '1.0.1'}-${Date.now()}`;
+      const stamped = `gk-v${pkg.version ?? '6.0.19'}-${Date.now()}`;
       let next = fs.readFileSync(swOut, 'utf8').replace(
         /const CACHE_NAME = ['"][^'"]+['"];/,
         `const CACHE_NAME = '${stamped}';`
@@ -27,7 +27,7 @@ function stampServiceWorkerVersion() {
           .map((f) => `  '/assets/${f}',`)
           .join('\n');
         if (assetUrls) {
-          next = next.replace("  '/fonts/nunito-latin-ext.woff2',", `  '/fonts/nunito-latin-ext.woff2',\n${assetUrls}`);
+          next = next.replace("  '/icons/favicon-64.png',", `  '/icons/favicon-64.png',\n${assetUrls}`);
         }
       }
 

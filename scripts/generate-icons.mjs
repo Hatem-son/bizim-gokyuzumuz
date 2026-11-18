@@ -134,32 +134,10 @@ function paintNightSky(buf, width, height, bottomColor = [20, 36, 74], dustCount
   }
 }
 
-function paintTwinStars(buf, width, height, centerYFrac, spreadFrac, starScale, withOrb = false) {
+function paintTwinStars(buf, width, height, centerYFrac, spreadFrac, starScale) {
   const ref = Math.min(width, height);
   const cxMid = width * 0.5;
   const cyMid = height * centerYFrac;
-
-  if (withOrb) {
-    const orbR = ref * 0.11;
-    const minX = Math.max(0, Math.floor(cxMid - orbR));
-    const maxX = Math.min(width - 1, Math.ceil(cxMid + orbR));
-    const minY = Math.max(0, Math.floor(cyMid - orbR));
-    const maxY = Math.min(height - 1, Math.ceil(cyMid + orbR));
-    for (let y = minY; y <= maxY; y++) {
-      for (let x = minX; x <= maxX; x++) {
-        const dist = Math.hypot(x - cxMid, y - cyMid);
-        if (dist > orbR) continue;
-        const n = dist / orbR;
-        const idx = (y * width + x) * 4;
-        const soft = Math.pow(1 - n, 2.2) * 0.14;
-        addGlow(buf, idx, 168, 212, 255, soft);
-        const rimDist = Math.abs(dist - orbR * 0.82);
-        if (rimDist < 1.6) {
-          addGlow(buf, idx, 214, 232, 255, (1 - rimDist / 1.6) * 0.12);
-        }
-      }
-    }
-  }
 
   const stars = [
     {
@@ -235,7 +213,7 @@ function paintTwinStars(buf, width, height, centerYFrac, spreadFrac, starScale, 
 function renderIcon(size, maskable) {
   const buf = Buffer.alloc(size * size * 4);
   paintNightSky(buf, size, size, [20, 36, 74], Math.round(size * 0.14));
-  paintTwinStars(buf, size, size, 0.5, maskable ? 0.085 : 0.095, maskable ? 0.88 : 1.0, false);
+  paintTwinStars(buf, size, size, 0.5, maskable ? 0.085 : 0.095, maskable ? 0.88 : 1.0);
   return encodePNG(size, size, buf);
 }
 

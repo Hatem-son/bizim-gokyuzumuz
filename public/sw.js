@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gokyuzu-shell-v18';
+const CACHE_NAME = 'gk-v19';
 const SHELL_URLS = [
   '/',
   '/index.html',

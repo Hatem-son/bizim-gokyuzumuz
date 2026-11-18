@@ -788,7 +788,7 @@ async function resolveBootMode(): Promise<'auth' | 'lock' | 'home'> {
   if (!isSupabaseConfigured) {
     const savedMe = store.get<string | null>(STORAGE_KEYS.me, null);
     if (!savedMe || !hasKey) return 'auth';
-    return state.settings.faceId && hasBiometric() ? 'lock' : 'home';
+    return state.settings.faceId ? 'lock' : 'home';
   }
   const { session, networkFailed } = await getSessionFast();
   if (session?.user?.email) {
@@ -797,10 +797,10 @@ async function resolveBootMode(): Promise<'auth' | 'lock' | 'home'> {
   }
   if (!session && !networkFailed) return 'auth';
   if (!hasKey) return 'auth';
-  return state.settings.faceId && hasBiometric() ? 'lock' : 'home';
+  return state.settings.faceId ? 'lock' : 'home';
 }
 
-/** Çizim döngüsü oturana kadar bekler: art arda 5 kare < 22 ms (en çok 1.2 sn). */
+/** Çizim döngüsü oturana kadar bekler: art arda 4 kare < 22 ms (en çok 600 ms). */
 function warmUp() {
   return new Promise<void>((res) => {
     let last = performance.now(), ok = 0;
@@ -808,7 +808,7 @@ function warmUp() {
     const f = (n: number) => {
       ok = n - last < 22 ? ok + 1 : 0;
       last = n;
-      if (ok >= 5 || n - t0 > 1200) res();
+      if (ok >= 4 || n - t0 > 600) res();
       else requestAnimationFrame(f);
     };
     requestAnimationFrame(f);
@@ -904,6 +904,8 @@ function firstRunNudge(force = false) {
 const urlQuery = new URLSearchParams(location.search);
 
 async function boot(mode?: 'auth' | 'lock' | 'home') {
+  // Ayarlar → "Face ID ile aç" kapalıysa kilit ekranı hiç gelmez: oturum açıksa doğrudan ana ekran (iPhone'un kendi kilidi korur).
+  if (mode === 'lock' && !state.settings.faceId && !faceAuth.sim) mode = 'home';
   clearPageStack();
   $$('.screen.home,.auth,.page,.sheet,.backdrop,.board,.watch,.cdpage,.scene-fg,.island-pop,.greet').forEach((x) => x.remove());
   core.homeEl = null as unknown as HTMLElement;
@@ -912,7 +914,7 @@ async function boot(mode?: 'auth' | 'lock' | 'home') {
   starsShown = false;
   oceanDwell = 0;
 
-  // Pozlama katmanı = HTML'deki #boot (ilk boyamadan beri ekranda, gece gökyüzü rengi). Siyah katman/logo/ara ekran YOK.
+  // Pozlama katmanı = HTML'deki #boot (ilk boyamadan beri ekranda, gece gökyüzü rengi + yıldızlar). Siyah katman/logo/ara ekran YOK.
   let overlay = document.getElementById('boot');
   if (!overlay) {
     overlay = h(`<div id="boot"></div>`);
@@ -920,6 +922,10 @@ async function boot(mode?: 'auth' | 'lock' | 'home') {
   }
   overlay.style.display = '';
   overlay.style.opacity = '1';
+  overlay.getAnimations({ subtree: true }).forEach((a) => {
+    a.currentTime = 0;
+    a.play();
+  });
   sky.intro.stars = [0, 0, 0];
 
   applyPersona();
@@ -929,7 +935,8 @@ async function boot(mode?: 'auth' | 'lock' | 'home') {
 
   // Oturum kontrolü gökyüzü/font hazırlığı ve warmUp ile PARALEL çalışır (boş/siyah ekran beklemesi yok)
   const sessionTask = (async () => {
-    const resolved = mode ?? (await resolveBootMode());
+    let resolved = mode ?? (await resolveBootMode());
+    if (resolved === 'lock' && !state.settings.faceId && !faceAuth.sim) resolved = 'home';
     applyPersona();
     if (resolved === 'home' || resolved === 'lock') {
       ensureRealtimeStarted();

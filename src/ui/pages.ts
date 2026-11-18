@@ -328,7 +328,7 @@ import { APP_VERSION } from '../config';
 import { openDiagnostics } from './diagnostics';
 import { askGeo, searchCity, chooseCity, CLEAR } from '../gokyuzu/weather';
 import { subscribePushNotifications } from '../lib/push';
-import { enrollBiometric, disableBiometric } from '../lib/lock';
+import { enrollBiometric, hasBiometric } from '../lib/lock';
 
 /* ===================== arşiv ===================== */
 export function openArchive() {
@@ -493,6 +493,13 @@ export function openSettings() {
   $('[data-faceid]', page).addEventListener('click', async (e) => {
     const btn = e.currentTarget as HTMLElement;
     if (!S.faceId) {
+      if (hasBiometric()) {
+        S.faceId = true;
+        saveSettings();
+        syncToggle(btn, true);
+        toast('Face ID açıldı', I.face(14));
+        return;
+      }
       const res = await enrollBiometric(toDbWho(state.me));
       if (res.ok) {
         S.faceId = true;
@@ -503,7 +510,6 @@ export function openSettings() {
         toast(res.error, I.info(14), 3400);
       }
     } else {
-      disableBiometric();
       S.faceId = false;
       saveSettings();
       syncToggle(btn, false);

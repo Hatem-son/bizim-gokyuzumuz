@@ -3,6 +3,7 @@ import type { Who as DbWho, StarRecord } from '../types';
 import { getServerNowMs } from '../lib/stars';
 import { STORAGE_KEYS, store } from '../lib/storage';
 import { getMode, setMode } from '../gokyuzu/weather';
+import { hasBiometric } from '../lib/lock';
 
 export type Who = 'ham' | 'beto';
 export type Kind = 'text' | 'photo' | 'voice' | 'draw';
@@ -57,7 +58,7 @@ function loadInitialSettings(): PersistedSettings {
   }
   return {
     notify: saved.notify ?? false,
-    faceId: saved.faceId ?? false,
+    faceId: saved.faceId ?? hasBiometric(),
     weather: saved.weather ?? wxMode ?? 'off',
     city,
     live: saved.live ?? true,

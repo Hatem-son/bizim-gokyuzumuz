@@ -20,7 +20,7 @@ export type IntroRefs = {
 
 export async function prepare(tasks: Promise<unknown>[], fonts: string[]) {
   const all = Promise.all([...fonts.map((f) => document.fonts.load(f)), document.fonts.ready, ...tasks]);
-  await Promise.race([all, new Promise((r) => setTimeout(r, 1800))]);
+  await Promise.race([all, new Promise((r) => setTimeout(r, 900))]);
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 }
 
