@@ -31,10 +31,12 @@ export function mtPalette(hor: RGB, day: number, sun: RGB, depth: number): MtPal
  * @param canopy ağaç dokusu yoğunluğu (0..1)
  */
 export function paintMountain(c: CanvasRenderingContext2D, h: ArrayLike<number>, dx: number, Hc: number, pal: MtPal, seed: number, canopy = 1, wrap = false) {
-  const n = h.length, Wd = (n - 1) * dx;
+  // wrap (360° dikişsiz sıra): son örnekten sonra ilk örneğe dönülür; tuval tam bir periyot (n*dx) çizilir → dikişte 1-2 px boşluk kalmaz
+  if (wrap) { const he = new Float32Array(h.length + 1); for (let i = 0; i < h.length; i++) he[i] = h[i]; he[h.length] = h[0]; h = he; }
+  const n = wrap ? h.length - 1 : h.length, Wd = wrap ? n * dx : (n - 1) * dx;
   let maxH = 1; for (let i = 0; i < n; i++) maxH = Math.max(maxH, h[i]);
   const at = (i: number) => (wrap ? h[((i % n) + n) % n] : h[Math.max(0, Math.min(n - 1, i))]);
-  const path = () => { c.beginPath(); c.moveTo(0, Hc); for (let i = 0; i < n; i++) c.lineTo(i * dx, Hc - h[i]); c.lineTo(Wd, Hc); c.closePath(); };
+  const path = () => { c.beginPath(); c.moveTo(0, Hc); for (let i = 0; i <= (wrap ? n : n - 1); i++) c.lineTo(i * dx, Hc - h[i]); c.lineTo(Wd, Hc); c.closePath(); };
   path();
   const g = c.createLinearGradient(0, Hc - maxH, 0, Hc);
   g.addColorStop(0, css(mix(pal.base, pal.lit, 0.25))); g.addColorStop(0.6, css(pal.base)); g.addColorStop(1, css(mix(pal.base, pal.haze, 0.35)));
@@ -99,7 +101,7 @@ export function paintMountain(c: CanvasRenderingContext2D, h: ArrayLike<number>,
   c.fillStyle = hz; c.fillRect(0, Hc - maxH * 0.5, Wd, maxH * 0.5);
   c.restore();
   // 5) sırtta ince ışık çizgisi (güneş ya da ay)
-  c.beginPath(); for (let i = 0; i < n; i++) i ? c.lineTo(i * dx, Hc - h[i] + 0.4) : c.moveTo(0, Hc - h[i] + 0.4);
+  c.beginPath(); for (let i = 0; i <= (wrap ? n : n - 1); i++) i ? c.lineTo(i * dx, Hc - h[i] + 0.4) : c.moveTo(0, Hc - h[i] + 0.4);
   c.strokeStyle = css(pal.rim, pal.rimA); c.lineWidth = 0.8; c.stroke();
 }
 
@@ -119,4 +121,3 @@ export function peakCloud(c: CanvasRenderingContext2D, x: number, y: number, w: 
     c.fillStyle = g; c.fillRect(-rr, -rr, rr * 2, rr * 2); c.restore();
   }
 }
-

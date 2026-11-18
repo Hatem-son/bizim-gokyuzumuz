@@ -136,7 +136,6 @@ export class Beach {
     const near = mix(base, [0, 0, 0], 0.22 + 0.2 * (1 - day));
     const groundBot = css(mix(near, [4, 6, 14], 0.55));
     document.documentElement.style.setProperty('--ground-bot', groundBot);
-    document.documentElement.style.backgroundColor = groundBot;
     c.clearRect(0, 0, skyW, h);
     const g = c.createLinearGradient(0, 0, 0, h);
     g.addColorStop(0, css(mix(base, hor, 0.15)));
@@ -215,7 +214,7 @@ export class Beach {
 
   /** Ufuktaki dağlar: iki sıra, havayla puslu; gündüz yeşilimsi-mavi, gece lacivert. */
   private buildMountains(hor: RGB, day: number, sun: RGB) {
-    const { skyW: P } = this.o, d = Math.min(devicePixelRatio || 1, 1.5);
+    const { skyW: P } = this.o, d = Math.min(devicePixelRatio || 1, 2);
     const mk = (w: number, hgt: number) => { const cv = document.createElement('canvas'); cv.width = Math.ceil(w * d); cv.height = Math.ceil(hgt * d); const x = cv.getContext('2d')!; x.scale(d, d); return cv; };
     const reuse = (cv: HTMLCanvasElement | undefined, w: number, hgt: number) => { if (!cv) return mk(w, hgt); const x = cv.getContext('2d')!; x.setTransform(d, 0, 0, d, 0, 0); x.clearRect(0, 0, w, hgt); return cv; };
     const pal = [mtPalette(hor, day, sun, 0.85), mtPalette(hor, day, sun, 0.6), mtPalette(hor, day, sun, 0.4), mtPalette(hor, day, sun, 0.25)];
@@ -237,10 +236,14 @@ export class Beach {
   private drawRidges(c: CanvasRenderingContext2D, scrollX: number, hor: RGB, day: number) {
     const { W, horizonY, skyW: P } = this.o, base = horizonY + 1;
     void day;
-    const RH = Beach.RH, off = -(((scrollX % P) + P) % P);
+    const RH = Beach.RH, off = -(((scrollX % P) + P) % P), f = c.getTransform().a || 1;
+    const snap = (v: number) => Math.round(v * f) / f;
     for (let L = 0; L < 2; L++) {
       c.globalAlpha = L ? 1 : 0.92;
-      for (let sx = off; sx < W; sx += P) c.drawImage(this.mt!.ridge[L], Math.round(sx), base - RH, P, RH);
+      for (let sx = off; sx < W; sx += P) {
+        const x0 = snap(sx);
+        c.drawImage(this.mt!.ridge[L], x0, base - RH, snap(sx + P) - x0, RH);
+      }
     }
     c.globalAlpha = 1;
     // dağ eteğinde pus (denizle birleşir)
@@ -478,7 +481,13 @@ export class Beach {
     // ---- kum
     const key = colors.hor + colors.top + Math.round(day * 30) + sun.map((v) => v.toFixed(1)).join();
     if (key !== this.sandKey) { this.sandKey = key; this.drawSand(hor, top, day, sun); }
-    { const P = this.o.skyW; for (let sx = -(((scrollX % P) + P) % P); sx < W; sx += P) c.drawImage(this.sand, Math.round(sx), shore - 6, P, H - shore + 116); }
+    {
+      const P = this.o.skyW, f = c.getTransform().a || 1, snap = (v: number) => Math.round(v * f) / f;
+      for (let sx = -(((scrollX % P) + P) % P); sx < W; sx += P) {
+        const x0 = snap(sx);
+        c.drawImage(this.sand, x0, shore - 6, snap(sx + P) - x0, H - shore + 116);
+      }
+    }
 
     // ---- kıyı (6.5 sn döngü; yukarıdaki kabarmalarla aynı faz: sırt kıyıya varınca kırılır)
     const reachOf = (n: number) => 34 * (0.78 + 0.3 * hash(n)) * (1 + 0.7 * wk);   // her dalga farklı mesafeye çıkar; rüzgârda daha uzağa

@@ -1,11 +1,11 @@
-// Sinematik açılış: kamera pozlamayı yavaşça açar ve ufuktan göğe doğru hafifçe kalkar.
+// Sinematik açılış: kamera yukarıdan aşağı ufka doğru yavaşça eğilirken gökyüzü, deniz ve kumsal birlikte oturur.
 // Gece ise önce en parlak yıldızlar, sonra sönükler belirir (gözün karanlığa alışması gibi).
 // Kıvılcım, kalem ucu, zıplayan öğe YOK. Her şey transform/opacity; hazırlık bitmeden başlamaz.
 
 export type IntroRefs = {
-  overlay: HTMLElement;   // splash ile AYNI renkte (koyu) en üst katman
+  overlay: HTMLElement;   // yalnızca imza için (ekrana eklenmez)
   sky: HTMLElement;       // gök katmanları kapsayıcısı (kamera hareketi)
-  ground: HTMLElement;    // çimen/mum/çiçek kapsayıcısı (paralaks: gökten fazla hareket eder)
+  ground: HTMLElement;    // deniz/kumsal kapsayıcısı (gök ile aynı mesafede iner)
   title?: HTMLElement;
   greeting?: HTMLElement;
   counter?: HTMLElement;
@@ -17,12 +17,6 @@ export type IntroRefs = {
   lightUserStars?: (startAt: number, gap: number) => void;
   countUp?: (ms: number) => void;
 };
-
-export async function prepare(tasks: Promise<unknown>[], fonts: string[]) {
-  const all = Promise.all([...fonts.map((f) => document.fonts.load(f)), document.fonts.ready, ...tasks]);
-  await Promise.race([all, new Promise((r) => setTimeout(r, 900))]);
-  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-}
 
 export function introMode(): 'full' | 'short' {
   const today = new Date().toDateString();
@@ -48,9 +42,12 @@ export function playIntro(r: IntroRefs, mode: 'full' | 'short' = 'full'): Promis
   // Pozlama: karanlıktan açılış (lineer değil: göz uyumu gibi)
   A(r.overlay, [{ opacity: 1 }, { opacity: 0 }], 0, 1900, EXPO);
   r.overlay.style.pointerEvents = 'none'; // pozlama sırasında bile dokunuşları engellemesin
-  // Kamera: ufka bakarken yavaşça göğe kalkar ve oturur. Zemin daha çok hareket eder (derinlik).
-  A(r.sky, [{ transform: 'translate3d(0,34px,0) scale(1.05)' }, { transform: 'none' }], 0, 2800, CAMERA);
-  A(r.ground, [{ transform: 'translate3d(0,70px,0)' }, { transform: 'none' }], 0, 2800, CAMERA);
+  // Kamera YUKARIDAN AŞAĞI iner: önce yalnızca gökyüzüne bakar; sonra ufka doğru yavaşça eğilirken deniz ve kumsal aşağıdan yükselir.
+  // Gök + ufuk + deniz + kumsal AYNI mesafe iner: aralarında boşluk açılmaz; ön plandaki palmiyeler daha çok hareket eder (derinlik).
+  const H = r.sky.clientHeight || 800;
+  const drop = `translate3d(0,${Math.round(H * 0.42)}px,0)`;
+  A(r.sky, [{ transform: drop }, { transform: 'none' }], 0, 3200, CAMERA);
+  A(r.ground, [{ transform: drop }, { transform: 'none' }], 0, 3200, CAMERA);
 
   // Yıldızlar parlaklık sırasıyla (gece)
   if (r.setStars) {

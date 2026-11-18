@@ -49,10 +49,10 @@ html, body {
   overflow: hidden;
   overflow: clip;
   overscroll-behavior: none;
-  background: var(--ground-bot, #070a16);
   color: var(--text);
   font-family: var(--sans);
 }
+body { background: transparent; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 input, textarea { font: inherit; color: inherit; }
 svg { display: block; }

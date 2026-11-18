@@ -210,8 +210,3 @@
 .gk-cons, .gk-edge, .gk-hint-txt { z-index: 11; }
 .gk-hint-txt { font-family: var(--serif) !important; font-style: italic; font-weight: 600; font-size: 19px !important; text-shadow: 0 1px 12px rgba(0,0,0,.35); }
 .gk-cons { background: rgba(8, 12, 28, .32); border-radius: 12px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
-
-/* saate göre selam (tekrar açılışlar — yalnızca transform ve opacity) */
-.greet { position: absolute; left: 0; right: 0; top: 30%; text-align: center; z-index: 60; pointer-events: none; padding: 0 28px; }
-.greet b { display: block; font: italic 600 34px/1.15 var(--serif); color: #fff; letter-spacing: .01em; text-shadow: 0 2px 24px rgba(0,0,0,.35); }
-.greet i { display: block; margin-top: 8px; font: 500 14px/1.4 var(--sans); font-style: normal; color: rgba(255,255,255,.82); text-shadow: 0 1px 14px rgba(0,0,0,.4); }

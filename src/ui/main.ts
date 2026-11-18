@@ -11,7 +11,7 @@ import { WeatherRenderer } from '../gokyuzu/weatherRender';
 import { Effects, drawUserStar } from '../gokyuzu/effects';
 import { Plane, schedulePlane } from '../gokyuzu/plane';
 import { SwipeHint } from '../gokyuzu/swipeHint';
-import { prepare, playIntro } from '../gokyuzu/intro';
+import { playIntro } from '../gokyuzu/intro';
 import { Weather, WeatherKind, kindFromCode, KIND_TR, startWeather } from '../gokyuzu/weather';
 import { clamp, hash } from '../gokyuzu/util';
 import { initKeyboard } from '../gokyuzu/keyboard';
@@ -22,7 +22,7 @@ import { ART_CSS } from './art';
 import { LILY_CSS } from './lily';
 import { Wind } from './wind';
 import { core } from './core';
-import { initUI, $, $$, h, toast, stagger, sleep, clearPageStack, closeIsland, island } from './ui';
+import { initUI, $, $$, h, toast, sleep, clearPageStack, closeIsland, island } from './ui';
 import { state, PEOPLE, Star, Kind, setMe, toUiWho, toDbWho } from './state';
 import { buildHome, buildForeground, placeForeground, showLive, sendHeart, partnerOnline } from './home';
 import { openCompose, freeSpot } from './compose';
@@ -684,39 +684,6 @@ window.addEventListener('online', () => void syncOfflineAndOutbox());
 window.addEventListener('offline', () => void syncOfflineAndOutbox());
 
 // ---------- açılış + giriş + ana ekran ----------
-let isFirstOpen = true;
-
-/** Saate göre selam (yalnızca tekrar açılışlarda): büyük yazı süzülerek gelir, kısa kalır, süzülerek gider. */
-function greetingFor(hr: number, name: string): [string, string] {
-  const pick = (a: string[]) => a[Math.floor(Math.random() * a.length)];
-  if (hr >= 5 && hr < 11) return [`Günaydın, ${name}`, pick(['Yeni bir gün, aynı gökyüzü.', 'Kahveni al, gökyüzüne bak.', 'Sabah ışığı seninle.'])];
-  if (hr >= 11 && hr < 17) return [`İyi günler, ${name}`, pick(['Gökyüzü şu an sana bakıyor.', 'Gün bitmeden bir yıldız bırak.', 'Aklımda sen varsın.'])];
-  if (hr >= 17 && hr < 22) return [`İyi akşamlar, ${name}`, pick(['Gün batımı sana ayrıldı.', 'Yıldızlar yakında çıkacak.', 'Akşam seninle güzel.'])];
-  if (hr >= 22 || hr < 2) return [`İyi geceler, ${name}`, pick(['Rüyanda gökyüzümüzü gör.', 'Yıldızlar seni bekliyordu.', 'Bu gece de aynı gökyüzü altındayız.'])];
-  return [`Hâlâ uyumadın mı, ${name}?`, pick(['Gecenin bu saati sadece bize ait.', 'Yıldızlar da uyanık.'])];
-}
-
-function showGreeting() {
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  app.querySelector('.greet')?.remove();
-  const name = PEOPLE[state.me].name;
-  const [title, line] = greetingFor(new Date().getHours(), name);
-  const srvNow = getServerNowMs();
-  const unread = state.stars.filter((t) => t.from === state.partner && !t.opened && !(t.unlockAt && t.unlockAt > srvNow)).length;
-  const sub = unread ? `${unread} yeni yıldız seni bekliyor` : line;
-  const el = h(`<div class="greet" aria-live="polite"><b>${title}</b><i>${sub}</i></div>`);
-  app.appendChild(el);
-  const kf = [
-    { opacity: 0, transform: 'translate3d(0,10px,0)' },
-    { opacity: 1, transform: 'none', offset: 0.18 },
-    { opacity: 1, transform: 'none', offset: 0.78 },
-    { opacity: 0, transform: 'translate3d(0,-8px,0)' },
-  ];
-  el.animate(kf, { duration: 3200, delay: 350, easing: 'cubic-bezier(.3,.7,.3,1)', fill: 'both' }).finished.then(
-    () => el.remove(),
-    () => el.remove()
-  );
-}
 
 /** Tek kalıcı Realtime aboneliği: kimlik doğrulama biter bitmez kurulur; ekran değişince yeniden kurulmaz. */
 function ensureRealtimeStarted() {
@@ -800,22 +767,7 @@ async function resolveBootMode(): Promise<'auth' | 'lock' | 'home'> {
   return state.settings.faceId ? 'lock' : 'home';
 }
 
-/** Çizim döngüsü oturana kadar bekler: art arda 4 kare < 22 ms (en çok 600 ms). */
-function warmUp() {
-  return new Promise<void>((res) => {
-    let last = performance.now(), ok = 0;
-    const t0 = last;
-    const f = (n: number) => {
-      ok = n - last < 22 ? ok + 1 : 0;
-      last = n;
-      if (ok >= 4 || n - t0 > 600) res();
-      else requestAnimationFrame(f);
-    };
-    requestAnimationFrame(f);
-  });
-}
-
-async function enterHome(preloaded = false) {
+async function enterHome(preloaded = false, fadeDelay = 150) {
   ensureRealtimeStarted();
   if (!preloaded) {
     await loadStarsFromBackend();
@@ -824,37 +776,23 @@ async function enterHome(preloaded = false) {
     fgPersona = state.me;
     rebuildFg();
   }
+  // Animasyonun ÜSTÜNE hiçbir şey binmez: selam yazısı, kaydırma ipucu, tek tek kayan sayaç/dock, açılan zambak, yanıp sönen yıldız YOK.
+  // Arayüz (sayaç, hava, dock, zambak) kamera yerleşirken TEK parça hâlinde, sade bir solmayla görünür.
   $('#fgWrap').classList.remove('pre');
   [...document.querySelectorAll('#fgWrap .jar.mine')].forEach((j) =>
-    (j as HTMLElement).animate([{ opacity: 0 }, { opacity: 1 }], { duration: 1200, delay: 400, easing: 'ease-out', fill: 'backwards' })
+    (j as HTMLElement).animate([{ opacity: 0 }, { opacity: 1 }], { duration: 900, delay: fadeDelay, easing: 'ease-out', fill: 'backwards' })
   );
 
   home = buildHome();
   app.appendChild(home);
   inHome = true;
 
-  hint = new SwipeHint(home, PEOPLE[state.me].color);
+  hint = new SwipeHint(home, PEOPLE[state.me].color); // yalnızca kullanıcı kaydırınca görünür
   prog();
-  firstRunNudge();
-  if (!isFirstOpen) showGreeting();
-  const top = [$('.counter', home), $('.top-r', home)], dock = $('.dock', home), flora = $('.cnum', home);
-  stagger(top, { y: -8, gap: 90, dur: 700 });
-  drawLily(flora);
-  dock.animate(
-    [{ opacity: 0, transform: 'translate(-50%,16px)' }, { opacity: 1, transform: 'translate(-50%,0)' }],
-    { duration: 700, delay: 260, easing: 'cubic-bezier(.22,.8,.24,1)', fill: 'backwards' }
-  );
+  home.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 900, delay: fadeDelay, easing: 'ease-out', fill: 'backwards' });
 
   starsShown = true;
-  const sorted = [...state.stars].sort((a, b) => a.createdAt - b.createdAt);
-  sorted.forEach((t) => (t.visible = false));
-  sorted.forEach((t, i) =>
-    setTimeout(() => {
-      const pos = computeStarScreenPos(t);
-      fx.land(pos, { now: performance.now() - 650, tint: PEOPLE[t.from].color, onSettle: () => (t.visible = true) });
-      engine.busy(1500);
-    }, 300 + i * 90)
-  );
+  for (const t of state.stars) t.visible = true; // yıldızlar hazır yerinde
   core.refreshHome();
   void syncOfflineAndOutbox();
 
@@ -868,15 +806,6 @@ async function enterHome(preloaded = false) {
     }
     history.replaceState(null, '', '/');
   }
-}
-
-function drawLily(cnum: HTMLElement) {
-  [...cnum.querySelectorAll('.lily-b')].reverse().forEach((el, i) =>
-    (el as HTMLElement).animate(
-      [{ opacity: 0, transform: 'scale(.3) rotate(-40deg)' }, { opacity: 1, transform: 'none' }],
-      { duration: 1100, delay: 900 + i * 260, easing: 'cubic-bezier(.3,1.3,.45,1)', fill: 'backwards' }
-    )
-  );
 }
 
 function firstRunNudge(force = false) {
@@ -907,25 +836,15 @@ async function boot(mode?: 'auth' | 'lock' | 'home') {
   // Ayarlar → "Face ID ile aç" kapalıysa kilit ekranı hiç gelmez: oturum açıksa doğrudan ana ekran (iPhone'un kendi kilidi korur).
   if (mode === 'lock' && !state.settings.faceId && !faceAuth.sim) mode = 'home';
   clearPageStack();
-  $$('.screen.home,.auth,.page,.sheet,.backdrop,.board,.watch,.cdpage,.scene-fg,.island-pop,.greet').forEach((x) => x.remove());
+  $$('.screen.home,.auth,.page,.sheet,.backdrop,.board,.watch,.cdpage,.scene-fg,.island-pop').forEach((x) => x.remove());
   core.homeEl = null as unknown as HTMLElement;
   home = null;
   inHome = false;
   starsShown = false;
   oceanDwell = 0;
 
-  // Pozlama katmanı = HTML'deki #boot (ilk boyamadan beri ekranda, gece gökyüzü rengi + yıldızlar). Siyah katman/logo/ara ekran YOK.
-  let overlay = document.getElementById('boot');
-  if (!overlay) {
-    overlay = h(`<div id="boot"></div>`);
-    app.appendChild(overlay);
-  }
-  overlay.style.display = '';
-  overlay.style.opacity = '1';
-  overlay.getAnimations({ subtree: true }).forEach((a) => {
-    a.currentTime = 0;
-    a.play();
-  });
+  document.getElementById('boot')?.remove(); // lacivert pozlama/bekleme katmanı YOK: sahne ilk andan görünür
+  const overlay = document.createElement('div'); // yalnızca playIntro imzası için; ekrana eklenmez
   sky.intro.stars = [0, 0, 0];
 
   applyPersona();
@@ -933,7 +852,6 @@ async function boot(mode?: 'auth' | 'lock' | 'home') {
   rebuildFg();
   $('#fgWrap').classList.add('pre');
 
-  // Oturum kontrolü gökyüzü/font hazırlığı ve warmUp ile PARALEL çalışır (boş/siyah ekran beklemesi yok)
   const sessionTask = (async () => {
     let resolved = mode ?? (await resolveBootMode());
     if (resolved === 'lock' && !state.settings.faceId && !faceAuth.sim) resolved = 'home';
@@ -951,8 +869,33 @@ async function boot(mode?: 'auth' | 'lock' | 'home') {
     const c = () => (sky.ready ? r() : setTimeout(c, 30));
     c();
   });
-  await prepare([ready], ['italic 600 40px "Cormorant Garamond"', '500 15px Inter', '400 40px "Great Vibes"']);
-  await warmUp(); // ilk ağır kareler (kum önbelleği, dokular) intro BAŞLAMADAN biter → animasyonda takılma olmaz
+  app.style.visibility = 'hidden'; // yarım çizilmiş kare görünmesin (sahne hazır olunca animasyonla birlikte açılır)
+  await ready;
+  for (let i = 0; i < 3; i++) await new Promise((r) => requestAnimationFrame(r));
+
+  // Üst boşluk dolgusu: gökyüzü tuvalinin EN ÜST pikselinden okunur (atmosfer verisi geç gelse de renk doğrudur); intro boyunca her karede izlenir.
+  const probe = document.createElement('canvas');
+  probe.width = probe.height = 1;
+  const pc = probe.getContext('2d', { willReadFrequently: true })!;
+  const skyCv = document.getElementById('cSky') as HTMLCanvasElement;
+  const topColor = () => {
+    try {
+      pc.clearRect(0, 0, 1, 1);
+      pc.drawImage(skyCv, Math.floor(skyCv.width / 2), 1, 1, 1, 0, 0, 1, 1);
+      const d = pc.getImageData(0, 0, 1, 1).data;
+      return d[3] > 200 ? `rgb(${d[0]},${d[1]},${d[2]})` : '';
+    } catch {
+      return '';
+    }
+  };
+  const follow = (until: number) => {
+    const c = topColor();
+    if (c) app.style.backgroundColor = c;
+    if (performance.now() < until) requestAnimationFrame(() => follow(until));
+    else app.style.backgroundColor = 'var(--ground-bot, #070a16)';
+  };
+  follow(performance.now() + 3600);
+  app.style.visibility = ''; // gökyüzü ilk karesini çizer çizmez başlar; font/ısınma beklemesi YOK (fontlar gömülü)
 
   let first = true;
   try {
@@ -961,12 +904,12 @@ async function boot(mode?: 'auth' | 'lock' | 'home') {
   } catch {
     // Ignore storage errors
   }
-  isFirstOpen = first;
 
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const introKind: 'full' | 'short' = first && !reduced ? 'full' : 'short';
-  $('#fgWrap').animate([{ transform: 'translate3d(0,90px,0)' }, { transform: 'none' }], {
-    duration: introKind === 'short' ? 1260 : 2800,
+  const introK = introKind === 'short' ? 0.45 : 1;
+  $('#fgWrap').animate([{ transform: `translate3d(0,${Math.round(H * 0.62)}px,0)` }, { transform: 'none' }], {
+    duration: 3200 * introK,
     easing: 'cubic-bezier(.25,.1,.12,1)',
   });
   const reveal = playIntro(
@@ -976,8 +919,8 @@ async function boot(mode?: 'auth' | 'lock' | 'home') {
 
   const resolved = await sessionTask;
   if (resolved === 'home') {
+    await enterHome(true, Math.round(1500 * introK));
     await reveal;
-    await enterHome(true);
     return;
   }
   await sleep(introKind === 'short' ? 420 : 900);
