@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gk-v28';
+const CACHE_NAME = 'gk-v29';
 const SHELL_URLS = [
   '/',
   '/index.html',
@@ -43,16 +43,18 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   if (request.mode === 'navigate' || url.pathname === '/' || url.pathname === '/index.html') {
+    // Kabuk: ağ ve önbellek yarışır; ağ 800 ms içinde gelmezse önbellekteki kabuk anında açılır (2. açılış beklemez)
+    const network = fetch(new Request(request, { cache: 'no-store' })).then((res) => {
+      if (res.ok) {
+        const copy = res.clone();
+        caches.open(CACHE_NAME).then((c) => c.put('/index.html', copy));
+      }
+      return res;
+    });
+    const cached = () => caches.match('/index.html').then((r) => r || caches.match('/'));
+    const timeout = new Promise((resolve) => setTimeout(() => resolve(cached()), 800));
     event.respondWith(
-      fetch(new Request(request, { cache: 'no-store' }))
-        .then((res) => {
-          if (res.ok) {
-            const copy = res.clone();
-            caches.open(CACHE_NAME).then((c) => c.put('/index.html', copy));
-          }
-          return res;
-        })
-        .catch(() => caches.match('/index.html').then((r) => r || caches.match('/')))
+      Promise.race([network, timeout]).then((r) => r || network).catch(() => cached().then((r) => r || network))
     );
     return;
   }

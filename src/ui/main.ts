@@ -28,7 +28,13 @@ import { buildHome, buildForeground, placeForeground, showLive, sendHeart, partn
 import { openCompose, freeSpot } from './compose';
 import { openBoard, openWatch, renderDrawing, demoDrawing, Stroke, DrawLivePacket } from './draw';
 import { encodeDrawingBytes, decodeDrawingBytes } from '../lib/drawCodec';
-import { openStar, openArchive, openSettings, openCountdown } from './pages';
+// Ayarlar/arşiv/yıldız sayfaları ilk çizimden SONRA, ilk kullanımda yüklenir (ana paket küçülür)
+const lazyPages = () => import('./pages');
+const openStar = (st: Star) => lazyPages().then((m) => m.openStar(st));
+const openArchive = () => void lazyPages().then((m) => m.openArchive());
+const openSettings = () => void lazyPages().then((m) => m.openSettings());
+const openCountdown = () => void lazyPages().then((m) => m.openCountdown());
+setTimeout(() => void lazyPages(), 4000); // boşta önceden ısıt
 import { runAuth, runLock, applyPersona, faceAuth } from './auth';
 import { I } from './icons';
 import { registerServiceWorker } from '../lib/pwa';
@@ -150,6 +156,7 @@ const mkEdge = (c: string) => {
 };
 const edgeT = mkEdge('t');
 const edgeB = mkEdge('b');
+let edgeAt = -1e9;
 function syncChrome(now: number) {
   if (now - chromeAt < 1500) return;
   chromeAt = now;
@@ -161,6 +168,9 @@ function syncChrome(now: number) {
   document.documentElement.style.backgroundColor = col;
   edgeT.style.background = col;
   try {
+    // GPU→CPU geri okuma kareyi dondurur: en çok 30 sn'de bir, tek piksel
+    if (now - edgeAt < 30_000) return;
+    edgeAt = now;
     // alt kenar: sahnenin GÖRÜNEN en alt satırı (tuvalin +96px tamponu değil)
     const g = document.getElementById('cGround') as HTMLCanvasElement;
     const row = Math.max(0, Math.round((g.height * H) / (H + 96)) - 2);
@@ -368,6 +378,14 @@ let home: HTMLElement | null = null;
 let nextMeteor = performance.now() + 30_000;
 let oceanDwell = 0;
 let oceanAt = 180; // sn: ana ekranda kalma süresi / ilk selam eşiği (3 dk)
+// döngü önbellekleri (HOTFIX 15 / A1)
+let cssAt = -1e9;
+const skyCss = { hor: 'rgb(50,56,81)', top: 'rgb(26,32,58)' };
+let overlayOpen = false;
+let partnerLit = false;
+const rmq = matchMedia('(prefers-reduced-motion: reduce)');
+let reduceMotion = rmq.matches;
+rmq.addEventListener?.('change', () => (reduceMotion = rmq.matches));
 
 engine.add((now, dt, s) => {
   syncChrome(now);
@@ -375,7 +393,16 @@ engine.add((now, dt, s) => {
   sky.frame(now, s, sx);
   weatherRenderer.frame(now, dt, s, sx);
   tickPlane(now);
-  const css = getComputedStyle(document.documentElement);
+  // DOM okumaları (getComputedStyle / querySelector) karede değil, en çok 250 ms'de bir
+  if (now - cssAt > 250) {
+    cssAt = now;
+    const cs = getComputedStyle(document.documentElement);
+    skyCss.hor = cs.getPropertyValue('--sky-hor') || skyCss.hor;
+    skyCss.top = cs.getPropertyValue('--sky-top') || skyCss.top;
+    overlayOpen = Boolean(app.querySelector('.sheet,.page,.board,.watch,.auth,.cdpage'));
+    partnerLit = Boolean(fg?.querySelector('.lantern.partner.on'));
+    engine.throttle = overlayOpen ? 28 : 0; // sayfa/sheet açıkken arka plan ~30 fps (her 2 karede 1)
+  }
   updateFlora(s.daylight);
 
   wind.strength = Math.max(
@@ -396,7 +423,7 @@ engine.add((now, dt, s) => {
     !beach.whale.active &&
     now > beach.whale.next &&
     engine.weather.kind !== 'thunder' &&
-    !matchMedia('(prefers-reduced-motion: reduce)').matches
+    !reduceMotion
   ) {
     beach.whale.start(now, core.scrollX, W);
   }
@@ -421,7 +448,7 @@ engine.add((now, dt, s) => {
     if (mineX > -120 && mineX < W + 120) {
       glints.push({ x: mineX, k: 0.42 * (1 - s.daylight) + 0.05, warm: true });
     }
-    if (fg.querySelector('.lantern.partner.on')) {
+    if (partnerLit) {
       const partnerX = wrapX(geom, mod(X0 - 70, P), sx);
       if (partnerX > -120 && partnerX < W + 120) {
         glints.push({ x: partnerX, k: 0.42 * (1 - s.daylight) + 0.05, warm: true });
@@ -433,7 +460,7 @@ engine.add((now, dt, s) => {
     now,
     sx,
     sky.refl,
-    { hor: css.getPropertyValue('--sky-hor') || 'rgb(50,56,81)', top: css.getPropertyValue('--sky-top') || 'rgb(26,32,58)' },
+    { hor: skyCss.hor, top: skyCss.top },
     s.daylight,
     s.sunLight,
     glints,
@@ -471,7 +498,7 @@ engine.add((now, dt, s) => {
     }
   }
 
-  if (ocean.frame(now, sx, s.daylight, matchMedia('(prefers-reduced-motion: reduce)').matches)) engine.busy(200);
+  if (ocean.frame(now, sx, s.daylight, reduceMotion)) engine.busy(200);
   if (fx.frame(now, dt)) engine.busy(200);
   if (now > nextMeteor) {
     if (s.starVis[1] > 0.6 && engine.weather.cloud < 0.4) fx.decorative(now);
@@ -479,7 +506,6 @@ engine.add((now, dt, s) => {
   }
 
   // deniz selamı: ana ekranda ~3 dk KALINIRSA gelir; sonrasında ancak 8–12 dk daha kalınırsa gösterir
-  const overlayOpen = Boolean(app.querySelector('.sheet,.page,.board,.watch,.auth,.cdpage'));
   if (home?.isConnected && inHome && starsShown && !overlayOpen && document.visibilityState === 'visible') {
     oceanDwell += dt;
     if (oceanDwell >= oceanAt && engine.weather.precip < 0.5 && ocean.start(now, sx)) {
@@ -529,7 +555,7 @@ addEventListener('pointermove', (e) => {
   drag.lx = e.clientX;
   drag.lt = now;
   engine.busy(300);
-});
+}, { passive: true });
 addEventListener('pointerup', (e) => {
   if (!drag) return;
   const d = drag;

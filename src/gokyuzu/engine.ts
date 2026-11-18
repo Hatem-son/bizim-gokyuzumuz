@@ -24,6 +24,8 @@ export class Engine {
   /** Düşük Güç tespiti (fps <= 32 -> true) */
   onLowPower?: (low: boolean) => void;
   lowPower = false;
+  /** Sayfa/sheet açıkken arka planı seyrelt: kareler arası en az bu kadar ms (0 = kapalı) */
+  throttle = 0;
   stats = { fps: 0, slow: 0, frames: 0, longTasks: 0 };
   private fpsAcc = 0; private fpsN = 0;
 
@@ -80,7 +82,7 @@ export class Engine {
     const idleFor = now - this.lastInteraction;
     const busy = now < this.busyUntil || idleFor < 1500;
     // Boşta 30 fps; 20 sn dokunulmazsa ~20 fps. Meşgulken (kaydırma/animasyon) her kare.
-    const minGap = busy ? 0 : idleFor > 20000 ? 48 : 31;
+    const minGap = Math.max(this.throttle, busy ? 0 : idleFor > 20000 ? 48 : 31);
     if (now - this.last < minGap) return;
     const dt = Math.min(0.1, (now - this.last) / 1000);
     this.fpsAcc += now - this.last; this.fpsN++;

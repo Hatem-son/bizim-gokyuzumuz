@@ -173,7 +173,7 @@
    ÜSTÜNE biniyordu. Artık durum çubuğunun ALTINDA, tam genişlikte, yazısı kesilmeyen cam bir bildirim kartı. */
 .island-pop { position: absolute; z-index: 210; left: 10px; right: 10px; margin: 0 auto; max-width: 400px;
   top: calc(var(--safe-t) + 6px); min-height: 64px; border-radius: 24px; overflow: hidden;
-  background: rgba(10, 12, 24, .78); -webkit-backdrop-filter: blur(22px) saturate(1.5); backdrop-filter: blur(22px) saturate(1.5);
+  background: rgba(10, 12, 24, .84); -webkit-backdrop-filter: blur(12px) saturate(1.4); backdrop-filter: blur(12px) saturate(1.4);
   box-shadow: 0 12px 34px rgba(0,0,0,.38), inset 0 0 0 1px rgba(255,255,255,.08); will-change: transform, opacity; }
 .island-pop .is-in { display: flex; align-items: center; gap: 12px; padding: 11px 12px 11px 11px; min-height: 64px; box-sizing: border-box; }
 .is-av { width: 42px; height: 42px; border-radius: 50%; border: 1.5px solid currentColor; display: grid; place-items: center; flex: none;

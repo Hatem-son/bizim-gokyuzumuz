@@ -3,14 +3,21 @@
 // Fenerler: ip uzunluğuna göre doğal periyotlu, sönümlü sarkaç (rüzgâr kuvvetiyle sürülür).
 // Her karede yalnızca transform yazılır.
 
-type Frond = { el: SVGGElement; ph: number; f: number; amp: number; side: number };
+type Frond = { el: SVGGElement; host: HTMLElement; ph: number; f: number; amp: number; side: number };
 type Lantern = { el: HTMLElement; th: number; om: number; w0: number; ph: number };
+
+const rmq = matchMedia('(prefers-reduced-motion: reduce)');
 
 export class Wind {
   private fronds: Frond[] = [];
   private lanterns: Lantern[] = [];
   private t = 0;
+  private reduce = rmq.matches;                 // karede matchMedia çağrılmaz
   strength = 0.2; // 0..1, hava durumundan (engine.weather.wind)
+
+  constructor() {
+    rmq.addEventListener?.('change', () => (this.reduce = rmq.matches));
+  }
 
   attach(root: HTMLElement) {
     this.fronds = [...root.querySelectorAll('.frond')].map((el, i) => {
@@ -19,7 +26,7 @@ export class Wind {
       const d = g.querySelector('path:last-child')?.getAttribute('d') ?? '';
       const nums = d.match(/-?\d+(\.\d+)?/g)?.map(Number) ?? [0, 0, 1, 0];
       const side = Math.sign(nums[nums.length - 2] - nums[0]) || 1;
-      return { el: g, ph: (i * 2.399) % 6.283, f: 0.55 + ((i * 0.37) % 0.4), amp: 0.7 + ((i * 0.53) % 0.6), side };
+      return { el: g, host: (g.closest('.fgi') as HTMLElement) ?? (g.parentElement as HTMLElement), ph: (i * 2.399) % 6.283, f: 0.55 + ((i * 0.37) % 0.4), amp: 0.7 + ((i * 0.53) % 0.6), side };
     });
     this.attachPalms(root);
     this.lanterns = [...root.querySelectorAll('.lantern .swing')].map((el, i) => {
@@ -45,7 +52,7 @@ export class Wind {
   }
 
   frame(dt: number) {
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (this.reduce) return;
     this.t += dt;
     const t = this.t;
     this.sm += (this.strength - this.sm) * Math.min(1, dt * 0.6);        // rüzgâr yavaşça güçlenir / diner
@@ -54,6 +61,7 @@ export class Wind {
     const P = 0.35 + 4.2 * Math.pow(wn, 1.2);
     const g = this.gust(t * (1 + wn * 1.4));
     for (const f of this.fronds) {
+      if (f.host.style.display === 'none') continue;                                     // ekran dışı palmiye: yazma yok
       const lean = f.side * dir * g * P * 1.6;                                           // rüzgâr yönüne eğilme (derece)
       const sway = Math.sin(t * f.f * (1.4 + 1.6 * wn) + f.ph) * f.amp * (0.6 + g) * P * 0.8; // kendi salınımı (rüzgârla hızlanır)
       const flutter = Math.sin(t * (7.3 + 8 * wn) + f.ph * 3) * 0.2 * g * P * (0.4 + 1.5 * wn); // uç titremesi (fırtınada belirgin)
@@ -61,6 +69,7 @@ export class Wind {
     }
     // gövde: rüzgâr yönüne hafif eğilir, esintiyle salınır
     for (const p of this.palms) {
+      if ((p.el.parentElement as HTMLElement).style.display === 'none') continue;
       const a = dir * (g - 0.35) * P * 0.7 + Math.sin(t * 0.45 + p.ph) * P * 0.14;
       p.el.style.transform = `${p.base} rotate(${a.toFixed(3)}deg)`;
     }
