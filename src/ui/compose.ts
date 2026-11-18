@@ -43,6 +43,7 @@ export function openCompose(initial: Kind = 'text', restored?: ComposeDraft) {
   let drawing: unknown[] | null = restored?.drawing ?? loadSavedDrawingDraft();
   let timed: number | null = restored?.timed ?? null;
   let activeRecorder: VoiceRecorder | null = null;
+  let stopPreviewAudio: (() => void) | null = null;
   let handingOff = false;
 
   const c = h(`<div class="compose">
@@ -67,6 +68,8 @@ export function openCompose(initial: Kind = 'text', restored?: ComposeDraft) {
     onClose: () => {
       activeRecorder?.cleanup();
       activeRecorder = null;
+      stopPreviewAudio?.();
+      stopPreviewAudio = null;
       if (!handingOff) core.setMyLiveActivity('idle');
     },
   });
@@ -79,6 +82,8 @@ export function openCompose(initial: Kind = 'text', restored?: ComposeDraft) {
     segment(['Yazı', 'Fotoğraf', 'Ses', 'Çizim'], kinds.indexOf(mode), (i) => {
       activeRecorder?.cleanup();
       activeRecorder = null;
+      stopPreviewAudio?.();
+      stopPreviewAudio = null;
       mode = kinds[i];
       render();
     })
@@ -188,6 +193,9 @@ export function openCompose(initial: Kind = 'text', restored?: ComposeDraft) {
           voice,
           (r) => {
             activeRecorder = r;
+          },
+          (stopFn) => {
+            stopPreviewAudio = stopFn;
           }
         )
       );
@@ -256,7 +264,14 @@ export function openCompose(initial: Kind = 'text', restored?: ComposeDraft) {
   });
 
   send.addEventListener('click', async () => {
+    if (send.disabled) return;
+    activeRecorder?.cleanup();
+    activeRecorder = null;
+    stopPreviewAudio?.();
+    stopPreviewAudio = null;
     send.disabled = true;
+    const origHtml = send.innerHTML;
+    send.innerHTML = `<svg width="17" height="17" viewBox="0 0 24 24" style="animation:spin .8s linear infinite"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="40 20" stroke-linecap="round"/></svg><span>Gönderiliyor…</span>`;
     handingOff = true;
     const snapshot: ComposeDraft = {
       mode,
@@ -267,10 +282,15 @@ export function openCompose(initial: Kind = 'text', restored?: ComposeDraft) {
       drawing,
       timed,
     };
-    await flyAway(sheet, snapshot, () => {
+    const ok = await flyAway(sheet, snapshot, () => {
       if (snapshot.mode === 'text') store.del(draftKey);
       if (snapshot.mode === 'draw') saveDrawingDraft(null);
     });
+    if (!ok) {
+      handingOff = false;
+      send.innerHTML = origHtml;
+      valid();
+    }
   });
 }
 
@@ -284,8 +304,8 @@ function staggerChildren(row: HTMLElement) {
   );
 }
 
-/** Kartı yıldıza dönüştürüp göğe gönder; şifreleme ve yükleme animasyonla EŞZAMANLI yürür. */
-async function flyAway(sheet: Sheet, draft: ComposeDraft, onClearDraft: () => void) {
+/** Şifreleme ve yüklemeyi tamamla; BAŞARILIysa kartı yıldıza dönüştürüp göğe gönder (hata olursa kaydı SİLME, kart açık kalsın). */
+async function flyAway(sheet: Sheet, draft: ComposeDraft, onClearDraft: () => void): Promise<boolean> {
   const app = core.homeEl.parentElement!;
   const a = app.getBoundingClientRect();
   const r = sheet.el.getBoundingClientRect();
@@ -298,8 +318,11 @@ async function flyAway(sheet: Sheet, draft: ComposeDraft, onClearDraft: () => vo
 
   core.setMyLiveActivity('sending');
 
-  // Şifreleme + yükleme görevini animasyonla eşzamanlı başlat
-  const sendTask = (async () => {
+  // 0) Önce şifrele ve sunucuya yükle (yükleme gerçekten tamamlanmadan "gönderildi" animasyonu/bildirimi çıkmaz)
+  let res:
+    | { ok: true; queued: boolean; record: NonNullable<Star['raw']> | null; id: string }
+    | { ok: false; error: unknown };
+  try {
     const dbFrom = toDbWho(state.me);
     const dbKind: StarKind =
       draft.mode === 'text' ? 'note' : draft.mode === 'photo' ? 'photo' : draft.mode === 'voice' ? 'voice' : 'draw';
@@ -326,18 +349,34 @@ async function flyAway(sheet: Sheet, draft: ComposeDraft, onClearDraft: () => vo
 
     try {
       const uploaded = await uploadPreparedStar(env);
-      return { ok: true as const, queued: false, record: uploaded, id: uploaded.id };
+      res = { ok: true, queued: false, record: uploaded, id: uploaded.id };
     } catch (err) {
       if (err instanceof OfflineNetworkError || isOfflineLikeError(err)) {
         await enqueueEncryptedStar(env);
         core.onOutboxChange();
-        return { ok: true as const, queued: true, record: null, id: env.id };
+        res = { ok: true, queued: true, record: null, id: env.id };
+      } else {
+        res = { ok: false, error: err };
       }
-      return { ok: false as const, error: err };
     }
-  })();
+  } catch (err) {
+    res = { ok: false, error: err };
+  }
 
-  // 1) içerik solar, kart küçülerek ışık noktasına dönüşür (yalnızca transform ve opacity)
+  core.setMyLiveActivity('idle');
+
+  if (!res.ok) {
+    const errMsg =
+      draft.mode === 'voice'
+        ? 'Ses gönderilemedi · tekrar dene'
+        : draft.mode === 'draw'
+          ? 'Çizim gönderilemedi · tekrar dene'
+          : 'Gönderilemedi · tekrar dene';
+    toast(errMsg, I.info(14), 3600);
+    return false;
+  }
+
+  // 1) Yükleme tamamlandı: içerik solar, kart küçülerek ışık noktasına dönüşür
   const inner = [...sheet.el.children] as HTMLElement[];
   inner.forEach((x) => x.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140, fill: 'forwards' }));
   (document.activeElement as HTMLElement | null)?.blur();
@@ -377,19 +416,6 @@ async function flyAway(sheet: Sheet, draft: ComposeDraft, onClearDraft: () => vo
   await fly.animate(kf, { duration: reduced() ? 200 : 820, easing: 'cubic-bezier(.45,.05,.3,1)', fill: 'forwards' }).finished;
   fly.remove();
 
-  const res = await sendTask;
-  core.setMyLiveActivity('idle');
-
-  if (!res.ok) {
-    openCompose(draft.mode, draft);
-    toast(
-      draft.mode === 'draw' ? 'Çizim gönderilemedi · tekrar dene' : 'Gönderilemedi, tekrar dene',
-      I.info(14),
-      3600
-    );
-    return;
-  }
-
   onClearDraft();
   const existingRecords = state.stars.map((s) => s.raw).filter(Boolean) as NonNullable<Star['raw']>[];
   const hazel =
@@ -402,6 +428,9 @@ async function flyAway(sheet: Sheet, draft: ComposeDraft, onClearDraft: () => vo
     id: res.id,
     from: state.me,
     kind: draft.mode,
+    voiceUrl: draft.mode === 'voice' ? draft.voice?.previewUrl : undefined,
+    voiceSec: draft.mode === 'voice' ? draft.voice?.dur : undefined,
+    voicePeaks: draft.mode === 'voice' ? draft.voice?.peaks : undefined,
     createdAt: res.record ? Date.parse(res.record.createdAt) : Date.now(),
     unlockAt: draft.timed ?? undefined,
     opened: false,
@@ -444,6 +473,7 @@ async function flyAway(sheet: Sheet, draft: ComposeDraft, onClearDraft: () => vo
       });
     }
   }, 500);
+  return true;
 }
 
 export function freeSpot() {
@@ -466,80 +496,180 @@ export function freeSpot() {
   return { x: fbX, y: Math.min(280, core.horizonY - 120) };
 }
 
-/** Gerçek MediaRecorder ses kaydı arayüzü (dalga çubukları gerçek mikrofon seviyesinden transform: scaleY ile çizilir). */
+/** HOTFIX 20 — 3 durumlu gerçek ses kaydı: bekleme → kaydediyor (canlı 30 çubuk, 60 sn) → kaydedildi (▶ önizleme dinle + mikrofonla yeniden kaydet). */
 function voiceUI(
-  onDone: (rec: RecordedVoice) => void,
+  onDone: (rec: RecordedVoice | null) => void,
   existing: RecordedVoice | null,
-  setActive: (r: VoiceRecorder | null) => void
+  setActive: (r: VoiceRecorder | null) => void,
+  registerStopPreview: (fn: (() => void) | null) => void
 ) {
   const v = h(`<div class="rec">
-    <div class="wave" aria-hidden="true">${Array.from({ length: 34 }, () => '<i></i>').join('')}</div>
+    <div class="wave" aria-hidden="true">${Array.from({ length: 30 }, () => '<i></i>').join('')}</div>
     <div class="timer" data-t>${existing ? fmtSec(existing.dur) : '0:00'}</div>
-    <button type="button" class="rec-btn" aria-label="Kaydı başlat">${I.mic(28)}</button>
-    <div class="small" data-h>${existing ? 'Yeniden kaydetmek için dokun' : 'Kaydetmek için dokun · en fazla 60 sn'}</div></div>`);
-  const bars = $$('.wave i', v);
-  const btn = $<HTMLButtonElement>('.rec-btn', v);
-  let on = false, raf = 0;
-  let recorder: VoiceRecorder | null = null;
+    <div style="display:flex;align-items:center;gap:14px">
+      <button type="button" class="rec-btn" data-main aria-label="${existing ? 'Kaydı dinle' : 'Kaydı başlat'}">${existing ? I.play(26) : I.mic(28)}</button>
+      <button type="button" class="chip ${existing ? '' : 'hide'}" data-rerec aria-label="Yeniden kaydet">${I.mic(16)}<span>Yeniden kaydet</span></button>
+    </div>
+    <div class="small" data-h>${existing ? 'Dinlemek için ▶ · yeniden kaydetmek için mikrofon' : 'Kaydetmek için dokun · en fazla 60 sn'}</div></div>`);
 
-  if (existing) {
+  const bars = $$('.wave i', v);
+  const mainBtn = $<HTMLButtonElement>('[data-main]', v);
+  const rerecBtn = $<HTMLButtonElement>('[data-rerec]', v);
+  const timeEl = $('[data-t]', v);
+  const hintEl = $('[data-h]', v);
+
+  let curRec: RecordedVoice | null = existing;
+  let recording = false;
+  let playing = false;
+  let raf = 0;
+  let recorder: VoiceRecorder | null = null;
+  let previewAudio: HTMLAudioElement | null = null;
+
+  const paintPeaks = (peaks: number[], progress = 0) => {
     bars.forEach((b, i) => {
-      const pk = existing.peaks[i % existing.peaks.length] ?? 0.4;
+      const pk = peaks[i % peaks.length] ?? 0.35;
       b.style.transform = `scaleY(${(0.2 + pk * 0.8).toFixed(2)})`;
+      b.style.opacity = progress > 0 && i / bars.length <= progress ? '1' : '';
     });
+  };
+
+  if (curRec) {
+    paintPeaks(curRec.peaks);
   }
 
-  btn.addEventListener('click', async () => {
-    if (!on) {
-      try {
-        recorder = new VoiceRecorder();
-        await recorder.start();
-        setActive(recorder);
-        core.setMyLiveActivity('voice');
-      } catch (err) {
-        recorder?.cleanup();
-        recorder = null;
-        setActive(null);
-        toast(err instanceof Error ? err.message : 'Mikrofon izni verilmedi', I.mic(14), 3200);
-        return;
-      }
-      on = true;
-      btn.classList.add('on');
-      btn.innerHTML = I.pause(26);
-      $('[data-h]', v).textContent = 'Durdurmak için dokun';
-      const step = () => {
-        if (!on || !recorder || document.hidden) return;
-        const s = recorder.elapsedSec();
-        $('[data-t]', v).textContent = fmtSec(s);
-        const lv = recorder.readBars(bars.length);
-        bars.forEach((b, i) => {
-          b.style.transform = `scaleY(${lv[i].toFixed(2)})`;
-        });
-        if (s < 60) raf = requestAnimationFrame(step);
-        else btn.click();
-      };
-      raf = requestAnimationFrame(step);
+  const stopPreview = () => {
+    playing = false;
+    cancelAnimationFrame(raf);
+    if (previewAudio) {
+      previewAudio.pause();
+      previewAudio.currentTime = 0;
+    }
+    if (curRec && !recording) {
+      mainBtn.innerHTML = I.play(26);
+      mainBtn.setAttribute('aria-label', 'Kaydı dinle');
+      timeEl.textContent = fmtSec(curRec.dur);
+      paintPeaks(curRec.peaks, 0);
+    }
+  };
+  registerStopPreview(stopPreview);
+
+  const startRecordingFromGesture = async () => {
+    stopPreview();
+    try {
+      recorder = new VoiceRecorder();
+      await recorder.start();
+      setActive(recorder);
+      core.setMyLiveActivity('voice');
+    } catch (err) {
+      recorder?.cleanup();
+      recorder = null;
+      setActive(null);
+      toast(err instanceof Error ? err.message : 'Mikrofon izni verilmedi', I.mic(14), 3800);
+      return;
+    }
+    recording = true;
+    rerecBtn.classList.add('hide');
+    mainBtn.classList.add('on');
+    mainBtn.innerHTML = I.pause(26);
+    mainBtn.setAttribute('aria-label', 'Kaydı durdur');
+    hintEl.textContent = 'Durdurmak için dokun';
+
+    const step = () => {
+      if (!recording || !recorder || document.hidden) return;
+      const s = recorder.elapsedSec();
+      timeEl.textContent = fmtSec(s);
+      const lv = recorder.readBars(bars.length);
+      bars.forEach((b, i) => {
+        b.style.transform = `scaleY(${lv[i].toFixed(2)})`;
+        b.style.opacity = '';
+      });
+      core.setMyLiveActivity('voice');
+      if (s < 60) raf = requestAnimationFrame(step);
+      else void finishRecording();
+    };
+    raf = requestAnimationFrame(step);
+  };
+
+  const finishRecording = async () => {
+    if (!recording) return;
+    recording = false;
+    cancelAnimationFrame(raf);
+    mainBtn.classList.remove('on');
+    if (!recorder) return;
+    try {
+      const rec = await recorder.stop();
+      setActive(null);
+      recorder = null;
+      curRec = rec;
+      previewAudio = null;
+      mainBtn.innerHTML = I.play(26);
+      mainBtn.setAttribute('aria-label', 'Kaydı dinle');
+      rerecBtn.classList.remove('hide');
+      timeEl.textContent = fmtSec(rec.dur);
+      hintEl.textContent = 'Dinlemek için ▶ · yeniden kaydetmek için mikrofon';
+      paintPeaks(rec.peaks, 0);
+      onDone(rec);
+    } catch (err) {
+      setActive(null);
+      recorder = null;
+      mainBtn.innerHTML = curRec ? I.play(26) : I.mic(28);
+      if (curRec) rerecBtn.classList.remove('hide');
+      hintEl.textContent = curRec
+        ? 'Dinlemek için ▶ · yeniden kaydetmek için mikrofon'
+        : 'Kaydetmek için dokun · en fazla 60 sn';
+      toast(err instanceof Error ? err.message : 'Ses alınamadı, tekrar dene', I.info(14), 3400);
+    }
+  };
+
+  const togglePreviewFromGesture = async () => {
+    if (!curRec) return;
+    if (playing) {
+      stopPreview();
+      return;
+    }
+    if (!previewAudio) {
+      const url = curRec.previewUrl || URL.createObjectURL(new Blob([curRec.bytes], { type: curRec.mime || 'audio/mp4' }));
+      previewAudio = new Audio(url);
+      previewAudio.preload = 'auto';
+    }
+    previewAudio.onended = () => stopPreview();
+    try {
+      playing = true;
+      mainBtn.innerHTML = I.pause(26);
+      await previewAudio.play();
+    } catch {
+      stopPreview();
+      toast('Önizleme oynatılamadı · tekrar dokun', I.info(14), 2800);
+      return;
+    }
+    const total = curRec.dur || 1;
+    const stepPlay = () => {
+      if (!playing || !previewAudio || !v.isConnected) return;
+      const cur = previewAudio.currentTime || 0;
+      const dur = Number.isFinite(previewAudio.duration) && previewAudio.duration > 0 ? previewAudio.duration : total;
+      const f = Math.min(1, cur / Math.max(0.3, dur));
+      if (curRec) paintPeaks(curRec.peaks, f);
+      timeEl.textContent = fmtSec(cur);
+      if (!previewAudio.paused && f < 1) raf = requestAnimationFrame(stepPlay);
+    };
+    raf = requestAnimationFrame(stepPlay);
+  };
+
+  mainBtn.addEventListener('click', () => {
+    if (recording) {
+      void finishRecording();
+    } else if (curRec) {
+      void togglePreviewFromGesture();
     } else {
-      on = false;
-      cancelAnimationFrame(raf);
-      btn.classList.remove('on');
-      btn.innerHTML = I.mic(28);
-      if (recorder) {
-        try {
-          const rec = await recorder.stop();
-          setActive(null);
-          recorder = null;
-          $('[data-t]', v).textContent = fmtSec(rec.dur);
-          $('[data-h]', v).textContent = 'Kaydedildi · yeniden kaydetmek için dokun';
-          onDone(rec);
-        } catch {
-          setActive(null);
-          recorder = null;
-          toast('Ses kaydı tamamlanamadı', I.info(14));
-        }
-      }
+      void startRecordingFromGesture();
     }
   });
+
+  rerecBtn.addEventListener('click', () => {
+    if (recording) return;
+    void startRecordingFromGesture();
+  });
+
   return v;
 }
 

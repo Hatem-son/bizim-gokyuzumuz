@@ -5,6 +5,7 @@ import { I } from './icons';
 import { state, PEOPLE, Star, Who, fmtDate, untilParts, toDbWho } from './state';
 import { core } from './core';
 import { fmtSec } from './compose';
+import { detectAudioMime } from './voice';
 import { raspberry } from './art';
 import {
   decryptStarPayload,
@@ -72,7 +73,8 @@ async function ensureDecrypted(st: Star): Promise<'ok' | 'locked' | 'network'> {
         if (st.kind === 'photo') {
           st.photo = URL.createObjectURL(new Blob([bytes], { type: payload.mime || 'image/jpeg' }));
         } else if (st.kind === 'voice') {
-          st.voiceUrl = URL.createObjectURL(new Blob([bytes], { type: payload.mime || 'audio/mp4' }));
+          const audioMime = detectAudioMime(bytes, payload.mime || 'audio/mp4');
+          st.voiceUrl = URL.createObjectURL(new Blob([bytes], { type: audioMime }));
         } else if (st.kind === 'draw') {
           st.draw = await core.decodeDrawing(bytes);
         }
@@ -189,7 +191,7 @@ export async function openStar(st: Star, onOpened?: () => void) {
       const btn = $('.pbtn', content);
       const bars = $$('.wave i', content);
       const vtime = $('[data-vtime]', content);
-      let playing = false, raf = 0, t0 = 0;
+      let playing = false, raf = 0;
 
       if (st.voiceUrl) {
         activeAudio = new Audio(st.voiceUrl);
@@ -200,6 +202,7 @@ export async function openStar(st: Star, onOpened?: () => void) {
         playing = false;
         cancelAnimationFrame(raf);
         btn.innerHTML = I.play(18);
+        bars.forEach((b) => b.classList.remove('done'));
         if (activeAudio) {
           activeAudio.pause();
           activeAudio.currentTime = 0;
@@ -212,27 +215,35 @@ export async function openStar(st: Star, onOpened?: () => void) {
           stopVoice();
           return;
         }
-        playing = true;
-        btn.innerHTML = I.pause(18);
-        t0 = performance.now();
-        if (activeAudio) {
-          activeAudio.onended = stopVoice;
-          try {
-            await activeAudio.play();
-          } catch {
-            // Tarayıcı oynatma engeli olursa görsel ilerlemeye düş
-          }
+        if (!activeAudio) {
+          toast('Ses kaydı yüklenemedi · tekrar açmayı dene', I.info(14), 3200);
+          return;
         }
-        const totalSec = st.voiceSec || activeAudio?.duration || 10;
+        activeAudio.onended = stopVoice;
+        try {
+          playing = true;
+          btn.innerHTML = I.pause(18);
+          await activeAudio.play();
+        } catch (err) {
+          stopVoice();
+          const name = (err as { name?: string })?.name || '';
+          const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+          if (name === 'NotSupportedError' && isIOS) {
+            toast('Bu ses biçimi (WebM/Opus) iPhone’da çalınamıyor · iPhone’dan kaydedilen sesler çalar', I.info(14), 4200);
+          } else {
+            toast('Oynatılamadı · tekrar dokun', I.info(14), 3000);
+          }
+          return;
+        }
+        const totalSec = st.voiceSec || activeAudio.duration || 10;
         const step = () => {
-          if (!playing || !content.isConnected) return;
-          const curSec = activeAudio && !activeAudio.paused ? activeAudio.currentTime : (performance.now() - t0) / 1000;
-          const durSec = activeAudio && Number.isFinite(activeAudio.duration) && activeAudio.duration > 0 ? activeAudio.duration : totalSec;
-          const f = Math.min(1, curSec / Math.max(0.5, durSec));
+          if (!playing || !activeAudio || !content.isConnected) return;
+          const curSec = activeAudio.currentTime || 0;
+          const durSec = Number.isFinite(activeAudio.duration) && activeAudio.duration > 0 ? activeAudio.duration : totalSec;
+          const f = Math.min(1, curSec / Math.max(0.3, durSec));
           bars.forEach((b, i) => b.classList.toggle('done', i / bars.length <= f));
           vtime.textContent = fmtSec(Math.max(0, durSec - curSec));
-          if (f < 1) raf = requestAnimationFrame(step);
-          else stopVoice();
+          if (!activeAudio.paused && f < 1) raf = requestAnimationFrame(step);
         };
         raf = requestAnimationFrame(step);
       });

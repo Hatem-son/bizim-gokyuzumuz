@@ -421,7 +421,7 @@ export async function prepareEncryptedStar(params: {
   const payloadWithInline: StarPayloadData = {
     ...params.data,
     subkind: params.kind,
-    ...(sealedMedia && sealedMedia.length <= 750_000 ? { inlineMedia: sealedMedia } : {}),
+    ...(sealedMedia && sealedMedia.length <= 1_400_000 ? { inlineMedia: sealedMedia } : {}),
   };
   const sealedPayload = await sealJSON(payloadWithInline);
 
@@ -481,22 +481,6 @@ export async function uploadPreparedStar(env: PreparedStarEnvelope): Promise<Sta
     const uid = userRes.user?.id;
     if (!uid) throw new Error('Oturum açık değil.');
 
-    let storageUploaded = false;
-    if (env.sealedMedia) {
-      const blob = new Blob([env.sealedMedia], { type: 'text/plain;charset=utf-8' });
-      const { error: uploadErr } = await sb.storage.from('media').upload(env.id, blob, {
-        contentType: 'text/plain',
-        upsert: false,
-      });
-      if (!uploadErr || /already exists|duplicate/i.test(uploadErr.message || '')) {
-        storageUploaded = true;
-      } else if (isOfflineLikeError(uploadErr)) {
-        throw new OfflineNetworkError('Şifreli medya çevrimdışı nedeniyle gönderilemedi.');
-      } else if (env.sealedMedia.length > 750_000) {
-        throw new Error('Şifreli medya yüklenemedi.');
-      }
-    }
-
     const buildStarInsert = (k: StarKind) => ({
       id: env.id,
       from_user: uid,
@@ -530,19 +514,45 @@ export async function uploadPreparedStar(env: PreparedStarEnvelope): Promise<Sta
     }
 
     if (insertErr || !inserted) {
-      if (storageUploaded) {
-        await sb.storage.from('media').remove([env.id]).catch(() => undefined);
-      }
       if (isOfflineLikeError(insertErr)) {
         throw new OfflineNetworkError('Bağlantı nedeniyle yıldız gönderilemedi.');
       }
       throw new Error('Yıldız kaydedilemedi.');
     }
 
+    // Yıldız satırı artık public.stars'da var → Storage RLS (s.id::text = storage.objects.name veya userid/<id>.bin) sorunsuz geçer
+    let storagePath: string | null = null;
+    if (env.sealedMedia) {
+      const blob = new Blob([env.sealedMedia], { type: 'application/octet-stream' });
+      const primaryPath = env.id;
+      const { error: uploadErr } = await sb.storage.from('media').upload(primaryPath, blob, {
+        contentType: 'application/octet-stream',
+        upsert: false,
+      });
+      if (!uploadErr || /already exists|duplicate/i.test(uploadErr.message || '')) {
+        storagePath = primaryPath;
+      } else {
+        const altPath = `${uid}/${env.id}.bin`;
+        const { error: altErr } = await sb.storage.from('media').upload(altPath, blob, {
+          contentType: 'application/octet-stream',
+          upsert: false,
+        });
+        if (!altErr || /already exists|duplicate/i.test(altErr.message || '')) {
+          storagePath = altPath;
+        } else if (isOfflineLikeError(uploadErr) || isOfflineLikeError(altErr)) {
+          await sb.from('stars').delete().eq('id', env.id).catch(() => undefined);
+          throw new OfflineNetworkError('Şifreli medya çevrimdışı nedeniyle gönderilemedi.');
+        } else if (env.sealedMedia.length > 1_400_000) {
+          await sb.from('stars').delete().eq('id', env.id).catch(() => undefined);
+          throw new Error('Şifreli medya yüklenemedi.');
+        }
+      }
+    }
+
     const { error: secretErr } = await sb.from('star_secrets').insert({
       star_id: env.id,
       payload: env.sealedPayload,
-      media_path: storageUploaded ? env.id : null,
+      media_path: storagePath,
       once: env.once,
     });
 
@@ -552,8 +562,8 @@ export async function uploadPreparedStar(env: PreparedStarEnvelope): Promise<Sta
       } catch {
         // Ignore cleanup errors
       }
-      if (storageUploaded) {
-        await sb.storage.from('media').remove([env.id]).catch(() => undefined);
+      if (storagePath) {
+        await sb.storage.from('media').remove([storagePath]).catch(() => undefined);
       }
       if (isOfflineLikeError(secretErr)) {
         throw new OfflineNetworkError('Bağlantı nedeniyle yıldız içeriği gönderilemedi.');

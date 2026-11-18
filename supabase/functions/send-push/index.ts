@@ -287,6 +287,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       subtitle = body.once ? 'Tek seferlik bir fotoğraf gönderdi' : 'Gökyüzüne yeni bir yıldız düştü';
     } else if (body.kind === 'voice') {
       title = `${senderName} sana sesli bir yıldız bıraktı`;
+      subtitle = 'Bir ses kaydı';
     }
 
     if (body.unlockAt) {
