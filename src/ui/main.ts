@@ -69,9 +69,14 @@ const standalone = () =>
 function fitViewport() {
   const h = standalone() ? Math.max(window.innerHeight, window.screen.height) : window.innerHeight;
   document.documentElement.style.setProperty('--app-h', Math.round(h) + 'px');
-  // iOS'a yeniden ölçtür (klavye açıkken/yazı alanı odaktayken yapma: display:none odağı düşürür)
+  // Safari sekmesi: #app (100lvh) cam araç çubuğunun arkasına uzanır; aradaki fark --tb → --safe-b (dock/form çubuğun üstünde kalır)
   const ae = document.activeElement as HTMLElement | null;
   const typing = !!ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName);
+  if (!typing && !document.documentElement.classList.contains('kb-open')) {
+    const tb = !standalone() ? Math.max(0, app.getBoundingClientRect().height - window.innerHeight) : 0;
+    document.documentElement.style.setProperty('--tb', tb > 4 ? Math.round(tb + 8) + 'px' : '0px');
+  }
+  // iOS'a yeniden ölçtür (klavye açıkken/yazı alanı odaktayken yapma: display:none odağı düşürür)
   if (standalone() && !typing && !document.documentElement.classList.contains('kb-open')) {
     app.style.display = 'none';
     void app.offsetHeight;
@@ -149,6 +154,7 @@ function syncChrome(now: number) {
   if (!col || col === chromeCol) return;
   chromeCol = col;
   themeMeta?.setAttribute('content', col);
+  if (!standalone()) document.documentElement.style.backgroundColor = col;
 }
 
 const weatherRenderer = new WeatherRenderer(worker, cv('cWBack', 1.5), cv('cWFront', 1.5), $('#flash'), geom, engine.weather);
