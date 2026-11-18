@@ -10,10 +10,6 @@
   <meta name="theme-color" content="#070a16">
   <style>
     html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #070a16; overscroll-behavior: none; }
-    @media (display-mode: browser) {
-      html, body { position: static; height: auto; min-height: 100lvh; overflow: hidden; }
-      #app { position: absolute; left: 0; top: 0; width: 100%; height: 100lvh; }
-    }
     @media (display-mode: standalone) {
       html, body { position: static; height: var(--app-h, 100vh); min-height: 100vh; overflow: hidden; margin: 0; padding: 0; }
       #app { position: absolute; left: 0; top: 0; width: 100%; height: var(--app-h, 100vh); min-height: 100vh; }

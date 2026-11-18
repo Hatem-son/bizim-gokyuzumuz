@@ -69,13 +69,8 @@ const standalone = () =>
 function fitViewport() {
   const h = standalone() ? Math.max(window.innerHeight, window.screen.height) : window.innerHeight;
   document.documentElement.style.setProperty('--app-h', Math.round(h) + 'px');
-  // Safari sekmesi: #app (100lvh) cam araç çubuğunun arkasına uzanır; aradaki fark --tb → --safe-b (dock/form çubuğun üstünde kalır)
   const ae = document.activeElement as HTMLElement | null;
   const typing = !!ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName);
-  if (!typing && !document.documentElement.classList.contains('kb-open')) {
-    const tb = !standalone() ? Math.max(0, app.getBoundingClientRect().height - window.innerHeight) : 0;
-    document.documentElement.style.setProperty('--tb', tb > 4 ? Math.round(tb + 8) + 'px' : '0px');
-  }
   // iOS'a yeniden ölçtür (klavye açıkken/yazı alanı odaktayken yapma: display:none odağı düşürür)
   if (standalone() && !typing && !document.documentElement.classList.contains('kb-open')) {
     app.style.display = 'none';
@@ -147,6 +142,14 @@ sky.moonTint = null;
 const themeMeta = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
 let chromeAt = 0;
 let chromeCol = '';
+const mkEdge = (c: string) => {
+  const e = document.createElement('div');
+  e.className = 'edge ' + c;
+  document.body.appendChild(e);
+  return e;
+};
+const edgeT = mkEdge('t');
+const edgeB = mkEdge('b');
 function syncChrome(now: number) {
   if (now - chromeAt < 1500) return;
   chromeAt = now;
@@ -154,7 +157,18 @@ function syncChrome(now: number) {
   if (!col || col === chromeCol) return;
   chromeCol = col;
   themeMeta?.setAttribute('content', col);
-  if (!standalone()) document.documentElement.style.backgroundColor = col;
+  if (standalone()) return;
+  document.documentElement.style.backgroundColor = col;
+  edgeT.style.background = col;
+  try {
+    // alt kenar: sahnenin GÖRÜNEN en alt satırı (tuvalin +96px tamponu değil)
+    const g = document.getElementById('cGround') as HTMLCanvasElement;
+    const row = Math.max(0, Math.round((g.height * H) / (H + 96)) - 2);
+    const p = g.getContext('2d')!.getImageData(Math.floor(g.width / 2), row, 1, 1).data;
+    edgeB.style.background = `rgb(${p[0]},${p[1]},${p[2]})`;
+  } catch {
+    // Ignore read errors
+  }
 }
 
 const weatherRenderer = new WeatherRenderer(worker, cv('cWBack', 1.5), cv('cWFront', 1.5), $('#flash'), geom, engine.weather);
