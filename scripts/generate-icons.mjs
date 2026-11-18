@@ -3,9 +3,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 
 const ICON_DIR = path.resolve('public/icons');
-const SPLASH_DIR = path.resolve('public/splash');
 fs.mkdirSync(ICON_DIR, { recursive: true });
-fs.mkdirSync(SPLASH_DIR, { recursive: true });
 
 const crcTable = new Uint32Array(256);
 for (let n = 0; n < 256; n++) {
@@ -241,23 +239,6 @@ function renderIcon(size, maskable) {
   return encodePNG(size, size, buf);
 }
 
-function renderSplash(width, height) {
-  // SON-PROMPT kuralı: açılış görseli düz #05070d (logo veya ek şekil yok; doğrudan sinematik intro açılır)
-  const buf = Buffer.alloc(width * height * 4);
-  const row = Buffer.alloc(width * 4);
-  for (let x = 0; x < width; x++) {
-    const idx = x * 4;
-    row[idx] = 5;
-    row[idx + 1] = 7;
-    row[idx + 2] = 13;
-    row[idx + 3] = 255;
-  }
-  for (let y = 0; y < height; y++) {
-    row.copy(buf, y * width * 4);
-  }
-  return encodePNG(width, height, buf);
-}
-
 const iconTargets = [
   { name: 'icon-180.png', size: 180, maskable: false },
   { name: 'icon-192.png', size: 192, maskable: false },
@@ -271,35 +252,4 @@ for (const t of iconTargets) {
   const png = renderIcon(t.size, t.maskable);
   fs.writeFileSync(path.join(ICON_DIR, t.name), png);
   console.log(`Generated icon ${t.name} (${png.length} bytes)`);
-}
-
-// Eski splash-*.png dosyalarını temizle (iOS / tarayıcı eski logolu görseli önbellekten sunmasın)
-for (const f of fs.readdirSync(SPLASH_DIR)) {
-  fs.unlinkSync(path.join(SPLASH_DIR, f));
-}
-
-const splashTargets = [
-  [640, 1136],   // 320x568 @2 (SE1 / Display Zoom)
-  [750, 1334],   // 375x667 @2 (SE2/SE3/8)
-  [828, 1792],   // 414x896 @2 (XR/11)
-  [960, 2079],   // 320x693 @3 (14 Pro/15/16 Display Zoom)
-  [1080, 2340],  // 360x780 @3 (12 mini/13 mini & Display Zoom)
-  [1125, 2436],  // 375x812 @3 (X/XS/11 Pro & Pro Max Display Zoom)
-  [1152, 2496],  // 384x832 @3 (16 Pro/Pro Max Display Zoom)
-  [1170, 2532],  // 390x844 @3 (12/13/14/16e)
-  [1179, 2556],  // 393x852 @3 (14 Pro/15/15 Pro/16)
-  [1206, 2622],  // 402x874 @3 (16 Pro)
-  [1242, 2208],  // 414x736 @3 (8 Plus)
-  [1242, 2688],  // 414x896 @3 (XS Max/11 Pro Max)
-  [1260, 2736],  // 420x912 @3 (iPhone Air)
-  [1284, 2778],  // 428x926 @3 (12 Pro Max/13 Pro Max/14 Plus)
-  [1290, 2796],  // 430x932 @3 (14 Pro Max/15 Plus/15 Pro Max/16 Plus)
-  [1320, 2868],  // 440x956 @3 (16 Pro Max)
-];
-
-for (const [w, h] of splashTargets) {
-  const name = `dark-${w}x${h}-v16.png`;
-  const png = renderSplash(w, h);
-  fs.writeFileSync(path.join(SPLASH_DIR, name), png);
-  console.log(`Generated splash ${name} (${png.length} bytes)`);
 }

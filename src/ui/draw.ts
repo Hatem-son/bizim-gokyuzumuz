@@ -330,8 +330,20 @@ export function openBoard(existing?: Stroke[] | null): Promise<Stroke[] | null> 
   });
 }
 
-/** Karşı tarafın canlı çizimini izle (pair:draw üzerinden şifreli canlı çizgi akışı). */
-export function openWatch(onDone?: (strokes: Stroke[]) => void) {
+/** Test paneli / önizleme için yerel örnek çizim (kalp + yıldız; sunucuya gönderilmez). */
+export function demoDrawing(): Stroke[] {
+  const heart: [number, number, number][] = [];
+  for (let i = 0; i <= 72; i++) {
+    const t = Math.PI - (i / 72) * Math.PI * 2;
+    const x = 500 + 16 * Math.pow(Math.sin(t), 3) * 14;
+    const y = 640 - (13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t)) * 14;
+    heart.push([Math.round(x), Math.round(y), i * 38]);
+  }
+  return [{ k: 'glow', c: PEOPLE[state.partner].color, s: 9, p: heart }];
+}
+
+/** Karşı tarafın canlı çizimini izle (pair:draw üzerinden şifreli canlı çizgi akışı; simStrokes verilirse yerel simülasyon). */
+export function openWatch(onDone?: (strokes: Stroke[]) => void, simStrokes?: Stroke[]) {
   if (document.querySelector('.watch')) return;
   const p = PEOPLE[state.partner];
   const strokes: Stroke[] = [];
@@ -411,14 +423,37 @@ export function openWatch(onDone?: (strokes: Stroke[]) => void) {
     }
   });
 
-  // Mevcut çizim anlık görüntüsünü iste
-  core.sendDrawPacket({ t: 'hello', seq: Date.now() });
+  // Mevcut çizim anlık görüntüsünü iste (yalnızca gerçek modda; Test paneli simülasyonunda ağa hiçbir şey gitmez)
+  let simRaf = 0;
+  if (simStrokes) {
+    strokes.splice(0, strokes.length, ...simStrokes);
+    const total = Math.max(200, ...simStrokes.flatMap((s) => s.p.map((q) => q[2])));
+    const t0 = performance.now();
+    const stepSim = () => {
+      if (closed || !el.isConnected) return;
+      const elapsed = performance.now() - t0;
+      renderDrawing(cv, strokes, 1, elapsed);
+      let curPt: [number, number, number] | null = null;
+      for (const s of strokes) {
+        for (const q of s.p) {
+          if (q[2] <= elapsed) curPt = q;
+        }
+      }
+      if (curPt) lastCursor = { x: curPt[0], y: curPt[1], ts: performance.now() };
+      if (elapsed < total + 250) simRaf = requestAnimationFrame(stepSim);
+      else void finish();
+    };
+    simRaf = requestAnimationFrame(stepSim);
+  } else {
+    core.sendDrawPacket({ t: 'hello', seq: Date.now() });
+  }
 
   const close = async () => {
     if (closed) return;
     closed = true;
     unsub();
     cancelAnimationFrame(raf);
+    cancelAnimationFrame(simRaf);
     await el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, fill: 'forwards' }).finished;
     el.remove();
   };
@@ -428,6 +463,7 @@ export function openWatch(onDone?: (strokes: Stroke[]) => void) {
     closed = true;
     unsub();
     cancelAnimationFrame(raf);
+    cancelAnimationFrame(simRaf);
     await box.animate(
       [{ transform: 'none', opacity: 1 }, { transform: 'scale(.06)', opacity: 0.35 }],
       { duration: 520, easing: 'cubic-bezier(.6,0,.3,1)', fill: 'forwards' }
@@ -439,6 +475,6 @@ export function openWatch(onDone?: (strokes: Stroke[]) => void) {
   $('[data-close]', el).addEventListener('click', () => void close());
   $('[data-heart]', el).addEventListener('click', () => {
     spawnReactionHeart(el);
-    core.sendDrawPacket({ t: 'react', seq: Date.now() });
+    if (!simStrokes) core.sendDrawPacket({ t: 'react', seq: Date.now() });
   });
 }

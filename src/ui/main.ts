@@ -12,9 +12,9 @@ import { Effects, drawUserStar } from '../gokyuzu/effects';
 import { Plane, schedulePlane } from '../gokyuzu/plane';
 import { SwipeHint } from '../gokyuzu/swipeHint';
 import { prepare, playIntro } from '../gokyuzu/intro';
+import { Weather, WeatherKind, kindFromCode, KIND_TR, startWeather } from '../gokyuzu/weather';
 import { clamp, hash } from '../gokyuzu/util';
 import { initKeyboard } from '../gokyuzu/keyboard';
-import { startWeather } from '../gokyuzu/weather';
 import { Beach } from './beach';
 import { OceanHeart } from './ocean';
 import { PALM_CSS } from './palm';
@@ -25,11 +25,11 @@ import { core } from './core';
 import { initUI, $, $$, h, toast, stagger, sleep, clearPageStack, closeIsland, island } from './ui';
 import { state, PEOPLE, Star, Kind, setMe, toUiWho, toDbWho } from './state';
 import { buildHome, buildForeground, placeForeground, showLive, sendHeart, partnerOnline } from './home';
-import { openCompose } from './compose';
-import { openBoard, openWatch, renderDrawing, Stroke, DrawLivePacket } from './draw';
+import { openCompose, freeSpot } from './compose';
+import { openBoard, openWatch, renderDrawing, demoDrawing, Stroke, DrawLivePacket } from './draw';
 import { encodeDrawingBytes, decodeDrawingBytes } from '../lib/drawCodec';
 import { openStar, openArchive, openSettings, openCountdown } from './pages';
-import { runAuth, runLock, applyPersona } from './auth';
+import { runAuth, runLock, applyPersona, faceAuth } from './auth';
 import { I } from './icons';
 import { registerServiceWorker } from '../lib/pwa';
 import { isSupabaseConfigured, getSessionFast, inferWhoFromEmail, signOutSupabase } from '../lib/supabase';
@@ -61,37 +61,53 @@ app.addEventListener('scroll', () => {
 window.addEventListener('scroll', () => {
   if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
 });
+
+// GÖRÜNÜR yükseklik (Safari sekmesinde üst/alt çubuklar hariç). 100vh KULLANILMAZ: iOS'ta araç çubuğunun arkasına taşar, dock kesilir.
+// innerHeight klavye açılınca küçülmez (visualViewport küçülür) → yalnızca açılışta ve döndürmede ölçülür.
+function fitViewport() {
+  document.documentElement.style.setProperty('--app-h', Math.round(window.innerHeight) + 'px');
+}
+fitViewport();
+addEventListener('orientationchange', () =>
+  setTimeout(() => {
+    fitViewport();
+    location.reload();
+  }, 300)
+);
+
+initKeyboard({
+  hideWhenOpen: () => [...app.querySelectorAll<HTMLElement>('.dock, .gk-cons, .gk-edge, .gk-hint-txt')],
+});
+
+// GERÇEK ekran boyutu: tuvaller hep tüm ekranı kaplar (alt kısım eksik kalmaz)
+const W = Math.max(320, Math.round(app.clientWidth || window.innerWidth || 390));
+const H = Math.max(520, Math.round(app.clientHeight || window.innerHeight || 844));
+const HORIZON = Math.round(H * 0.71);
+
 const st = document.createElement('style');
 st.textContent = ART_CSS + PALM_CSS + LILY_CSS + '@keyframes spin{to{transform:rotate(360deg)}}';
 document.head.appendChild(st);
 initUI(app);
 
-// ÖNCE tam ekran yüksekliğini (--app-h: 100lvh / screen.height) ayarla ki tuval telefonun en altına kadar kesintisiz insin
-initKeyboard({
-  hideWhenOpen: () => [...app.querySelectorAll<HTMLElement>('.dock, .gk-cons, .gk-edge, .gk-hint-txt')],
-});
-
-const cssAppH = parseInt(document.documentElement.style.getPropertyValue('--app-h'), 10) || 0;
-const W = Math.max(320, Math.round(app.clientWidth || window.innerWidth || 390));
-const H = Math.max(540, Math.round(app.clientHeight || cssAppH || window.innerHeight || 844));
-const HORIZON = Math.round(H * 0.71);
-
-app.insertAdjacentHTML('afterbegin', `
+// ---------- katmanlar ----------
+app.insertAdjacentHTML(
+  'afterbegin',
+  `
   <div id="skyWrap" class="layer"><canvas id="cSky"></canvas><canvas id="cWBack"></canvas><canvas id="cStars"></canvas><div id="planeHost" class="layer" style="pointer-events:none"></div><canvas id="cWFront"></canvas></div>
   <div id="groundWrap" class="layer" style="pointer-events:none"><canvas id="cGround"></canvas></div>
   <canvas id="cOcean"></canvas>
   <canvas id="cFx"></canvas>
   <div id="fgWrap" class="layer" style="pointer-events:none;z-index:4"></div>
-  <div id="flash" class="layer" style="background:#dfe6ff;opacity:0;pointer-events:none;z-index:6"></div>`);
+  <div id="flash" class="layer" style="background:#dfe6ff;opacity:0;pointer-events:none;z-index:6"></div>`
+);
 
-function cv(id: string, maxDpr = 2, extraH = 0) {
+function cv(id: string, maxDpr = 1.5) {
   const d = Math.min(devicePixelRatio || 1, maxDpr);
   const c = document.getElementById(id) as HTMLCanvasElement;
-  const ch = H + extraH;
   c.width = Math.round(W * d);
-  c.height = Math.round(ch * d);
+  c.height = Math.round(H * d);
   c.style.width = `${W}px`;
-  c.style.height = `${ch}px`;
+  c.style.height = `${H}px`;
   const x = c.getContext('2d')!;
   x.scale(d, d);
   return x;
@@ -104,19 +120,34 @@ Object.assign(core, { W, H, skyW: P, horizonY: HORIZON });
 
 const worker = new SkyWorker();
 const engine = new Engine(defaultLocation, geom);
-const sky = new SkyRenderer(cv('cSky', 1.5, 4), geom, worker);
+const sky = new SkyRenderer(cv('cSky', 1.5), geom, worker);
+sky.moonTint = null;
+
+// Safari üst/alt çubuk rengi = gökyüzünün üst rengi (çubuklar sahneyle birleşir, gri/siyah bant kalmaz)
+const themeMeta = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
+let chromeAt = 0;
+let chromeCol = '';
+function syncChrome(now: number) {
+  if (now - chromeAt < 1500) return;
+  chromeAt = now;
+  const col = sky.sampleColors()?.top;
+  if (!col || col === chromeCol) return;
+  chromeCol = col;
+  themeMeta?.setAttribute('content', col);
+  document.documentElement.style.backgroundColor = col;
+}
+
 const weatherRenderer = new WeatherRenderer(worker, cv('cWBack', 1.5), cv('cWFront', 1.5), $('#flash'), geom, engine.weather);
 weatherRenderer.lightningEnabled = state.settings.lightning;
-const beach = new Beach(cv('cGround', 2, 96), { W, H, horizonY: HORIZON, skyW: P, x0: X0 });
+const beach = new Beach(cv('cGround', 1.5), { W, H, horizonY: HORIZON, skyW: P, x0: X0 });
 const ocean = new OceanHeart(cv('cOcean', 1.5), geom, beach.shoreY);
-const skyCanvas = document.getElementById('cSky') as HTMLCanvasElement;
-const starsCtx = cv('cStars');
-const starsCv = document.getElementById('cStars') as HTMLCanvasElement;
-let starOp = '';
 let fg: HTMLElement | null = null;
 const wind = new Wind();
-const fx = new Effects(cv('cFx'), { w: W, h: H });
+const fx = new Effects(cv('cFx', 1.5), { w: W, h: H });
 fx.flashEl = $('#flash');
+const starsCtx = cv('cStars', 1.5);
+const starsCv = document.getElementById('cStars') as HTMLCanvasElement;
+let starOp = '';
 
 engine.onLowPower = (low) => {
   weatherRenderer.maxParticles = low ? 160 : 320;
@@ -124,14 +155,18 @@ engine.onLowPower = (low) => {
 engine.sampleSky = () => sky.sampleColors();
 engine.onTarget = (s, ms) => sky.request(s, ms);
 
+let wxOverridden = false;
 let stopWeather = startWeather(defaultLocation, (w) => {
+  if (wxOverridden) return;
   engine.setWeather(w, 3000);
   weatherRenderer.setWeather(w);
   core.refreshHome();
 });
 core.reloadWeather = () => {
+  wxOverridden = false;
   stopWeather();
   stopWeather = startWeather(defaultLocation, (w) => {
+    if (wxOverridden) return;
     engine.setWeather(w, 2500);
     weatherRenderer.setWeather(w);
     core.refreshHome();
@@ -181,7 +216,7 @@ let realtimeActiveWho: string | null = null;
 function computeStarScreenPos(
   t: Star,
   scrollX = core.scrollX,
-  moonPos?: { x: number; y: number } | null,
+  moonPos?: { x: number; y: number } | null
 ): { x: number; y: number } {
   let x = wrapX(geom, t.x, scrollX);
   let y = t.y;
@@ -196,7 +231,7 @@ function computeStarScreenPos(
     const d = Math.hypot(dx, dy);
     const minDist = 38;
     if (d < minDist) {
-      const ang = d > 0.5 ? Math.atan2(dy, dx) : ((hash(t.id) % 628) / 100);
+      const ang = d > 0.5 ? Math.atan2(dy, dx) : (hash(t.id) % 628) / 100;
       x = mp.x + Math.cos(ang) * minDist;
       y = clamp(mp.y + Math.sin(ang) * minDist, 64, HORIZON - 48);
     }
@@ -230,6 +265,7 @@ Object.assign(core, {
   },
   onPersona: () => {
     app.dataset.me = state.me;
+    sky.moonTint = state.me === 'beto' ? [1.06, 0.99, 0.84] : null;
     if (fg && fgPersona !== state.me) {
       fgPersona = state.me;
       rebuildFg();
@@ -259,7 +295,7 @@ Object.assign(core, {
 core.scrollX = X0 - W / 2;
 applyPersona();
 
-// ---------- zemin ışığı → lilyum, palmiye ve kavanoz renkleri ----------
+// ---------- zemin ışığı → lilyum ve kavanoz renkleri ----------
 const lerpHex = (a: string, b: string, t: number) => {
   const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
   const ch = (s: number) => Math.round(((pa >> s) & 255) + (((pb >> s) & 255) - ((pa >> s) & 255)) * t);
@@ -274,6 +310,7 @@ const FLORA: Record<string, [string, string]> = {
   '--palm-ring': ['#161a26', '#46331f'], '--palm-coco': ['#06080e', '#5a4026'], '--palm-coco-hi': ['#141824', '#9b7a4c'],
 };
 let floraKey = -1;
+let lastDayBool: boolean | null = null;
 function updateFlora(day: number) {
   const k = Math.round(day * 40);
   if (k === floraKey) return;
@@ -283,24 +320,23 @@ function updateFlora(day: number) {
   r.setProperty('--jar-inner', `rgba(255,190,110,${(0.25 + 0.5 * (1 - day)).toFixed(2)})`);
   r.setProperty('--wind', String(engine.weather.wind));
   r.setProperty('--rope', day > 0.5 ? 'rgba(70,52,36,.9)' : 'rgba(150,140,130,.55)');
+  const isDay = day > 0.5;
+  if (lastDayBool !== isDay) {
+    lastDayBool = isDay;
+    core.refreshHome();
+  }
 }
 
 // ---------- ana döngü ----------
 let starsShown = false;
+let inHome = false;
+let home: HTMLElement | null = null;
 let nextMeteor = performance.now() + 30_000;
 let oceanDwell = 0;
 let oceanAt = 180; // sn: ana ekranda kalma süresi / ilk selam eşiği (3 dk)
 
-let lastAliveAt = Date.now();
-
 engine.add((now, dt, s) => {
-  const wallNow = Date.now();
-  const wallGap = wallNow - lastAliveAt;
-  lastAliveAt = wallNow;
-  if (!document.hidden && wallGap >= 3000) {
-    hiddenAt = 0;
-    queueMicrotask(() => handleReturnToForeground(wallGap));
-  }
+  syncChrome(now);
   const sx = core.scrollX;
   sky.frame(now, s, sx);
   weatherRenderer.frame(now, dt, s, sx);
@@ -319,45 +355,59 @@ engine.add((now, dt, s) => {
   wind.dir = engine.weather.windSign || 1;
   beach.wind = wind.strength;
   beach.windDir = wind.dir;
+  // balina: ana ekrandayken arada bir (2.5–6 dk), fırtınada ve hareket azalt açıkken değil
+  if (
+    home &&
+    inHome &&
+    !beach.whale.active &&
+    now > beach.whale.next &&
+    engine.weather.kind !== 'thunder' &&
+    !matchMedia('(prefers-reduced-motion: reduce)').matches
+  ) {
+    beach.whale.start(now, core.scrollX, W);
+  }
+  if (beach.whale.active) engine.busy(200);
   wind.frame(dt);
 
+  const appLeft = app.getBoundingClientRect().left;
   const moonPos = s.moonAlpha > 0.02 ? skyToScreen(geom, s.moonDisp, s.moonVaz, sx) : null;
   const glints: { x: number; k: number; warm: boolean }[] = [];
   if (moonPos) {
     glints.push({ x: moonPos.x, k: s.moonAlpha * s.phase.fraction * (1 - s.daylight) * 0.9, warm: false });
   }
   if (s.sunAlpha > 0.02) {
-    glints.push({ x: skyToScreen(geom, s.sunDisp, s.sunVaz, sx).x, k: s.sunAlpha * (0.35 + 0.65 * (1 - Math.min(1, s.sunAlt / 25))), warm: s.sunAlt < 12 });
+    glints.push({
+      x: skyToScreen(geom, s.sunDisp, s.sunVaz, sx).x,
+      k: s.sunAlpha * (0.35 + 0.65 * (1 - Math.min(1, s.sunAlt / 25))),
+      warm: s.sunAlt < 12,
+    });
   }
+  // fenerler: denize sıcak ışık yolu (gece belirgin)
   if (fg && !fg.parentElement?.classList.contains('pre')) {
-    const mineX = wrapX(geom, X0 + 7, sx);
-    if (mineX > -60 && mineX < W + 60) {
-      glints.push({ x: mineX, k: 0.42 * (1 - s.daylight) + 0.05, warm: true });
-    }
-    const partnerLanternOn = Boolean(fg.querySelector('.lantern.partner.on'));
-    if (partnerLanternOn) {
-      const pX = wrapX(geom, X0 - 41, sx);
-      if (pX > -60 && pX < W + 60) {
-        glints.push({ x: pX, k: 0.42 * (1 - s.daylight) + 0.05, warm: true });
+    for (const l of fg.querySelectorAll('.lantern')) {
+      if (l.classList.contains('partner') && !l.classList.contains('on')) continue;
+      const lx = (l as HTMLElement).getBoundingClientRect().left - appLeft;
+      if (lx > -60 && lx < W + 60) {
+        glints.push({ x: lx, k: 0.42 * (1 - s.daylight) + 0.05, warm: true });
       }
     }
   }
-
+  const candles: { x: number; y: number; k: number }[] = [];
   beach.frame(
     now,
     sx,
-    skyCanvas,
+    sky.refl,
     { hor: css.getPropertyValue('--sky-hor') || 'rgb(50,56,81)', top: css.getPropertyValue('--sky-top') || 'rgb(26,32,58)' },
     s.daylight,
     s.sunLight,
     glints,
-    []
+    candles
   );
 
   if (fg) placeForeground(fg, geom, sx);
 
-  // Kişisel yıldızlar: cWBack ile cWFront ARASINDA (alçak bulut/sis/yağışın arkasında); yoğun bulutta %45'e kadar soluklaşır
-  const so = Math.max(0.45, 1 - 0.55 * Math.max(engine.weather.cloud, engine.weather.precip)).toFixed(2);
+  // bulut örtüsü: yıldızlar alçak bulutların ARKASINDA kalır (katman sırası) + yoğun bulutta soluklaşır, tamamen kaybolmaz
+  const so = Math.max(0.45, 1 - 0.45 * Math.max(engine.weather.cloud, engine.weather.precip)).toFixed(2);
   if (so !== starOp) {
     starOp = so;
     starsCv.style.opacity = so;
@@ -392,9 +442,9 @@ engine.add((now, dt, s) => {
     nextMeteor = now + 40_000 + Math.random() * 60_000;
   }
 
-  // Deniz selamı: ana ekranda ~3 dk kalınırsa gelir; sonrasında ancak 8–12 dk daha kalınırsa tekrarlar
+  // deniz selamı: ana ekranda ~3 dk KALINIRSA gelir; sonrasında ancak 8–12 dk daha kalınırsa gösterir
   const overlayOpen = Boolean(app.querySelector('.sheet,.page,.board,.watch,.auth,.cdpage'));
-  if (inHome && starsShown && !overlayOpen && document.visibilityState === 'visible') {
+  if (home?.isConnected && inHome && starsShown && !overlayOpen && document.visibilityState === 'visible') {
     oceanDwell += dt;
     if (oceanDwell >= oceanAt && engine.weather.precip < 0.5 && ocean.start(now, sx)) {
       engine.busy(1000);
@@ -436,7 +486,7 @@ addEventListener('pointermove', (e) => {
   const dx = e.clientX - drag.x;
   if (!drag.moved && Math.abs(dx) > 6) { drag.moved = true; hint?.onScrollStart(); }
   if (!drag.moved) return;
-  core.scrollX = drag.sx - dx; // sınırsız 360°: kenar, lastik ya da boşluk yok
+  core.scrollX = drag.sx - dx;
   prog();
   const now = performance.now();
   drag.v = (e.clientX - drag.lx) / Math.max(1, now - drag.lt);
@@ -502,6 +552,7 @@ export function mapRecordToStar(rec: StarRecord, allRecords: StarRecord[], visib
 }
 
 async function loadStarsFromBackend() {
+  if (!isSupabaseConfigured) return;
   const dbMe = toDbWho(state.me);
   const records = await fetchAllStars(dbMe);
   const mapped = records.map((r) => mapRecordToStar(r, records, false));
@@ -612,7 +663,6 @@ window.addEventListener('online', () => void syncOfflineAndOutbox());
 window.addEventListener('offline', () => void syncOfflineAndOutbox());
 
 // ---------- açılış + giriş + ana ekran ----------
-let inHome = false;
 let isFirstOpen = true;
 
 /** Saate göre selam (yalnızca tekrar açılışlarda): büyük yazı süzülerek gelir, kısa kalır, süzülerek gider. */
@@ -649,6 +699,7 @@ function showGreeting() {
 
 /** Tek kalıcı Realtime aboneliği: kimlik doğrulama biter bitmez kurulur; ekran değişince yeniden kurulmaz. */
 function ensureRealtimeStarted() {
+  if (!isSupabaseConfigured) return;
   const dbMe = toDbWho(state.me);
   if (realtimeActiveWho === dbMe) return;
   realtimeActiveWho = dbMe;
@@ -681,12 +732,10 @@ function ensureRealtimeStarted() {
             },
           }
         );
-        // 3.8.f: Çentik bildirimi yıldız düşerken AYNI ANDA gelir (şifre çözme ve görsel beklenmez)
         showLive('left', { star: stNew });
         core.lastInsertLatencyMs = Math.round((performance.now() - tRecv) * 100) / 100;
         core.refreshHome();
 
-        // Çözülen içerik kilitli değilse arkadan sessizce ısıtılır (UI engellenmez)
         if (!stNew.unlockAt || stNew.unlockAt <= getServerNowMs()) {
           void decryptStarPayload(rec, dbMe)
             .then((pl) => {
@@ -730,19 +779,36 @@ async function resolveBootMode(): Promise<'auth' | 'lock' | 'home'> {
   return state.settings.faceId && hasBiometric() ? 'lock' : 'home';
 }
 
+/** Çizim döngüsü oturana kadar bekler: art arda 5 kare < 22 ms (en çok 1.2 sn). */
+function warmUp() {
+  return new Promise<void>((res) => {
+    let last = performance.now(), ok = 0;
+    const t0 = last;
+    const f = (n: number) => {
+      ok = n - last < 22 ? ok + 1 : 0;
+      last = n;
+      if (ok >= 5 || n - t0 > 1200) res();
+      else requestAnimationFrame(f);
+    };
+    requestAnimationFrame(f);
+  });
+}
+
 async function enterHome(preloaded = false) {
   ensureRealtimeStarted();
   if (!preloaded) {
     await loadStarsFromBackend();
+  }
+  if (fgPersona !== state.me || !fg) {
     fgPersona = state.me;
     rebuildFg();
   }
   $('#fgWrap').classList.remove('pre');
-
   [...document.querySelectorAll('#fgWrap .jar.mine')].forEach((j) =>
     (j as HTMLElement).animate([{ opacity: 0 }, { opacity: 1 }], { duration: 1200, delay: 400, easing: 'ease-out', fill: 'backwards' })
   );
-  const home = buildHome();
+
+  home = buildHome();
   app.appendChild(home);
   inHome = true;
 
@@ -771,7 +837,6 @@ async function enterHome(preloaded = false) {
   core.refreshHome();
   void syncOfflineAndOutbox();
 
-  // Bildirimden açıldıysa ilgili yıldıza odaklan
   const sp = new URLSearchParams(location.search);
   const targetStarId = sp.get('star');
   if (targetStarId) {
@@ -815,38 +880,55 @@ function firstRunNudge(force = false) {
   }, 3200);
 }
 
+const urlQuery = new URLSearchParams(location.search);
+
 async function boot(mode?: 'auth' | 'lock' | 'home') {
   clearPageStack();
   $$('.screen.home,.auth,.page,.sheet,.backdrop,.board,.watch,.cdpage,.scene-fg,.island-pop,.greet').forEach((x) => x.remove());
-  const overlay = h(`<div class="layer" style="background:#05070d;z-index:90"></div>`);
-  app.appendChild(overlay);
   core.homeEl = null as unknown as HTMLElement;
+  home = null;
   inHome = false;
   starsShown = false;
   oceanDwell = 0;
+
+  // Pozlama katmanı = HTML'deki #boot (ilk boyamadan beri ekranda, gece gökyüzü rengi). Siyah katman/logo/ara ekran YOK.
+  let overlay = document.getElementById('boot');
+  if (!overlay) {
+    overlay = h(`<div id="boot"></div>`);
+    app.appendChild(overlay);
+  }
+  overlay.style.display = '';
+  overlay.style.opacity = '1';
   sky.intro.stars = [0, 0, 0];
 
-  const resolved = mode ?? (await resolveBootMode());
-  if (resolved === 'home' || resolved === 'lock') {
-    // Kimlik doğrulama hazır olur olmaz kalıcı Realtime kanalını başlat
-    ensureRealtimeStarted();
-  }
   applyPersona();
   fgPersona = state.me;
   rebuildFg();
   $('#fgWrap').classList.add('pre');
 
+  // Oturum kontrolü gökyüzü/font hazırlığı ve warmUp ile PARALEL çalışır (boş/siyah ekran beklemesi yok)
+  const sessionTask = (async () => {
+    const resolved = mode ?? (await resolveBootMode());
+    applyPersona();
+    if (resolved === 'home' || resolved === 'lock') {
+      ensureRealtimeStarted();
+    }
+    if (resolved === 'home') {
+      await loadStarsFromBackend();
+    }
+    return resolved;
+  })();
+
   const ready = new Promise<void>((r) => {
     const c = () => (sky.ready ? r() : setTimeout(c, 30));
     c();
   });
-  const preloadTasks: Promise<unknown>[] = [ready];
-  if (resolved === 'home') preloadTasks.push(loadStarsFromBackend());
-  await prepare(preloadTasks, ['italic 600 40px "Cormorant Garamond"', '500 15px "Inter"', '400 40px "Great Vibes"']);
+  await prepare([ready], ['italic 600 40px "Cormorant Garamond"', '500 15px Inter', '400 40px "Great Vibes"']);
+  await warmUp(); // ilk ağır kareler (kum önbelleği, dokular) intro BAŞLAMADAN biter → animasyonda takılma olmaz
 
   let first = true;
   try {
-    first = !localStorage.getItem('gk.seen');
+    first = !localStorage.getItem('gk.seen') || urlQuery.get('intro') === 'full';
     localStorage.setItem('gk.seen', '1');
   } catch {
     // Ignore storage errors
@@ -854,9 +936,7 @@ async function boot(mode?: 'auth' | 'lock' | 'home') {
   isFirstOpen = first;
 
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  // Her açılışta sinematik giriş animasyonu (pozlama + kamera kalkışı + yıldızların parlaması) oynatılır;
-  // tekrar açılışlarda ek olarak saate göre selam (showGreeting) gösterilir.
-  const introKind: 'full' | 'short' = reduced ? 'short' : 'full';
+  const introKind: 'full' | 'short' = first && !reduced ? 'full' : 'short';
   $('#fgWrap').animate([{ transform: 'translate3d(0,90px,0)' }, { transform: 'none' }], {
     duration: introKind === 'short' ? 1260 : 2800,
     easing: 'cubic-bezier(.25,.1,.12,1)',
@@ -864,9 +944,9 @@ async function boot(mode?: 'auth' | 'lock' | 'home') {
   const reveal = playIntro(
     { overlay, sky: $('#skyWrap'), ground: $('#groundWrap'), setStars: (a, b, c) => (sky.intro.stars = [a, b, c]) },
     introKind
-  ).then(() => {
-    overlay.remove();
-  });
+  );
+
+  const resolved = await sessionTask;
   if (resolved === 'home') {
     await reveal;
     await enterHome(true);
@@ -893,6 +973,238 @@ core.logout = async () => {
   await boot('auth');
 };
 
+// ---------- Test paneli (Ayarlar → Uygulama → Test paneli): YALNIZCA bu telefonda görsel simülasyon ----------
+const PRE: Record<WeatherKind, [number, number, number, number, number]> = {
+  clear: [0, 0, 0.1, 15000, 0], partly: [2, 35, 0.2, 15000, 0], cloudy: [3, 70, 0.3, 12000, 0], overcast: [3, 98, 0.3, 9000, 0],
+  fog: [45, 60, 0.05, 400, 0], drizzle: [53, 90, 0.2, 6000, 0.25], rain: [63, 95, 0.35, 5000, 0.6], heavyRain: [65, 100, 0.6, 2500, 0.95],
+  showers: [81, 80, 0.45, 6000, 0.6], snow: [73, 95, 0.15, 3000, 0.55], heavySnow: [75, 100, 0.4, 900, 0.9], sleet: [67, 100, 0.3, 3000, 0.55], thunder: [95, 100, 0.7, 3000, 0.95],
+};
+
+function applyWxKind(kk: WeatherKind) {
+  wxOverridden = true;
+  const [code, cloud, wnd, vis, precip] = PRE[kk];
+  const wx: Weather = {
+    kind: kindFromCode(code, cloud / 100),
+    cloud: cloud / 100,
+    precip,
+    wind: wnd,
+    windSign: -1,
+    fog: vis < 1000 ? 0.85 : 0,
+    temp: [13, 16, 12, 11, 9, 10, 9, 8, 10, 1, -1, 2, 11][Object.keys(PRE).indexOf(kk)],
+    ts: Date.now(),
+  };
+  engine.setWeather(wx, 3000);
+  weatherRenderer.setWeather(wx);
+  if (state.settings.weather === 'off') state.settings.weather = 'geo';
+  core.refreshHome();
+}
+
+function setHourOverride(hh: number | null) {
+  if (hh === null) {
+    engine.timeOverride = null;
+    engine.retarget(1200);
+    return;
+  }
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setTime(d.getTime() + hh * 3600_000);
+  engine.timeOverride = d;
+  engine.retarget(600);
+}
+
+async function partnerSends() {
+  if (!home || !inHome) return;
+  partnerOnline(true);
+  showLive('writing');
+  await sleep(3200);
+  if (!inHome) return;
+  showLive('sending');
+  await sleep(1600);
+  if (!inHome) return;
+  const spot = freeSpot();
+  const s: Star = {
+    id: 'sim-p-' + Date.now(),
+    from: state.partner,
+    kind: 'text',
+    text: 'Şu an gökyüzümüze bakıyorum, sen de bak.',
+    createdAt: Date.now(),
+    opened: false,
+    x: mod(spot.x + core.scrollX, P),
+    y: spot.y,
+    visible: false,
+  };
+  state.stars.push(s);
+  engine.busy(2600);
+  fx.incoming(spot, {
+    now: performance.now(),
+    tint: PEOPLE[state.partner].color,
+    onSettle: () => {
+      s.visible = true;
+      s.arrivedAt = performance.now();
+    },
+  });
+  showLive('left', { star: s });
+  core.refreshHome();
+}
+
+async function partnerDraws() {
+  if (!home || !inHome) return;
+  partnerOnline(true);
+  const simStrokes = demoDrawing();
+  const landDrawing = () => {
+    const spot = freeSpot();
+    const s: Star = {
+      id: 'sim-d-' + Date.now(),
+      from: state.partner,
+      kind: 'draw',
+      draw: simStrokes,
+      createdAt: Date.now(),
+      opened: false,
+      x: mod(spot.x + core.scrollX, P),
+      y: spot.y,
+      visible: false,
+    };
+    state.stars.push(s);
+    fx.land(spot, {
+      now: performance.now(),
+      tint: PEOPLE[state.partner].color,
+      onSettle: () => {
+        s.visible = true;
+        s.arrivedAt = performance.now();
+      },
+    });
+    engine.busy(1500);
+    showLive('left', { star: s });
+    core.refreshHome();
+  };
+  showLive('drawing', { onWatch: () => openWatch(() => landDrawing(), simStrokes) });
+}
+
+function showWhale() {
+  beach.whale.start(performance.now(), core.scrollX, W);
+  engine.busy(1000);
+}
+
+function offlineToast() {
+  const b = h(`<div class="offline toast glass-strong" style="top:calc(var(--safe-t) + 6px);bottom:auto">${I.cloud(14)}<span>Çevrimdışı · yıldızların bağlantı gelince gidecek</span></div>`);
+  app.appendChild(b);
+  b.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300 });
+  setTimeout(() => b.remove(), 3500);
+}
+
+core.test = {
+  weatherKinds: (Object.keys(PRE) as WeatherKind[]).map((k) => ({ k, label: KIND_TR[k] })),
+  setWeather: (k) => {
+    if (k) applyWxKind(k as WeatherKind);
+    else core.reloadWeather();
+  },
+  setHour: (hh) => setHourOverride(hh),
+  hourNow: () => {
+    const n = new Date();
+    return n.getHours() + n.getMinutes() / 60;
+  },
+  get groups() {
+    return [
+      {
+        title: 'Açılış ve giriş',
+        items: [
+          {
+            label: 'Açılış animasyonu (ilk açılış)',
+            leave: true,
+            run: () => {
+              try { localStorage.removeItem('gk.seen'); } catch {}
+              void boot('home');
+            },
+          },
+          {
+            label: 'Açılış animasyonu (tekrar açılış)',
+            leave: true,
+            run: () => {
+              try { localStorage.setItem('gk.seen', '1'); } catch {}
+              void boot('home');
+            },
+          },
+          {
+            label: 'Face ID kilidi',
+            leave: true,
+            run: () => {
+              faceAuth.sim = 'ok';
+              void boot('lock');
+              setTimeout(() => { faceAuth.sim = null; }, 4500);
+            },
+          },
+          {
+            label: 'Face ID okuyamazsa → şifre',
+            leave: true,
+            run: () => {
+              faceAuth.sim = 'fail';
+              void boot('lock');
+              setTimeout(() => { faceAuth.sim = null; }, 4500);
+            },
+          },
+          {
+            label: 'İlk kurulum (giriş akışı)',
+            leave: true,
+            run: () => void boot('auth'),
+          },
+        ],
+      },
+      {
+        title: `${PEOPLE[state.partner].name} (canlı)`,
+        items: [
+          { label: 'Yazıyor → yıldız bırakır', leave: true, run: () => void partnerSends() },
+          { label: 'Çiziyor → canlı izle', leave: true, run: () => void partnerDraws() },
+          {
+            label: 'Uygulamaya girdi / çıktı (mum)',
+            leave: true,
+            run: () => {
+              const on = !document.querySelector('.jar.partner.on');
+              partnerOnline(on);
+            },
+          },
+          {
+            label: 'Mumdan kalp gönderir',
+            leave: true,
+            run: () => {
+              if (!home) return;
+              partnerOnline(true);
+              sendHeart(true);
+              toast(`${PEOPLE[state.partner].name} sana bir kalp gönderdi · sen de mumuna dokun`, I.heartFill(14), 3400);
+            },
+          },
+        ],
+      },
+      {
+        title: 'Gökyüzü ve deniz',
+        items: [
+          {
+            label: 'Deniz selamı (seni seviyorum)',
+            leave: true,
+            run: () => {
+              ocean.resetCooldown();
+              ocean.start(performance.now(), core.scrollX);
+              engine.busy(1000);
+            },
+          },
+          { label: 'Balina', leave: true, run: () => showWhale() },
+          { label: 'Uyuyan Kadın dağına git', leave: true, run: () => core.scrollTo(X0 + 400 - W / 2, 1600) },
+          { label: 'Uçak', leave: true, run: () => void plane.launch() },
+          {
+            label: 'Meteor',
+            leave: true,
+            run: () => {
+              fx.decorative(performance.now());
+              engine.busy(1200);
+            },
+          },
+          { label: 'Kaydırma ipucu', leave: true, run: () => firstRunNudge(true) },
+          { label: 'Çevrimdışı uyarısı', leave: true, run: offlineToast },
+        ],
+      },
+    ];
+  },
+};
+
 // Zamanlı yıldızların kilit açılma anı kontrolü (sekme açıkken)
 window.setInterval(() => {
   if (document.hidden || !inHome) return;
@@ -915,88 +1227,7 @@ window.setInterval(() => {
   }
 }, 15_000);
 
-/** Uygulamadan çıkıp tekrar girildiğinde (arka plandan dönüş) logo ekranı olmadan doğrudan sinematik giriş animasyonu oynat. */
-let lastResumeIntroAt = 0;
-
-function playResumeIntro() {
-  const nowTs = Date.now();
-  if (nowTs - lastResumeIntroAt < 3500) return;
-  lastResumeIntroAt = nowTs;
-
-  app.querySelector('.resume-intro-overlay')?.remove();
-  const overlay = h(`<div class="layer resume-intro-overlay" style="background:#05070d;z-index:90;pointer-events:none"></div>`);
-  app.appendChild(overlay);
-  sky.intro.stars = [0, 0, 0];
-  engine.busy(3800);
-
-  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const kind: 'full' | 'short' = reduced ? 'short' : 'full';
-  const fgEl = $('#fgWrap');
-  fgEl.classList.add('pre');
-  fgEl.animate([{ transform: 'translate3d(0,90px,0)' }, { transform: 'none' }], {
-    duration: kind === 'short' ? 1260 : 2800,
-    easing: 'cubic-bezier(.25,.1,.12,1)',
-  });
-
-  const sorted = [...state.stars].sort((a, b) => a.createdAt - b.createdAt);
-  sorted.forEach((t) => (t.visible = false));
-
-  if (core.homeEl?.isConnected) {
-    const top = [$('.counter', core.homeEl), $('.top-r', core.homeEl)];
-    const dock = $('.dock', core.homeEl);
-    const flora = $('.cnum', core.homeEl);
-    stagger(top, { y: -8, gap: 90, dur: 700, delay: reduced ? 350 : 1350 });
-    drawLily(flora);
-    dock.animate(
-      [{ opacity: 0, transform: 'translate(-50%,16px)' }, { opacity: 1, transform: 'translate(-50%,0)' }],
-      { duration: 700, delay: reduced ? 450 : 1550, easing: 'cubic-bezier(.22,.8,.24,1)', fill: 'backwards' }
-    );
-  }
-
-  window.setTimeout(() => {
-    fgEl.classList.remove('pre');
-    [...document.querySelectorAll('#fgWrap .jar.mine')].forEach((j) =>
-      (j as HTMLElement).animate([{ opacity: 0 }, { opacity: 1 }], { duration: 1200, easing: 'ease-out', fill: 'backwards' })
-    );
-    sorted.forEach((t, i) =>
-      window.setTimeout(() => {
-        if (t.visible) return;
-        const pos = computeStarScreenPos(t);
-        fx.land(pos, { now: performance.now() - 650, tint: PEOPLE[t.from].color, onSettle: () => (t.visible = true) });
-        engine.busy(1200);
-      }, i * 80)
-    );
-    if (inHome && !document.hidden) showGreeting();
-  }, reduced ? 450 : 1350);
-
-  void playIntro(
-    { overlay, sky: $('#skyWrap'), ground: $('#groundWrap'), setStars: (a, b, c) => (sky.intro.stars = [a, b, c]) },
-    kind
-  ).then(() => {
-    overlay.remove();
-    fgEl.classList.remove('pre');
-    sorted.forEach((t) => (t.visible = true));
-  });
-}
-
 let hiddenAt = 0;
-
-function handleReturnToForeground(awayMs: number) {
-  void syncOfflineAndOutbox();
-  if (inHome && awayMs >= BACKGROUND_LOCK_MS && state.settings.faceId && hasBiometric()) {
-    inHome = false;
-    runLock(app, () => {
-      inHome = true;
-      playResumeIntro();
-    });
-    return;
-  }
-  const busyModal = Boolean(app.querySelector('.compose-sheet, .board, .watch, .star-sheet, .auth, .page, .cdpage, .sheet'));
-  if (inHome && !busyModal && awayMs >= 800) {
-    playResumeIntro();
-  }
-}
-
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     hiddenAt = Date.now();
@@ -1004,25 +1235,17 @@ document.addEventListener('visibilitychange', () => {
   } else {
     const awayMs = hiddenAt ? Date.now() - hiddenAt : 0;
     hiddenAt = 0;
-    lastAliveAt = Date.now();
-    handleReturnToForeground(awayMs);
+    void syncOfflineAndOutbox();
+    if (inHome && awayMs >= BACKGROUND_LOCK_MS && state.settings.faceId && hasBiometric()) {
+      inHome = false;
+      runLock(app, () => {
+        inHome = true;
+      });
+    }
   }
 });
 
-window.addEventListener('pagehide', () => {
-  if (!hiddenAt) hiddenAt = Date.now();
-});
-
-window.addEventListener('pageshow', (ev) => {
-  if (ev.persisted || hiddenAt) {
-    const awayMs = hiddenAt ? Date.now() - hiddenAt : 1500;
-    hiddenAt = 0;
-    lastAliveAt = Date.now();
-    handleReturnToForeground(awayMs);
-  }
-});
-
-// 3.8.b: Ekran boyutu önemli ölçüde değişirse (döndürme vb.; klavye hariç) sahneyi yeniden kur
+// Ekran boyutu önemli ölçüde değişirse (döndürme vb.; klavye hariç) sahneyi yeniden kur
 let resizeTimer = 0;
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
@@ -1030,7 +1253,8 @@ window.addEventListener('resize', () => {
     if (document.documentElement.classList.contains('kb-open')) return;
     const nw = app.clientWidth;
     const nh = app.clientHeight;
-    if (nw > 0 && nh > 0 && (Math.abs(nw - W) > 40 || Math.abs(nh - H) > 120)) {
+    if (nw > 0 && nh > 0 && (Math.abs(nw - W) > 40 || (Math.abs(nh - H) > 160 && nh > H))) {
+      fitViewport();
       location.reload();
     }
   }, 400);

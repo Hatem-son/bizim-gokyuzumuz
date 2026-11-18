@@ -24,8 +24,15 @@ export class SkyRenderer {
   /** açılış: yıldız grubu görünürlüğü çarpanı (0..1), sinematik pozlama */
   intro = { stars: [1, 1, 1] as number[] };
   moonTint: [number, number, number] | null = null; // Beto: ela ay ışığı (doğrusal çarpan)
+  /** deniz yansıması için 0.5x ölçekli gökyüzü dokusu */
+  readonly refl: HTMLCanvasElement;
+  private reflCtx: CanvasRenderingContext2D;
 
   constructor(private ctx: CanvasRenderingContext2D, public g: SkyGeom, private worker: SkyWorker) {
+    this.refl = document.createElement('canvas');
+    this.refl.width = Math.max(1, Math.round(g.W * 0.5));
+    this.refl.height = Math.max(1, Math.round(g.horizonY * 0.5));
+    this.reflCtx = this.refl.getContext('2d')!;
     this.buildStars();
     this.buildDither();
     worker.run({ type: 'milky', w: Math.round(g.panoW / 2), h: Math.round(g.horizonY / 2), seed: 11 }).then((t) => (this.milkyTex = t));
@@ -253,5 +260,11 @@ export class SkyRenderer {
       c.globalCompositeOperation = 'source-over';
       c.globalAlpha = 1;
     }
+
+    // 6) 0.5x deniz yansıma önbelleği (beach.ts skyRefl d=0.5 ile okur)
+    const srcCv = c.canvas;
+    const scaleY = srcCv.height / (parseFloat(srcCv.style.height) || H);
+    this.reflCtx.clearRect(0, 0, this.refl.width, this.refl.height);
+    this.reflCtx.drawImage(srcCv, 0, 0, srcCv.width, Math.min(srcCv.height, Math.round(H * scaleY)), 0, 0, this.refl.width, this.refl.height);
   }
 }

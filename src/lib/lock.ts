@@ -316,11 +316,12 @@ export function disableBiometric(): void {
   store.del(STORAGE_KEYS.biometric);
 }
 
-export async function verifyBiometric(): Promise<boolean> {
+export async function verifyBiometricDetailed(): Promise<'ok' | 'fail' | 'gesture'> {
   const saved = store.get<BiometricRecord | null>(STORAGE_KEYS.biometric, null);
-  if (!saved || !saved.publicKeySpki || !saved.credentialId) return false;
-  if (!window.PublicKeyCredential || !navigator.credentials) return false;
+  if (!saved || !saved.publicKeySpki || !saved.credentialId) return 'fail';
+  if (!window.PublicKeyCredential || !navigator.credentials) return 'fail';
 
+  const t0 = performance.now();
   try {
     const challenge = crypto.getRandomValues(new Uint8Array(new ArrayBuffer(32)));
     const expectedChallenge = toBase64Url(challenge);
@@ -336,12 +337,12 @@ export async function verifyBiometric(): Promise<boolean> {
           },
         ],
         userVerification: 'required',
-        timeout: 60_000,
+        timeout: 30_000,
       },
     })) as PublicKeyCredential | null;
 
-    if (!assertion || !assertion.rawId || !assertion.response) return false;
-    if (toBase64Url(assertion.rawId) !== saved.credentialId) return false;
+    if (!assertion || !assertion.rawId || !assertion.response) return 'fail';
+    if (toBase64Url(assertion.rawId) !== saved.credentialId) return 'fail';
 
     const res = assertion.response as AuthenticatorAssertionResponse;
     const check = await verifyWebAuthnAssertion({
@@ -354,7 +355,7 @@ export async function verifyBiometric(): Promise<boolean> {
       signature: res.signature,
     });
 
-    if (!check.ok) return false;
+    if (!check.ok) return 'fail';
 
     if (check.nextSignCount > saved.signCount) {
       store.set<BiometricRecord>(STORAGE_KEYS.biometric, {
@@ -362,8 +363,15 @@ export async function verifyBiometric(): Promise<boolean> {
         signCount: check.nextSignCount,
       });
     }
-    return true;
-  } catch {
-    return false;
+    return 'ok';
+  } catch (e: unknown) {
+    const name = (e as { name?: string } | null)?.name;
+    // iOS dokunuşsuz çağrıyı < 350 ms içinde NotAllowedError ile reddeder → kullanıcı reddi değil, dokunuş gerekiyor
+    if (name === 'NotAllowedError' && performance.now() - t0 < 350) return 'gesture';
+    return 'fail';
   }
+}
+
+export async function verifyBiometric(): Promise<boolean> {
+  return (await verifyBiometricDetailed()) === 'ok';
 }

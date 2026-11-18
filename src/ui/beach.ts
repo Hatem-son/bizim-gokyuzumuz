@@ -2,8 +2,9 @@
 // ıslak kum parıltısı + kuru kum (gren, rüzgâr çizgileri, ikimizin ayak izleri) + mumların kuma düşen ışığı.
 // Kum önbelleğe bir kez çizilir (ışık değişince yeniden); deniz ve köpük her kare (ucuz şeritlerle).
 import { rng } from '../gokyuzu/util';
-
-const SAND_BLEED_B = 96;
+import { Whale } from './whale';
+import { paintDecor, BeachLife } from './decor';
+import { mtPalette, paintMountain, peakCloud, MtPal } from './mountain';
 
 type RGB = [number, number, number];
 const parse = (c: string): RGB => (c.match(/\d+/g) ?? ['0', '0', '0']).slice(0, 3).map(Number) as RGB;
@@ -22,11 +23,20 @@ export class Beach {
   private ridges: Float32Array[] = [];            // ufuktaki dağ sıraları (dünya x'inde periyodik, 2 px çözünürlük)
   private isl: number[] = [];                    // adanın siluet yükseklikleri (0..1)
   private prints: { x: number; y: number; a: number; s: number; who: 0 | 1 }[] = [];
-  private readonly x0: number;
+  /** açık denizdeki dalgacıklar: dünya konumu (u), derinlik (k: 0 ufuk … 1 kıyı), yaşam fazı/hızı, boy */
+  private wl: { u: number; k: number; ph: number; sp: number; len: number; hi: number }[] = [];
   readonly shoreY: number;
+  /** arada bir yüzeye çıkan balina (main.ts tetikler) */
+  readonly whale = new Whale();
+  /** yengeçler ve ateş böcekleri */
+  readonly life = new BeachLife();
+  private lady: number[] = [];
+  // dağ önbellekleri (ışık/renk değişince yeniden boyanır, en sık 2.5 sn'de bir)
+  private mt: { ridge: HTMLCanvasElement[]; lady: HTMLCanvasElement; isl: HTMLCanvasElement; pal: MtPal[] } | null = null;
+  private mtKey = ''; private mtAt = 0; private mtDay = -1;
+  private static readonly RH = 100;                   // "Uyuyan Kadın" dağı siluet yükseklikleri (0..1)
 
-  constructor(private c: CanvasRenderingContext2D, private o: { W: number; H: number; horizonY: number; skyW: number; x0?: number }) {
-    this.x0 = o.x0 ?? o.skyW / 2;
+  constructor(private c: CanvasRenderingContext2D, private o: { W: number; H: number; horizonY: number; skyW: number; x0: number }) {
     this.shoreY = o.horizonY + 92;
     // ufuktaki dağlar: iki sıra (uzak ve puslu / daha yakın), tamamı panoramada döngüsel; adanın çevresinde yüksek, aralarda alçak
     const P = o.skyW, step = 2, nn = Math.ceil(P / step);
@@ -34,7 +44,7 @@ export class Beach {
       const r = rng(seed), arr = new Float32Array(nn);
       const peaks: { x: number; w: number; h: number; s: number }[] = [];
       // düzensiz yerleşim: gruplar (kümeler) + boşluklar; boyutlar çok değişken, ara sıra yüksek bir zirve
-      let cx = this.x0 + 260;
+      let cx = o.x0 + 260;
       for (let i = 0; i < count; i++) {
         cx += (i % 3 === 0 ? 150 + r() * 330 : 40 + r() * 140) * (P / 3505);
         const big = r() < 0.22;
@@ -64,10 +74,30 @@ export class Beach {
       hh += (Math.sin(u * 61) * 0.012 + Math.sin(u * 23 + 1) * 0.02) * Math.sin(Math.PI * u);
       this.isl.push(Math.max(0, hh));
     }
+    { const r = rng(909);
+      for (let i = 0; i < 620; i++) {
+        const k = Math.pow(r(), 1.35);                                   // uzakta daha çok (perspektif sıkışması)
+        this.wl.push({ u: r(), k, ph: r(), sp: 0.18 + r() * 0.32, len: (2 + 22 * Math.pow(k, 1.25)) * (0.55 + r() * 0.9), hi: r() });
+      }
+      this.wl.sort((a, b) => a.k - b.k);
+    }
+    // Dağ silueti: kullanıcının gönderdiği GERÇEK fotoğraftaki dağ sırasından (Pasifik'te tropik bir koy) piksel piksel çıkarıldı.
+    // Dağ silueti (beğenilen gerçek-fotoğraf sürümü): sol uçta küçük yuvarlak tepecik, ardından uzun ve bombeli, yumuşak yamaç. (u: 0..1, h: 0..1)
+    { const K: [number, number][] = [[0.0000, 0.0], [0.0120, 0.09], [0.0300, 0.15], [0.0500, 0.15], [0.0750, 0.13], [0.1100, 0.19], [0.1600, 0.29], [0.2100, 0.4], [0.2600, 0.52], [0.3100, 0.62], [0.3500, 0.69], [0.3616, 0.693], [0.3732, 0.67], [0.3848, 0.682], [0.3965, 0.682], [0.4080, 0.704], [0.4197, 0.739], [0.4312, 0.773], [0.4429, 0.773], [0.4545, 0.773], [0.4660, 0.807], [0.4777, 0.875], [0.4893, 0.931], [0.5009, 0.966], [0.5125, 1], [0.5242, 1], [0.5357, 0.989], [0.5474, 0.978], [0.5590, 0.943], [0.5706, 0.909], [0.5822, 0.853], [0.5938, 0.773], [0.6054, 0.739], [0.6170, 0.704], [0.6286, 0.682], [0.6401, 0.682], [0.6518, 0.693], [0.6633, 0.715], [0.6749, 0.715], [0.6866, 0.693], [0.6981, 0.715], [0.7098, 0.727], [0.7214, 0.818], [0.7330, 0.875], [0.7446, 0.864], [0.7562, 0.829], [0.7678, 0.84], [0.7794, 0.807], [0.7910, 0.762], [0.8026, 0.715], [0.8143, 0.682], [0.8258, 0.682], [0.8375, 0.693], [0.8491, 0.704], [0.8607, 0.715], [0.8723, 0.715], [0.8840, 0.715], [0.8955, 0.682], [0.9071, 0.625], [0.9187, 0.557], [0.9303, 0.454], [0.9420, 0.352], [0.9535, 0.261], [0.9652, 0.182], [0.9768, 0.147], [0.9884, 0.114], [1.0000, 0.0]];
+      const N = 240;
+      for (let i = 0; i <= N; i++) {
+        const u = i / N; let j = 0; while (j < K.length - 2 && K[j + 1][0] < u) j++;
+        const [u0, h0] = K[j], [u1, h1] = K[j + 1], hp = K[Math.max(0, j - 1)][1], hn = K[Math.min(K.length - 1, j + 2)][1];
+        const tt = (u - u0) / (u1 - u0 || 1), t2 = tt * tt, t3 = t2 * tt;                       // Catmull-Rom: yumuşak, doğal sırt
+        const v = 0.5 * (2 * h0 + (-hp + h1) * tt + (2 * hp - 5 * h0 + 4 * h1 - hn) * t2 + (-hp + 3 * h0 - 3 * h1 + hn) * t3);
+        const rough = (Math.sin(u * 173) * 0.006 + Math.sin(u * 61 + 2) * 0.008) * Math.sin(Math.PI * u);  // kaya ve ağaç pürüzü
+        this.lady.push(Math.max(0, v + rough));
+      }
+    }
     const d = Math.min(devicePixelRatio || 1, 2);
     this.sand = document.createElement('canvas');
     this.sand.width = Math.ceil(o.skyW * d);
-    this.sand.height = Math.ceil((o.H - this.shoreY + SAND_BLEED_B) * d);
+    this.sand.height = Math.ceil((o.H - this.shoreY + 20) * d);
     this.sand.getContext('2d')!.scale(d, d);
     // gren dokusu
     const g = document.createElement('canvas');
@@ -82,7 +112,7 @@ export class Beach {
     gx.putImageData(im, 0, 0);
     this.grain = this.sand.getContext('2d')!.createPattern(g, 'repeat');
     // ayak izleri: iki iz, kumun önünden denize doğru yan yana yürür (sol: daha büyük = Ham ham)
-    const startX = this.x0 - 40;
+    const startX = o.x0 - 40;
     for (let k = 0; k < 18; k++) {
       const t = k / 17;
       const y = (o.H - this.shoreY) * (1 - t) + 6;           // önbellek koordinatı
@@ -98,7 +128,7 @@ export class Beach {
   private drawSand(hor: RGB, top: RGB, day: number, sun: RGB) {
     const c = this.sand.getContext('2d')!;
     const { skyW } = this.o;
-    const h = this.o.H - this.shoreY + SAND_BLEED_B;
+    const h = this.o.H - this.shoreY + 20;
     // kum rengi: gündüz sıcak bej (güneş ışığı rengine göre), gece gökyüzü renginde soğuk ve koyu
     const dayS: RGB = [222 * (0.75 + 0.25 * sun[0]), 202 * (0.75 + 0.25 * sun[1]), 168 * (0.7 + 0.3 * sun[2])];
     const nightS: RGB = mix([28, 30, 40], top, 0.25);
@@ -142,12 +172,6 @@ export class Beach {
       c.fillStyle = rb() < 0.55 ? css(mix(base, [255, 255, 255], 0.35), 0.18 + 0.12 * day) : css(mix(base, [0, 0, 0], 0.4), 0.16);
       c.fillRect(x, y, sz, sz * 0.8);
     }
-    // dalganın bıraktığı ince birikinti çizgisi (kabuk kırıntıları, yosun)
-    for (let i = 0; i < 420; i++) {
-      const x = rb() * skyW, y = 34 + Math.sin(x * 0.02) * 4 + (rb() - 0.5) * 6;
-      c.fillStyle = css(mix(base, [0, 0, 0], 0.5), 0.35 * rb());
-      c.fillRect(x, y, 0.8 + rb() * 1.5, 0.7);
-    }
     // deniz kabukları ve çakıllar
     for (let i = 0; i < 26; i++) {
       const x = 12 + rb() * (skyW - 24), y = 40 + Math.pow(rb(), 0.7) * (h - 50), sc = 0.6 + (y / h) * 1.3;
@@ -180,46 +204,93 @@ export class Beach {
       c.beginPath(); c.ellipse(-1.2, 1.5, 2.4, 6.4, 0, 0, Math.PI * 2); c.fill();
       c.restore();
     }
+    // süsler: kayalar, gelgit havuzu, kütük, kano, sarmaşık, otlar, deniz yıldızı, hindistan cevizi, çiçekler, kumda kalp
+    paintDecor(c, { P: skyW, h, x0: this.o.x0, sand: base, day, hor, sun });
     // gren
     if (this.grain) { c.fillStyle = this.grain; c.globalAlpha = 0.5 + 0.5 * day; c.fillRect(0, 0, skyW, h); c.globalAlpha = 1; }
   }
 
-  /**
-   * @param skyCanvas gök katmanı (yansıma kaynağı)
-   * @param glints ay/güneş: ekran x'i ve şiddeti (ışık yolu için)
-   * @param candles mumların ekran konumları (kumda sıcak ışık)
-   */
   /** Ufuktaki dağlar: iki sıra, havayla puslu; gündüz yeşilimsi-mavi, gece lacivert. */
+  private buildMountains(hor: RGB, day: number, sun: RGB) {
+    const { skyW: P } = this.o, d = Math.min(devicePixelRatio || 1, 1.5);
+    const mk = (w: number, hgt: number) => { const cv = document.createElement('canvas'); cv.width = Math.ceil(w * d); cv.height = Math.ceil(hgt * d); const x = cv.getContext('2d')!; x.scale(d, d); return cv; };
+    const reuse = (cv: HTMLCanvasElement | undefined, w: number, hgt: number) => { if (!cv) return mk(w, hgt); const x = cv.getContext('2d')!; x.setTransform(d, 0, 0, d, 0, 0); x.clearRect(0, 0, w, hgt); return cv; };
+    const pal = [mtPalette(hor, day, sun, 0.85), mtPalette(hor, day, sun, 0.6), mtPalette(hor, day, sun, 0.4), mtPalette(hor, day, sun, 0.25)];
+    const RH = Beach.RH;
+    const ridge = [0, 1].map((L) => {
+      const cv = reuse(this.mt?.ridge[L], P, RH);
+      paintMountain(cv.getContext('2d')!, this.ridges[L], 2, RH, pal[L], 31 + L * 7, L ? 0.8 : 0.5, true);
+      return cv;
+    });
+    const LW = 380, LH = 72, ln = this.lady.length - 1;
+    const lh = new Float32Array(LW + 1); for (let x = 0; x <= LW; x++) lh[x] = this.lady[Math.round((x / LW) * ln)] * LH;
+    const lady = reuse(this.mt?.lady, LW, LH + 4); paintMountain(lady.getContext('2d')!, lh, 1, LH + 4, pal[2], 404, 1);
+    const IW = 168, IH = 70, inn = this.isl.length - 1;
+    const ih = new Float32Array(IW + 1); for (let x = 0; x <= IW; x++) { const u = (x / IW) * inn, i0 = Math.floor(u), f = u - i0; ih[x] = (this.isl[i0] * (1 - f) + this.isl[Math.min(inn, i0 + 1)] * f) * IH; }
+    const isl = reuse(this.mt?.isl, IW, IH + 4); paintMountain(isl.getContext('2d')!, ih, 1, IH + 4, pal[3], 77, 1.1);
+    this.mt = { ridge, lady, isl, pal };
+  }
+
   private drawRidges(c: CanvasRenderingContext2D, scrollX: number, hor: RGB, day: number) {
     const { W, horizonY, skyW: P } = this.o, base = horizonY + 1;
-    const tint: RGB = day > 0.15 ? [78, 112, 118] : [16, 22, 40];
-    const cols = [mix(hor, tint, 0.5), mix(hor, mix(tint, [0, 0, 0], 0.25), 0.7)];
+    void day;
+    const RH = Beach.RH, off = -(((scrollX % P) + P) % P);
     for (let L = 0; L < 2; L++) {
-      const arr = this.ridges[L], n = arr.length;
-      c.beginPath(); c.moveTo(-2, base);
-      for (let x = -2; x <= W + 2; x += 2) {
-        const wx = (((scrollX + x) % P) + P) % P, i = Math.floor(wx / 2) % n;
-        c.lineTo(x, base - arr[i]);
-      }
-      c.lineTo(W + 2, base); c.closePath();
-      c.fillStyle = css(cols[L], L ? 0.92 : 0.7); c.fill();
+      c.globalAlpha = L ? 1 : 0.92;
+      for (let sx = off; sx < W; sx += P) c.drawImage(this.mt!.ridge[L], Math.round(sx), base - RH, P, RH);
     }
+    c.globalAlpha = 1;
     // dağ eteğinde pus (denizle birleşir)
     const hz = c.createLinearGradient(0, base - 30, 0, base + 1);
     hz.addColorStop(0, css(hor, 0)); hz.addColorStop(1, css(mix(hor, [255, 255, 255], 0.14), 0.55));
     c.fillStyle = hz; c.fillRect(0, base - 30, W, 31);
   }
 
+  /** "Uyuyan Kadın" dağı: ana sahnenin hemen sağında, ufukta uzanan uzun, puslu bir dağ. Gece ay ışığı sırt çizgisini yalar. */
+  private drawLady(c: CanvasRenderingContext2D, scrollX: number, hor: RGB, top: RGB, day: number, now: number) {
+    const { W, horizonY, skyW: P, x0 } = this.o;
+    const LW = 380, LH = 72;
+    let cx = x0 + 400 - scrollX; cx -= P * Math.round((cx - W / 2) / P);
+    if (cx < -LW || cx > W + LW) return;
+    const left = cx - LW / 2, base = horizonY + 1, n = this.lady.length - 1;
+    const body = this.mt!.pal[2].base;
+    const path = (k: number, yoff = 0) => {
+      c.beginPath(); c.moveTo(left, base);
+      for (let i = 0; i <= n; i++) c.lineTo(left + (i / n) * LW, base - this.lady[i] * LH * k + yoff);
+      c.lineTo(left + LW, base); c.closePath();
+    };
+    // yansıma: ters, soluk, dalgayla kırık şeritler
+    const t = now / 1000;
+    for (let b = 0; b < 7; b++) {
+      c.save(); c.beginPath(); c.rect(left - 20, base + b * 3, LW + 40, 3); c.clip();
+      c.save(); c.translate(Math.sin(t * 1.1 + b * 1.9) * (1 + b * 0.5), base * 2); c.scale(1, -1);
+      c.fillStyle = css(body, 0.17 * (1 - b / 8)); path(0.85); c.fill(); c.restore(); c.restore();
+    }
+    // lagün: gündüz dağın önünde turkuaz sığ su
+    this.lagoon(c, cx, base, LW, day);
+    // gövde: önbellekten (orman, yamaç ışığı, oyuklar, pus, sırt ışığı)
+    c.drawImage(this.mt!.lady, left, base - (LH + 4) + 1, LW, LH + 4);
+    void top;
+    // dizlerin üstünde ara sıra bulut toplanır
+    peakCloud(c, left + LW * 0.38, base - LH * 0.9, 80, t, 1.7, day, hor);
+    // saçlar denize dökülür: sol uçta ince köpük ve pus
+    c.save(); c.translate(cx, base); c.scale(1, 0.12);                 // etek pusu: kenarları yumuşak (dikey kesik yok)
+    const hz = c.createRadialGradient(0, 0, 0, 0, 0, LW * 0.62);
+    hz.addColorStop(0, css(mix(hor, [255, 255, 255], 0.12), 0.5)); hz.addColorStop(1, css(hor, 0));
+    c.fillStyle = hz; c.fillRect(-LW * 0.62, -LW * 0.62, LW * 1.24, LW * 1.24); c.restore();
+    c.fillStyle = css(mix(hor, [255, 255, 255], 0.5), 0.25 + 0.15 * Math.sin(t * 0.9));
+    c.fillRect(left + 2, base - 0.5, LW * 0.12, 1);
+  }
+
   /** Ufkun sonunda, denizin karşısında bir ada: uzaktan puslu, gece tepesinin dibinde küçük sıcak bir ışık. */
   private drawIsland(c: CanvasRenderingContext2D, scrollX: number, hor: RGB, day: number, now: number) {
-    const { W, horizonY, skyW: P } = this.o;
-    const x0 = this.x0;
+    const { W, horizonY, skyW: P, x0 } = this.o;
     let cx = x0 + 20 - scrollX; cx -= P * Math.round((cx - W / 2) / P);
     const IW = 168, IH = 70;
     if (cx < -IW || cx > W + IW) return;
     const left = cx - IW / 2, base = horizonY + 1;
-    const far = mix(hor, day > 0.15 ? [64, 96, 90] : [12, 16, 30], 0.62);        // havadaki pustan geçen uzak yeşil/lacivert
-    const near = mix(far, [0, 0, 0], 0.22 + 0.1 * (1 - day));
+    const far = mix(this.mt!.pal[1].base, hor, 0.25);                             // arka sırt: puslu yeşil (gece koyu)
+    const near = this.mt!.pal[3].shade;
     const poly = (k: number, sx: number, off: number, flip: number) => {
       c.beginPath(); c.moveTo(left + off, base);
       for (let i = 0; i < this.isl.length; i++) c.lineTo(left + off + (i / (this.isl.length - 1)) * IW * sx, base - flip * this.isl[i] * IH * k);
@@ -236,7 +307,8 @@ export class Beach {
     }
     // arka sırt (daha puslu, biraz geniş) + ön gövde
     c.fillStyle = css(far, 0.85); poly(0.78, 1.08, -IW * 0.04, 1); c.fill();
-    c.fillStyle = css(near, 0.95); poly(1, 1, 0, 1); c.fill();
+    this.lagoon(c, cx, base, IW * 1.1, day);
+    c.drawImage(this.mt!.isl, left, base - (IH + 4) + 1, IW, IH + 4);
     // sahil şeridi
     c.fillStyle = css(mix(hor, [255, 236, 205], 0.45), 0.5 * (0.35 + 0.65 * day));
     c.fillRect(left + IW * 0.1, base - 1.5, IW * 0.8, 1.5);
@@ -247,6 +319,7 @@ export class Beach {
       c.beginPath(); c.moveTo(px, py); c.lineTo(px + 0.5, py - 4); c.stroke();
       for (const a of [-2.6, -2.0, -1.1, -0.5]) { c.beginPath(); c.moveTo(px + 0.5, py - 4); c.quadraticCurveTo(px + 0.5 + Math.cos(a) * 3, py - 4 + Math.sin(a) * 3 - 1, px + 0.5 + Math.cos(a) * 5, py - 4 + Math.sin(a) * 4 + 1); c.stroke(); }
     }
+    peakCloud(c, left + IW * 0.58, base - IH * 0.8, 52, t, 0.4, day, hor);
     // alt pus: adanın dibi denizle birleşir
     c.save(); c.translate(cx, base); c.scale(1, 0.16);
     const hz = c.createRadialGradient(0, 0, 0, 0, 0, IW * 0.7);
@@ -264,45 +337,99 @@ export class Beach {
     }
   }
 
-  frame(now: number, scrollX: number, skyCanvas: HTMLCanvasElement, colors: { hor: string; top: string }, day: number, sun: RGB,
+  /** gündüz dağın/adanın önünde turkuaz sığ su (lagün) */
+  private lagoon(c: CanvasRenderingContext2D, cx: number, base: number, w: number, day: number) {
+    if (day < 0.2) return;
+    c.save(); c.translate(cx, base + 2); c.scale(1, 0.07);
+    const g = c.createRadialGradient(0, 0, 0, 0, 0, w * 0.55);
+    g.addColorStop(0, `rgba(110,220,210,${(0.42 * day).toFixed(3)})`); g.addColorStop(0.7, `rgba(80,200,200,${(0.18 * day).toFixed(3)})`); g.addColorStop(1, 'rgba(80,200,200,0)');
+    c.fillStyle = g; c.fillRect(-w * 0.55, -w * 0.55, w * 1.1, w * 1.1); c.restore();
+  }
+
+  private swellColors(hor: RGB, top: RGB, deep: RGB, day: number) {
+    return { trough: mix(deep, [0, 0, 0], 0.45), face: mix(mix(hor, top, 0.4), [255, 255, 255], 0.08 + 0.12 * day), crest: mix(hor, [255, 255, 255], 0.55 + 0.25 * day) };
+  }
+
+  frame(now: number, scrollX: number, skyRefl: HTMLCanvasElement, colors: { hor: string; top: string }, day: number, sun: RGB,
     glints: { x: number; k: number; warm: boolean }[], candles: { x: number; y: number; k: number }[]) {
     const c = this.c, { W, H, horizonY } = this.o;
     const hor = parse(colors.hor), top = parse(colors.top);
     const shore = this.shoreY;
-    c.clearRect(0, horizonY - 90, W, H - horizonY + 90 + SAND_BLEED_B); // ufuktaki ada için ufkun biraz üstü de temizlenir
+    c.clearRect(0, horizonY - 140, W, H - horizonY + 140);
+    { const key = `${Math.round(day * 16)}|${hor.map((v) => v >> 3).join()}|${Math.round(sun[0] * 8)}`;
+      const bigJump = Math.abs(day - this.mtDay) > 0.35;
+      if (!this.mt || (key !== this.mtKey && (bigJump || now - this.mtAt > 2500))) { this.mtKey = key; this.mtAt = now; this.mtDay = day; this.buildMountains(hor, day, sun); } }
 
-    // ---- deniz: gökyüzü rengi + koyu derinlik
-    const deep: RGB = mix([6, 10, 20], [28, 70, 96], day);
+    // ---- deniz. KURAL: her desen DÜNYAYA sabitlenir (wx = x + scrollX) → sağa/sola kaydırınca su "kaymaz", gök ve dağlarla birlikte döner.
+    const P = this.o.skyW, TAU = Math.PI * 2;
+    const fq = (f: number) => (Math.max(1, Math.round((f * P) / TAU)) * TAU) / P;     // 360°'de dikişsiz frekans
+    const t = now / 1000, wk = this.wind;
+    const deep: RGB = mix([5, 9, 22], [18, 62, 92], day);                              // derin su
+    const shallow: RGB = mix([14, 22, 40], [52, 150, 160], day);                        // kıyıya yakın sığ su (gündüz turkuaz)
+    const hl = mix(hor, [255, 255, 255], 0.18 + 0.2 * day);                             // ufukta Fresnel parlaklığı
     const g = c.createLinearGradient(0, horizonY, 0, shore);
-    g.addColorStop(0, css(mix(hor, deep, 0.25)));
-    g.addColorStop(1, css(mix(top, deep, 0.55)));
+    g.addColorStop(0, css(mix(hl, deep, 0.18)));
+    g.addColorStop(0.18, css(mix(hor, deep, 0.45)));
+    g.addColorStop(0.62, css(mix(top, deep, 0.7)));
+    g.addColorStop(0.88, css(mix(deep, shallow, 0.55)));
+    g.addColorStop(1, css(mix(shallow, hor, 0.15)));
     c.fillStyle = g;
     c.fillRect(0, horizonY, W, shore - horizonY + 2);
-    // gökyüzü yansıması: ters çevrilmiş, dalgayla kırılan yatay şeritler
-    const d = skyCanvas.width / W;
-    const t = now / 1000;
+    // gökyüzü yansıması: ters çevrilmiş gök, ufukta güçlü (Fresnel) kıyıya doğru zayıf; satırlar dalgayla hafifçe kırılır
+    const reflC = skyRefl, d = 0.5;
     for (let y = horizonY; y < shore; y += 2) {
-      const k = (y - horizonY) / (shore - horizonY);           // 0 ufuk … 1 kıyı
-      const srcY = horizonY - 2 - (y - horizonY) * (2.2 + 6 * k); // perspektif: kıyıya yakın satır daha yüksek gökyüzünü yansıtır
+      const k = (y - horizonY) / (shore - horizonY);
+      const srcY = horizonY - 2 - (y - horizonY) * (2.2 + 6 * k);
       if (srcY < 0) break;
-      const off = Math.sin(t * 1.1 + y * 0.42) * (0.6 + 6 * k) + Math.sin(t * 0.7 + y * 0.13) * 2 * k;
-      c.globalAlpha = 0.5 * (1 - 0.6 * k);
-      c.drawImage(skyCanvas, 0, srcY * d, skyCanvas.width, 2 * d, off, y, W, 2);
+      const off = Math.sin(t * 0.9 + y * 0.37) * (0.5 + 4 * k) + Math.sin(t * 0.55 + y * 0.11) * 1.6 * k;
+      c.globalAlpha = 0.55 * Math.pow(1 - k, 1.4);
+      c.drawImage(reflC, 0, srcY * d, reflC.width, 2 * d, off, y, W, 2);
     }
     c.globalAlpha = 1;
-    // yüzey dokusu: perspektifle yoğunlaşan küçük dalgacıklar (açık sırt + koyu çukur), yavaşça kayar
-    const hi = css(mix(hor, [255, 255, 255], 0.35 + 0.25 * day), 1), lo = css(mix(deep, [0, 0, 0], 0.35), 1);
-    for (let y = horizonY + 2; y < shore - 3; y += 2) {
-      const k = (y - horizonY) / (shore - horizonY);
-      const n = 4 + Math.floor(k * 12);
-      for (let i = 0; i < n; i++) {
-        const h1 = Math.sin(y * 7.13 + i * 31.7) * 43758.5453, f1 = h1 - Math.floor(h1);
-        const h2 = Math.sin(y * 3.71 + i * 17.3) * 24634.6345, f2 = h2 - Math.floor(h2);
-        const x = (((f1 * (W + 60) + t * (3 + 9 * k) * (i % 2 ? 1 : -0.6) - scrollX * 0.9) % (W + 60)) + W + 60) % (W + 60) - 30;
-        const len = 2 + (4 + 16 * k) * f2;
-        c.globalAlpha = (0.05 + 0.16 * k) * (0.5 + 0.5 * Math.sin(t * 1.7 + i + y));
-        c.fillStyle = i % 3 === 0 ? lo : hi;
-        c.fillRect(x, y, len, k > 0.5 ? 1.2 : 0.8);
+    // kabarmalar (swell): ince çizgi DEĞİL, geniş yumuşak bantlar; sırt göğü yansıtır, arkası koyu çukur; boyunca yer yer kesilir
+    const T = 6.5, ph = (t % T) / T, cyc = Math.floor(t / T);
+    const sw = this.swellColors(hor, top, deep, day);
+    for (let n = 0; n < 4; n++) {
+      const p = (ph + n / 4) % 1, pe = Math.pow(p, 1.8);
+      const y = horizonY + 2 + (shore - horizonY - 4) * pe, k = pe;
+      if (k < 0.06) continue;
+      const th = 1 + 9 * k * (1 + 0.6 * wk), amp = (0.5 + 3 * k) * (1 + wk);
+      const fade = p > 0.93 ? (1 - p) / 0.07 : 1;
+      // boyunca yer yer kesilen yumuşak bant: alfa yatay gradyanla verilir (blok/tuğla görüntüsü yok)
+      const ag = (col: RGB, amax: number) => {
+        const gr = c.createLinearGradient(0, 0, W, 0);
+        for (let i = 0; i <= 16; i++) {
+          const wx = (i / 16) * W + scrollX;
+          const patch = 0.5 + 0.5 * Math.sin(fq(0.009) * wx + n * 2.1 + t * 0.15) * Math.sin(fq(0.023) * wx - n * 1.3);
+          gr.addColorStop(i / 16, css(col, amax * fade * Math.min(1, k * 1.6) * (0.2 + 0.8 * patch)));
+        }
+        return gr;
+      };
+      const yAt = (x: number) => y + Math.sin(fq(0.012) * (x + scrollX) + n * 1.7 + t * 0.35) * amp;
+      const band = (o0: number, o1: number) => { c.beginPath(); for (let x = 0; x <= W + 8; x += 8) { const yy = yAt(x) + o0; x ? c.lineTo(x, yy) : c.moveTo(x, yy); } for (let x = W + 8; x >= 0; x -= 8) c.lineTo(x, yAt(x) + o1); c.closePath(); };
+      band(th * 0.3, th * 1.35); c.fillStyle = ag(sw.trough, 0.3); c.fill();
+      band(-th * 0.3, th * 0.3); c.fillStyle = ag(sw.face, 0.32); c.fill();
+      if (k > 0.25) { band(-th * 0.32, -th * 0.32 + Math.max(0.8, th * 0.12)); c.fillStyle = ag(sw.crest, 0.4 * k); c.fill(); }
+    }
+    // yüzey: binlerce küçük dalgacık; belirir-söner (pırıl pırıl), kaymaz. Uzakta ince ve sık, yakında iri.
+    const Tw = W + 80;
+    const hiC = css(mix(hl, mix(hor, top, 0.5), 0.3)), loC = css(mix(deep, [0, 0, 0], 0.35));
+    for (const q of this.wl) {
+      const life = (t * q.sp + q.ph) % 1, env = Math.sin(life * Math.PI);
+      if (env < 0.08) continue;
+      const k = q.k, y = horizonY + 2 + k * (shore - horizonY - 8);
+      const drift = t * (1 + 5 * wk) * (0.3 + k) * this.windDir;
+      const x = (((q.u * Tw + drift - scrollX) % Tw) + Tw) % Tw - 40;
+      if (x > W) continue;
+      const L = q.len * (0.6 + 0.4 * env), a = env * (0.08 + 0.22 * k + 0.12 * (1 - k));
+      if (k < 0.45) {                                                       // uzak: ince parıltı çizgileri
+        c.globalAlpha = a * (0.5 + 0.5 * q.hi); c.fillStyle = hiC; c.fillRect(x, y, L, 0.5 + 0.6 * k);
+      } else {                                                              // yakın: hilal biçimli dalgacık (ışıklı sırt + gölge)
+        const hh = 0.8 + 2.2 * k;
+        c.globalAlpha = a * 0.6; c.fillStyle = loC;
+        c.beginPath(); c.ellipse(x + L / 2, y + hh * 0.7, L / 2, hh * 0.55, 0, 0, Math.PI); c.fill();
+        c.globalAlpha = a * (0.5 + 0.5 * q.hi); c.fillStyle = hiC;
+        c.beginPath(); c.ellipse(x + L / 2, y + hh * 0.2, L / 2, hh * 0.4, 0, Math.PI, Math.PI * 2); c.fill();
       }
     }
     c.globalAlpha = 1;
@@ -311,30 +438,36 @@ export class Beach {
     haze.addColorStop(0, css(hor, 0)); haze.addColorStop(0.4, css(mix(hor, [255, 255, 255], 0.15), 0.35)); haze.addColorStop(1, css(hor, 0));
     c.fillStyle = haze; c.fillRect(0, horizonY - 6, W, 20);
     this.drawRidges(c, scrollX, hor, day);
+    this.drawLady(c, scrollX, hor, top, day, now);
     this.drawIsland(c, scrollX, hor, day, now);
-    // ışık yolu (ay/güneş): titreşen kısa parıltılar, kıyıya doğru genişler
+    // ışık yolu (ay/güneş): yumuşak ışık sütunu + yavaşça yanıp sönen parıltılar (titreşmez), kıyıya doğru genişler
+    const hash = (v: number) => { const x = Math.sin(v * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
     for (const gl of glints) {
-      if (gl.k < 0.02) continue;
+      if (gl.k < 0.02 || gl.x < -120 || gl.x > W + 120) continue;
       const col = gl.warm ? '255,214,160' : '235,240,255';
-      for (let y = horizonY + 2; y < shore; y += 3) {
-        const k = (y - horizonY) / (shore - horizonY);
-        const spread = 6 + 46 * k;
-        const n = 2 + Math.floor(3 * k);
+      const glow = c.createLinearGradient(0, horizonY, 0, shore);
+      glow.addColorStop(0, `rgba(${col},${(0.22 * gl.k).toFixed(3)})`); glow.addColorStop(1, `rgba(${col},${(0.06 * gl.k).toFixed(3)})`);
+      c.save(); c.translate(gl.x, 0); c.scale(1, 1);
+      c.beginPath(); c.moveTo(-4, horizonY); c.lineTo(4, horizonY); c.lineTo(52, shore); c.lineTo(-52, shore); c.closePath();
+      c.fillStyle = glow; c.globalAlpha = 0.6; c.fill(); c.restore(); c.globalAlpha = 1;
+      for (let y = horizonY + 2, row = 0; y < shore; y += 2.5, row++) {
+        const k = (y - horizonY) / (shore - horizonY), spread = 5 + 50 * k, n = 2 + Math.floor(4 * k);
         for (let i = 0; i < n; i++) {
-          const h = Math.sin(y * 12.9898 + i * 78.233 + Math.floor(t * 6 + i) * 3.17) * 43758.5453;
-          const fr = h - Math.floor(h);
-          const x = gl.x + (fr - 0.5) * 2 * spread;
-          const a = gl.k * (0.25 + 0.6 * fr) * (1 - 0.3 * k);
+          const sp = 0.9 + hash(row * 7 + i) * 1.1, lt = t * sp + hash(row * 13 + i * 5), gen = Math.floor(lt), life = lt - gen;
+          const fr = hash(row * 31 + i * 17 + gen * 3.7);
+          const x = gl.x + (fr - 0.5) * 2 * spread * (0.6 + 0.4 * Math.sin(t * 0.4 + row));
+          const a = gl.k * Math.sin(life * Math.PI) * (0.35 + 0.65 * hash(row + i * 3 + gen)) * (1 - 0.35 * k);
           c.fillStyle = `rgba(${col},${a.toFixed(3)})`;
-          c.fillRect(x, y, 2 + 6 * k * fr, 1);
-          // gündüz güneşinde pırıltı: kısa dört kollu ışık (rastgele, çok kısa ömürlü)
-          if (gl.warm === false && day > 0.5 && fr > 0.93) {
-            c.fillStyle = `rgba(255,255,255,${(a * 1.4).toFixed(3)})`;
+          c.fillRect(x, y, 1.5 + 7 * k * (0.4 + fr), 0.8 + 0.6 * k);
+          if (!gl.warm && day > 0.5 && fr > 0.95 && life > 0.4 && life < 0.6) {
+            c.fillStyle = `rgba(255,255,255,${(a * 1.3).toFixed(3)})`;
             c.fillRect(x - 3, y, 7, 0.7); c.fillRect(x + 0.2, y - 2.5, 0.7, 6);
           }
         }
       }
     }
+    // balina (aktifse): adanın ve ışık yolunun önünde, kumun arkasında
+    this.whale.draw(c, { now, scrollX, W, P, horizonY, shoreY: shore, hor, day, wind: wk, windDir: this.windDir });
     // ufuk çizgisi: çok ince parlak hat
     c.fillStyle = css(mix(hor, [255, 255, 255], 0.35), 0.5);
     c.fillRect(0, horizonY, W, 1);
@@ -342,60 +475,40 @@ export class Beach {
     // ---- kum
     const key = colors.hor + colors.top + Math.round(day * 30) + sun.map((v) => v.toFixed(1)).join();
     if (key !== this.sandKey) { this.sandKey = key; this.drawSand(hor, top, day, sun); }
-    {
-      const P = this.o.skyW, f = c.getTransform().a || 1;
-      let sx = -Math.round((((scrollX % P) + P) % P) * f) / f;
-      for (; sx < W; sx += P) c.drawImage(this.sand, sx, shore - 6, P, H - shore + SAND_BLEED_B);
-    }
+    { const P = this.o.skyW; for (let sx = -(((scrollX % P) + P) % P); sx < W; sx += P) c.drawImage(this.sand, Math.round(sx), shore - 6, P, H - shore + 20); }
 
-    // ---- dalgalar (6.5 sn döngü): ufuktan kıyıya yuvarlanan dalga sırtları → kıyıda kırılma → kuma tırmanma → geri çekilme
-    const T = 6.5, ph = (t % T) / T, cyc = Math.floor(t / T);
-    const hash = (v: number) => { const x = Math.sin(v * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
-    const wk = this.wind;
+    // ---- kıyı (6.5 sn döngü; yukarıdaki kabarmalarla aynı faz: sırt kıyıya varınca kırılır)
     const reachOf = (n: number) => 34 * (0.78 + 0.3 * hash(n)) * (1 + 0.7 * wk);   // her dalga farklı mesafeye çıkar; rüzgârda daha uzağa
-    // 1) dalga sırtları: 4 sırt, perspektifle yaklaştıkça hızlanır, kalınlaşır ve parlaklaşır; arkalarında gölge çukuru
-    for (let k = 0; k < 4; k++) {
-      const p = (ph + k / 4) % 1;
-      const pe = Math.pow(p, 1.7);
-      const y = horizonY + 3 + (shore - horizonY - 6) * pe;
-      const amp = (0.4 + 2.6 * pe) * (1 + 1.4 * wk), lw = (0.6 + 2.2 * pe) * (1 + 0.5 * wk);
-      const a = (0.1 + 0.55 * pe) * (p > 0.94 ? (1 - p) / 0.06 : 1);
-      // çukur (sırtın hemen altı, koyu)
-      c.strokeStyle = css(mix(deep, [0, 0, 0], 0.4), 0.22 * pe);
-      c.lineWidth = lw * 2.2;
-      c.beginPath();
-      for (let x = -4; x <= W + 4; x += 5) { const yy = y + lw * 1.4 + Math.sin(x * 0.03 + k * 2 + t * 0.8 + scrollX * 0.02) * amp; x < 0 ? c.moveTo(x, yy) : c.lineTo(x, yy); }
-      c.stroke();
-      // sırt (aydınlık çizgi; gökyüzü ışığını yansıtır)
-      c.strokeStyle = css(mix(hor, [255, 255, 255], 0.45 + 0.3 * day), a);
-      c.lineWidth = lw;
-      c.beginPath();
-      for (let x = -4; x <= W + 4; x += 5) { const yy = y + Math.sin(x * 0.03 + k * 2 + t * 0.8 + scrollX * 0.02) * amp; x < 0 ? c.moveTo(x, yy) : c.lineTo(x, yy); }
-      c.stroke();
-    }
+    // kırılmadan hemen önce: kıyıya yakın sırt kabarır, tepesi beyazlaşır (köpük sırtı), düzensiz
+    { const p = ph > 0.86 ? (ph - 0.86) / 0.14 : -1;
+      if (p >= 0) {
+        const y = shore - 9 + 6 * p;
+        for (let x = -8; x < W + 8; x += 6) {
+          const wx = x + scrollX, nz = 0.5 + 0.5 * Math.sin(fq(0.031) * wx + cyc) * Math.sin(fq(0.007) * wx - cyc * 0.7);
+          const a = p * (0.25 + 0.75 * nz) * (0.45 + 0.4 * day);
+          c.fillStyle = `rgba(255,255,255,${(0.55 * a).toFixed(3)})`;
+          c.fillRect(x, y + Math.sin(fq(0.02) * wx) * 1.5 - 2 * nz * p, 6.5, 1.2 + 3 * p * nz);
+        }
+      } }
     // 2) kıyıda kırılan dalga: köpük patlaması + kuma tırmanan su (swash) + geri çekilme (backwash)
     //    ph 0.00–0.38 tırmanış (hızlı başlar, yavaşlar), 0.38–0.95 geri çekilme, sonra kısa bekleme
     const up = ph < 0.38 ? 1 - Math.pow(1 - ph / 0.38, 3) : ph < 0.95 ? 1 - Math.pow((ph - 0.38) / 0.57, 1.6) : 0;
     const maxReach = reachOf(cyc);
-    const edge = (x: number) => shore + 2 + up * maxReach + Math.sin(x * 0.04 + t * 0.5) * (2 + 3 * up) + Math.sin(x * 0.013 - 1.3) * 5 * up;
+    const edge = (x: number) => shore + 2 + up * maxReach + Math.sin(fq(0.04) * x + t * 0.5) * (2 + 3 * up) + Math.sin(fq(0.013) * x - 1.3) * 5 * up;
     // ---- dalga izleri: her dalganın ulaştığı en uç çizgide köpük kalıntısı + koyu ıslak çizgi kalır, ~40 sn'de silinir
-    for (let k = (ph > 0.38 ? 0 : 1); k <= 3; k++) {
+    for (let k = ph > 0.38 ? 0 : 1; k <= 2; k++) {
       const m = cyc - k, tM = (m + 0.38) * T, age = t - tM, rM = reachOf(m);
-      if (age < 0 || age > 48) continue;
-      const decay = Math.exp(-age / 15), line = (x: number) => shore + 2 + rM + Math.sin(x * 0.04 + tM * 0.5) * 5 + Math.sin(x * 0.013 - 1.3) * 5 + Math.sin(x * 0.11 + m * 3) * 1.2;
-      c.lineCap = 'round';
-      c.strokeStyle = css(mix(hor, [0, 0, 0], 0.5), 0.24 * decay * (0.6 + 0.4 * (1 - day)));
-      c.lineWidth = 3.2; c.beginPath();
-      for (let x = 0; x <= W; x += 6) x ? c.lineTo(x, line(x + scrollX) + 2) : c.moveTo(x, line(x + scrollX) + 2);
-      c.stroke();
-      c.strokeStyle = `rgba(255,255,255,${(0.8 * decay * (0.55 + 0.35 * day)).toFixed(3)})`;
-      c.lineWidth = 1.1; c.setLineDash([7 + 5 * hash(m), 2.5, 2, 4]); c.lineDashOffset = -scrollX + m * 9;
+      if (age < 0 || age > 30) continue;
+      const decay = Math.exp(-age / 10) * (1 - 0.5 * (1 - day)), line = (x: number) => shore + 2 + rM + Math.sin(fq(0.04) * x + 0.5 * (m % 3)) * 3.5 + Math.sin(fq(0.013) * x - 1.3) * 4;
+      // kesik çizgi YOK: suyun ulaştığı yerde yumuşak, sürekli koyu ıslaklık sınırı (zamanla kurur)
+      c.strokeStyle = css(mix(hor, [0, 0, 0], 0.55), 0.16 * decay);
+      c.lineWidth = 3.5; c.lineJoin = 'round';
       c.beginPath();
       for (let x = 0; x <= W; x += 6) x ? c.lineTo(x, line(x + scrollX)) : c.moveTo(x, line(x + scrollX));
-      c.stroke(); c.setLineDash([]);
+      c.stroke();
       // izde kalan baloncuklar
-      for (let i = 0; i < 26; i++) {
-        const fx = hash(m * 31 + i), x = ((fx * this.o.skyW - scrollX) % this.o.skyW + this.o.skyW) % this.o.skyW; if (x > W) continue;
+      for (let i = 0; i < 14; i++) {
+        const fx = hash(m * 31 + i), x = (((fx * this.o.skyW - scrollX) % this.o.skyW) + this.o.skyW) % this.o.skyW; if (x > W) continue;
         c.fillStyle = `rgba(255,255,255,${(0.5 * decay * hash(m * 7 + i)).toFixed(3)})`;
         c.beginPath(); c.ellipse(x, line(x + scrollX) - 1 - hash(m + i * 3) * 3, 0.7 + hash(i + m) * 1.1, 0.5, 0, 0, 6.2832); c.fill();
       }
@@ -418,7 +531,7 @@ export class Beach {
     }
     // su tabakası: yarı saydam, gökyüzünü yansıtır, kıyıdan kenara incelir
     const sheet = c.createLinearGradient(0, shore - 8, 0, shore + maxReach + 8);
-    sheet.addColorStop(0, css(mix(mix(hor, deep, 0.45), [255, 255, 255], 0.08), 0.95));
+    sheet.addColorStop(0, css(mix(mix(shallow, hor, 0.3), [255, 255, 255], 0.06), 0.9));
     sheet.addColorStop(1, css(mix(hor, [255, 255, 255], 0.25), 0.55));
     c.fillStyle = sheet;
     c.beginPath(); c.moveTo(0, shore - 8);
@@ -432,23 +545,27 @@ export class Beach {
       c.fillStyle = `rgba(255,255,255,${(foamA * 0.22 * (1 - k / 4)).toFixed(3)})`;
       c.beginPath();
       for (let x = 0; x <= W; x += 5) { const y = edge(x + scrollX) - (band * k) / 4 + Math.sin(x * 0.11 + t * 2 + k) * 1.2; x ? c.lineTo(x, y) : c.moveTo(x, y); }
-      for (let x = W; x >= 0; x -= 5) c.lineTo(x, edge(x + scrollX) - band * (k + 1) / 4 - 1);
+      for (let x = W; x >= 0; x -= 5) c.lineTo(x, edge(x + scrollX) - (band * (k + 1)) / 4 - 1);
       c.closePath(); c.fill();
     }
-    c.strokeStyle = `rgba(255,255,255,${foamA.toFixed(3)})`;
-    c.lineWidth = 2.2 + 2 * up;
-    c.lineCap = 'round';
-    c.beginPath();
-    for (let x = 0; x <= W; x += 5) x ? c.lineTo(x, edge(x + scrollX)) : c.moveTo(x, edge(x + scrollX));
-    c.stroke();
+    // köpük kenarı: tek kesintisiz çizgi; parlaklığı boyunca değişir (yatay gradyan, dünyaya sabit). Boncuk/kesik görüntü yok.
+    { const gr = c.createLinearGradient(0, 0, W, 0);
+      for (let i = 0; i <= 20; i++) {
+        const wx = (i / 20) * W + scrollX, nz = 0.5 + 0.5 * Math.sin(fq(0.05) * wx + cyc * 1.3) * Math.sin(fq(0.017) * wx - cyc);
+        gr.addColorStop(i / 20, `rgba(255,255,255,${(foamA * (0.4 + 0.6 * nz)).toFixed(3)})`);
+      }
+      c.lineCap = 'round'; c.lineJoin = 'round';
+      const path = () => { c.beginPath(); for (let x = 0; x <= W; x += 4) x ? c.lineTo(x, edge(x + scrollX)) : c.moveTo(x, edge(x + scrollX)); };
+      path(); c.strokeStyle = gr; c.lineWidth = 2.6 + 2.4 * up; c.globalAlpha = 0.45; c.stroke();
+      path(); c.lineWidth = 1.1 + 0.8 * up; c.globalAlpha = 1; c.stroke(); }
     // dantel: kenarın arkasında rastgele küçük köpük kümeleri (deterministik, kayarak hareket eder)
-    const lace = Math.round(60 + 70 * up);
+    const lace = Math.round(40 + 50 * up);
     for (let i = 0; i < lace; i++) {
       const hx = Math.sin(i * 91.7 + 0.3) * 43758.5453, fx = hx - Math.floor(hx);
       const hy = Math.sin(i * 12.3 + 1.7) * 23421.631, fy = hy - Math.floor(hy);
-      const x = fx * W;
+      const Tl = W + 40, x = (((fx * Tl - scrollX) % Tl) + Tl) % Tl - 20;
       const ey = edge(x + scrollX);
-      const y = ey - 2 - fy * (10 + 18 * (1 - up)) ;
+      const y = ey - 2 - fy * (10 + 18 * (1 - up));
       if (y < shore - 8) continue;
       const rr = 0.5 + fy * 1.2;
       c.fillStyle = `rgba(255,255,255,${(foamA * (0.25 + 0.6 * (1 - fy))).toFixed(3)})`;
@@ -457,8 +574,11 @@ export class Beach {
     // kırılma anı: kıyı çizgisinde kısa köpük parlaması (ph≈0)
     const burst = ph < 0.12 ? 1 - ph / 0.12 : 0;
     if (burst > 0) {
-      c.fillStyle = `rgba(255,255,255,${(0.35 * burst * (0.5 + 0.5 * day)).toFixed(3)})`;
-      c.fillRect(0, shore - 7, W, 6);
+      for (let x = 0; x < W; x += 8) {
+        const nz = 0.5 + 0.5 * Math.sin(fq(0.03) * (x + scrollX) + cyc);
+        c.fillStyle = `rgba(255,255,255,${(0.4 * burst * nz * (0.5 + 0.5 * day)).toFixed(3)})`;
+        c.fillRect(x, shore - 7 + 2 * (1 - nz), 8.5, 3 + 4 * nz);
+      }
     }
 
     // ---- geri çekilen suyun bıraktığı baloncuklar: belirir ve patlar
@@ -488,6 +608,8 @@ export class Beach {
       }
     }
 
+    // ---- canlı kumsal: yengeçler, gece ateş böcekleri
+    this.life.draw(c, now, scrollX, W, this.o.skyW, shore - 6, H - shore + 20, day, hor);
     // ---- mumların kuma ve suya düşen sıcak ışığı (gece belirgin)
     const nightK = 1 - day;
     for (const m of candles) {

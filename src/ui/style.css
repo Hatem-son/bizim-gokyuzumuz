@@ -43,12 +43,11 @@ html, body {
   margin: 0;
   padding: 0;
   width: 100%;
-  height: var(--app-h, 100lvh);
-  min-height: 100lvh;
+  height: 100%;
   overflow: hidden;
   overflow: clip;
   overscroll-behavior: none;
-  background: var(--sky-bottom, #05070d);
+  background: #070a16;
   color: var(--text);
   font-family: var(--sans);
 }
@@ -56,16 +55,15 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 input, textarea { font: inherit; color: inherit; }
 svg { display: block; }
 
-/* ---------- tam ekran PWA uygulama çerçevesi ---------- */
+/* ---------- tam ekran PWA / Safari uygulama çerçevesi ---------- */
 #app {
   position: fixed;
-  inset: 0;
-  width: 100%;
-  height: var(--app-h, 100lvh);
-  min-height: 100lvh;
+  inset: 0 auto auto 0;
+  width: 100vw;
+  height: var(--app-h, 100svh);
   overflow: hidden;
   overflow: clip;
-  background: var(--sky-bottom, #05070d);
+  background: var(--sky-bottom, #070a16);
   -webkit-user-select: none;
   user-select: none;
   touch-action: none;
@@ -73,7 +71,7 @@ svg { display: block; }
   line-height: 1.4;
   letter-spacing: -.005em;
   --safe-t: env(safe-area-inset-top, 0px);
-  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-b: max(env(safe-area-inset-bottom), 0px);
   --island-top: 11px;
 }
 #app input, #app textarea { -webkit-user-select: text; user-select: text; touch-action: manipulation; }

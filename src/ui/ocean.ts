@@ -28,15 +28,13 @@ export class OceanHeart {
   private cool = 0;
   private cyc = 0;             // kalp merkezi y
 
-  constructor(private ctx: CanvasRenderingContext2D, private g: SkyGeom, _shoreY?: number) {}
+  constructor(private ctx: CanvasRenderingContext2D, private g: SkyGeom, _shoreY: number) {}
 
   get active() { return this.t0 >= 0; }
-
   resetCooldown() { this.cool = 0; }
 
   /** Tetikle: güncel ekran ortasındaki denizden yükselir. */
   start(now: number, scrollX: number, text = 'seni seviyorum') {
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
     if (this.active || now < this.cool) return false;
     const g = this.g;
     this.t0 = now;

@@ -1,8 +1,9 @@
-// Giriş akışı: Kimsin → Şifre → Gizli kelime → (Face ID önerisi) → (Bildirim izni). Dönüşte: Face ID kilit ekranı.
+// Giriş akışı: Kimsin → Şifre → Gizli kelime → (Face ID önerisi) → (Bildirim izni).
+// Dönüşte: Face ID kilit ekranı (otomatik başlar; okuyamazsa/iptal edilirse doğrudan ayrı şifre sayfası runPasswordUnlock).
+import { core } from './core';
 import { h, $, $$, openSheet, sleep, reduced, stagger, toast } from './ui';
 import { I, SIGN } from './icons';
 import { state, PEOPLE, Who, setMe, saveSettings, toDbWho } from './state';
-import { core } from './core';
 import { USER_EMAILS } from '../config';
 import {
   isSupabaseConfigured,
@@ -12,8 +13,8 @@ import {
   getSessionFast,
   inferWhoFromEmail,
 } from '../lib/supabase';
-import { unlockWithSecret } from '../lib/crypto';
-import { enrollBiometric, verifyBiometric, hasBiometric } from '../lib/lock';
+import { unlockWithSecret, loadSavedKey } from '../lib/crypto';
+import { enrollBiometric, verifyBiometricDetailed, hasBiometric } from '../lib/lock';
 import { subscribePushNotifications, getNotificationPermission } from '../lib/push';
 
 const E = 'cubic-bezier(.22,.8,.24,1)';
@@ -163,7 +164,7 @@ export function runAuth(app: HTMLElement, onDone: () => void) {
       (document.activeElement as HTMLElement | null)?.blur();
       await leave();
       onDone();
-      setTimeout(() => maybeOfferSetupSheets(app), 3600);
+      setTimeout(() => void maybeOfferSetupSheets(app), 3600);
     });
     void swap(n);
     setTimeout(() => inp.focus({ preventScroll: true }), 450);
@@ -179,46 +180,145 @@ export function runAuth(app: HTMLElement, onDone: () => void) {
   who();
 }
 
-/** Dönüş: kilit ekranı (Face ID / WebAuthn). */
+/** Face ID denemesi. Gerçek uygulamada WebAuthn (platform authenticator) çağrısıdır.
+ *  'ok' = tanındı · 'fail' = okunamadı/iptal · 'gesture' = iOS dokunuş istedi (otomatik başlatılamadı). */
+export type FaceResult = 'ok' | 'fail' | 'gesture';
+export const faceAuth = {
+  /** Test paneli simülasyonu; null iken gerçek WebAuthn çalışır */
+  sim: null as null | 'ok' | 'fail',
+  async verify(): Promise<FaceResult> {
+    if (faceAuth.sim !== null) {
+      const s = faceAuth.sim;
+      await sleep(1100);
+      return s;
+    }
+    if (hasBiometric()) {
+      return verifyBiometricDetailed();
+    }
+    await sleep(700);
+    return 'fail';
+  },
+};
+
+/** Dönüş: kilit ekranı. Face ID AÇILIR AÇILMAZ kendiliğinden başlar (iOS gibi).
+ *  Okuyamazsa/iptal edilirse doğrudan ŞİFRE sayfası açılır (giriş akışı değil). */
 export function runLock(app: HTMLElement, onDone: () => void) {
-  const el = h(`<div class="auth" style="justify-content:center">
+  const el = h(`<div class="auth lock" style="justify-content:center">
     <div class="center" style="margin-top:-60px"><div class="display" style="font-size:42px">Bizim Gökyüzümüz</div>
     <div style="font:italic 500 19px var(--serif);color:var(--text-2);margin-top:10px">Tekrar hoş geldin ${PEOPLE[state.me].name}</div></div>
     <div style="position:absolute;left:24px;right:24px;bottom:calc(var(--safe-b) + 28px)" class="center">
       <button type="button" class="faceid glass press" data-f aria-label="Face ID ile aç">${I.face(36)}</button>
-      <div class="small" data-lbl>Face ID ile aç</div>
+      <div class="small" data-st>Face ID</div>
       <button type="button" class="back-link" style="margin:14px auto 0;display:flex" data-pw>Şifreyle gir</button></div></div>`);
   app.appendChild(el);
-  let busy = false;
-  const go = async () => {
-    if (busy) return;
+  const f = $('[data-f]', el), st = $('[data-st]', el);
+  let busy = false, done = false;
+  const toPassword = () => {
+    if (done) return;
+    done = true;
+    el.remove();
+    runPasswordUnlock(app, onDone);
+  };
+  const attempt = async () => {
+    if (busy || done) return;
     busy = true;
-    const f = $('[data-f]', el);
-    const lbl = $('[data-lbl]', el);
-    f.animate([{ transform: 'scale(1)' }, { transform: 'scale(.92)' }, { transform: 'scale(1.06)' }, { transform: 'scale(1)' }], { duration: 700, easing: 'ease-in-out' });
-    const verified = hasBiometric() ? await verifyBiometric() : true;
+    st.textContent = 'Yüzün okunuyor…';
+    f.style.color = '';
+    const pulse = f.animate(
+      [{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(.94)', opacity: 0.7 }, { transform: 'scale(1)', opacity: 1 }],
+      { duration: 900, iterations: Infinity, easing: 'ease-in-out' }
+    );
+    const r = await faceAuth.verify();
+    pulse.cancel();
     busy = false;
-    if (!verified) {
-      f.classList.remove('shake');
-      void f.offsetWidth;
-      f.classList.add('shake');
-      lbl.textContent = 'Doğrulanamadı · tekrar dokun veya şifreyle gir';
-      return;
+    if (done) return;
+    if (r === 'ok') {
+      done = true;
+      f.style.color = 'var(--ok)';
+      st.textContent = 'Açıldı';
+      f.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.08)' }, { transform: 'scale(1)' }], { duration: 420, easing: 'ease-out' });
+      await sleep(380);
+      await el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 380, fill: 'forwards' }).finished;
+      el.remove();
+      onDone();
+    } else if (r === 'gesture') {
+      // iOS otomatik başlatmaya izin vermedi: ekranın herhangi bir yerine tek dokunuş yeter
+      st.textContent = 'Açmak için dokun';
+      el.addEventListener(
+        'pointerup',
+        (e) => {
+          if (!(e.target as HTMLElement).closest('[data-pw]')) void attempt();
+        },
+        { once: true }
+      );
+    } else {
+      f.style.color = 'var(--danger)';
+      st.textContent = 'Yüz tanınamadı';
+      f.animate(
+        [{ transform: 'translateX(0)' }, { transform: 'translateX(-8px)' }, { transform: 'translateX(8px)' }, { transform: 'translateX(0)' }],
+        { duration: 320 }
+      );
+      await sleep(650);
+      toPassword();
     }
-    f.style.color = 'var(--ok)';
-    await sleep(320);
-    await el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 380, fill: 'forwards' }).finished;
+  };
+  f.addEventListener('click', () => void attempt());
+  $('[data-pw]', el).addEventListener('click', toPassword);
+  setTimeout(() => void attempt(), 450); // kendiliğinden başlar
+}
+
+/** Kilitten şifreyle giriş: SADECE şifre sayfası. Kişi zaten bilinir; "Kimsin?" ve gizli kelime YOK. */
+export function runPasswordUnlock(app: HTMLElement, onDone: () => void) {
+  const el = h(`<div class="auth pwlock">
+    <div class="brand"><div class="display">Bizim Gökyüzümüz</div><div class="sub">Tekrar hoş geldin ${PEOPLE[state.me].name}</div></div>
+    <div class="stage"><form novalidate>
+      <div class="eyebrow" style="margin:0 4px 10px">Şifren</div>
+      <div class="field"><input type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false" enterkeyhint="go" placeholder="Şifren">
+        <button type="button" class="pw-eye" aria-label="Şifreyi göster">${I.eye(19)}</button></div>
+      <p class="small hint" style="margin:10px 4px 18px" data-msg>Gökyüzünü açmak için şifreni yaz.</p>
+      <button class="btn btn-primary btn-block" type="submit">${I.star(17)} Gökyüzüne gir</button>
+      ${state.settings.faceId ? `<button type="button" class="back-link" data-face style="margin:8px auto 0;display:flex">${I.face(16)} Face ID ile dene</button>` : ''}
+    </form></div></div>`);
+  app.appendChild(el);
+  const form = $('form', el), inp = $<HTMLInputElement>('input', el);
+  el.animate([{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], { duration: 420, easing: E });
+  $('.pw-eye', el).addEventListener('click', () => {
+    inp.type = inp.type === 'password' ? 'text' : 'password';
+    inp.focus({ preventScroll: true });
+  });
+  el.querySelector('[data-face]')?.addEventListener('click', () => {
+    el.remove();
+    runLock(app, onDone);
+  });
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!inp.value) return err(form, 'Şifreni yazmalısın.');
+    (document.activeElement as HTMLElement | null)?.blur();
+    const b = $<HTMLButtonElement>('[type=submit]', form);
+    b.innerHTML = `${spinner()} Açılıyor`;
+    b.disabled = true;
+    if (isSupabaseConfigured) {
+      const dbWho = toDbWho(state.me);
+      const res = await signInWithPassword(USER_EMAILS[dbWho], inp.value, dbWho);
+      if (!res.ok) {
+        b.disabled = false;
+        b.innerHTML = `${I.star(17)} Gökyüzüne gir`;
+        err(form, 'Şifre yanlış.');
+        return;
+      }
+      await loadSavedKey();
+    } else {
+      await sleep(500);
+    }
+    await el.animate([{ opacity: 1 }, { opacity: 0, transform: 'translateY(-14px)' }], { duration: 380, easing: 'ease-in', fill: 'forwards' }).finished;
     el.remove();
     onDone();
-  };
-  $('[data-f]', el).addEventListener('click', () => void go());
-  $('[data-pw]', el).addEventListener('click', () => {
-    el.remove();
-    runAuth(app, onDone);
   });
+  setTimeout(() => inp.focus({ preventScroll: true }), 400);
 }
 
 async function maybeOfferSetupSheets(app: HTMLElement) {
+  if (app.querySelector('.page, .sheet, .board, .watch, .cdpage')) return;
   if (!hasBiometric() && !state.settings.faceId) {
     offerFaceId(app);
   } else if (getNotificationPermission() === 'default' && !state.settings.notify) {
@@ -236,7 +336,9 @@ export function offerFaceId(_app?: HTMLElement) {
   const s = openSheet(c, {
     onClose: () => {
       if (getNotificationPermission() === 'default' && !state.settings.notify) {
-        setTimeout(() => offerNotify(), 500);
+        setTimeout(() => {
+          if (!document.querySelector('.page, .sheet, .board, .watch, .cdpage')) offerNotify();
+        }, 500);
       }
     },
   });
@@ -298,7 +400,6 @@ function err(form: HTMLElement, msg: string) {
   f.classList.remove('shake');
   void f.offsetWidth;
   f.classList.add('shake');
-  // Korunan düzeltme: hata focus ile değil yalnızca yeni input girişinde temizlenir
   $('input', form).addEventListener(
     'input',
     () => {
@@ -316,12 +417,5 @@ export function applyPersona() {
   const r = document.documentElement.style;
   r.setProperty('--me', PEOPLE[state.me].color);
   r.setProperty('--partner', PEOPLE[state.partner].color);
-  const app = document.getElementById('app');
-  if (app) app.dataset.me = state.me;
-  if (core.sky) {
-    // Beto: sıcak ela ay ışığı; Ham ham: doğal gümüş-krem ay ışığı
-    core.sky.moonTint = state.me === 'beto' ? [1.0, 0.94, 0.82] : null;
-    if (core.engine) core.sky.refreshMoon(core.engine.sky.current);
-  }
   core.onPersona();
 }
