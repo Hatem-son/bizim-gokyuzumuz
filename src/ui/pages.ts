@@ -456,7 +456,6 @@ export function openSettings() {
       <div class="eyebrow group-title">Uygulama</div>
       <div class="group">
         <button type="button" class="set-row" data-guide><span class="si">${I.plusSq(17)}</span><span class="st">Ana ekrana ekle</span><span class="sv">${I.chevron(16)}</span></button>
-        <button type="button" class="set-row" data-test><span class="si">${I.spark(17)}</span><span class="st">Test paneli<div class="small" style="margin-top:3px">Animasyonları ve havayı bu telefonda dene</div></span><span class="sv">${I.chevron(16)}</span></button>
         <button type="button" class="set-row" data-about><span class="si">${I.info(17)}</span><span class="st">Sürüm</span><span class="sv">v${APP_VERSION}</span></button>
       </div>
       <div class="group" style="margin-top:22px">
@@ -534,7 +533,6 @@ export function openSettings() {
     })
   );
   $('[data-guide]', page).addEventListener('click', () => openGuide());
-  $('[data-test]', page).addEventListener('click', () => openTestPanel(page));
 
   let taps = 0;
   let tapReset = 0;
