@@ -150,16 +150,24 @@ export class SkyRenderer {
     const { cur, prev } = this.atmo;
     if (!cur) return;
     const P = this.g.panoW, f = c.getTransform().a || 1;
-    const xStart = -Math.round(mod(scrollX, P) * f) / f;
+    const x0 = -mod(scrollX, P);
+    // komşu parçaların kenarları aynı tam cihaz pikseline yuvarlanır (dikişte çizgi yok, üst üste binme yok)
+    const tile = (img: { w: number; img: CanvasImageSource }) => {
+      for (let i = 0; ; i++) {
+        const a = x0 + i * P; if (a >= W) break;
+        const l = Math.round(a * f) / f, r = Math.round((a + P) * f) / f;
+        c.drawImage(img.img, 0, 0, img.w, 1, l, 0, r - l, capH);
+      }
+    };
     const k = this.fade();
     c.globalCompositeOperation = 'source-over';
     c.clearRect(0, 0, W, capH);
     if (prev && k < 1) {
       c.globalAlpha = 1;
-      for (let x = xStart; x < W; x += P) c.drawImage(prev.img, 0, 0, prev.w, 1, x, 0, P, capH);
+      tile(prev);
       c.globalAlpha = k;
     }
-    for (let x = xStart; x < W; x += P) c.drawImage(cur.img, 0, 0, cur.w, 1, x, 0, P, capH);
+    tile(cur);
     c.globalAlpha = 1;
     if (this.dither) {
       c.globalCompositeOperation = 'soft-light';

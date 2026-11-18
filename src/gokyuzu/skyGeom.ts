@@ -52,16 +52,13 @@ export function skyToScreen(g: SkyGeom, alt: number, az: number, scrollX: number
 
 /** Periyodik bir dokuyu ekranı kaplayacak kadar yan yana çiz. Konum tuvalin GERÇEK piksel ızgarasına yuvarlanır:
  *  komşu döşemeler tam bitişir (ne boşluk ne çift çizim → dikişte ince çizgi oluşmaz, eklemeli ışıkta parlama olmaz). */
-export function drawWrapped(
-  c: CanvasRenderingContext2D,
-  img: CanvasImageSource,
-  g: SkyGeom,
-  scrollX: number,
-  y: number,
-  h: number,
-  extraOffset = 0,
-) {
+export function drawWrapped(c: CanvasRenderingContext2D, img: CanvasImageSource, g: SkyGeom, scrollX: number, y: number, h: number, extraOffset = 0) {
   const P = g.panoW, f = c.getTransform().a || 1;
-  let x = -Math.round(mod(scrollX - extraOffset, P) * f) / f;
-  for (; x < g.W; x += P) c.drawImage(img, x, y, P, h);
+  // Dikişsiz döşeme: her parçanın sol/sağ kenarı AYNI tam cihaz pikseline yuvarlanır (komşu parçalar arasında boşluk/çift pay kalmaz)
+  const x0 = -mod(scrollX - extraOffset, P);
+  for (let i = 0; ; i++) {
+    const a = x0 + i * P; if (a >= g.W) break;
+    const l = Math.round(a * f) / f, r = Math.round((a + P) * f) / f;
+    c.drawImage(img, l, y, r - l, h);
+  }
 }
