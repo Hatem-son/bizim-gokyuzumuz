@@ -27,7 +27,7 @@ function stampServiceWorkerVersion() {
           .map((f) => `  '/assets/${f}',`)
           .join('\n');
         if (assetUrls) {
-          next = next.replace("  '/icons/favicon-64.png',", `  '/icons/favicon-64.png',\n${assetUrls}`);
+          next = next.replace("  '/icons/favicon-32.png',", `  '/icons/favicon-32.png',\n${assetUrls}`);
         }
       }
 

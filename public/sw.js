@@ -1,12 +1,14 @@
-const CACHE_NAME = 'gk-v31';
+const CACHE_NAME = 'gk-v32';
 const SHELL_URLS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/icons/icon-180.png',
+  '/icons/apple-touch-icon.png',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
-  '/icons/favicon-64.png',
+  '/icons/icon-maskable-512.png',
+  '/icons/favicon.svg',
+  '/icons/favicon-32.png',
 ];
 
 self.addEventListener('install', (event) => {

@@ -14,7 +14,7 @@ import { SwipeHint } from '../gokyuzu/swipeHint';
 import { playIntro } from '../gokyuzu/intro';
 import { startWeather } from '../gokyuzu/weather';
 import { clamp, hash } from '../gokyuzu/util';
-import { initKeyboard } from '../gokyuzu/keyboard';
+import { installKeyboard } from './keyboard';
 import { Beach } from './beach';
 import { OceanHeart } from './ocean';
 import { PALM_CSS } from './palm';
@@ -76,22 +76,18 @@ function fitViewport() {
   const h = standalone() ? Math.max(window.innerHeight, window.screen.height) : window.innerHeight;
   document.documentElement.style.setProperty('--app-h', Math.round(h) + 'px');
   const ae = document.activeElement as HTMLElement | null;
-  const typing = !!ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName);
-  // iOS'a yeniden ölçtür (klavye açıkken/yazı alanı odaktayken yapma: display:none odağı düşürür)
-  if (standalone() && !typing && !document.documentElement.classList.contains('kb-open')) {
+  if (ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName)) return; // klavye açıkken yeniden ölçme (odak kaybolmasın)
+  if (standalone() && !document.documentElement.classList.contains('kb-open')) {
     app.style.display = 'none';
     void app.offsetHeight;
     app.style.display = '';
   }
 }
+installKeyboard();
 fitViewport();
 addEventListener('resize', fitViewport);
 addEventListener('pageshow', fitViewport);
 setTimeout(fitViewport, 300);
-
-initKeyboard({
-  hideWhenOpen: () => [...app.querySelectorAll<HTMLElement>('.dock, .gk-cons, .gk-edge, .gk-hint-txt')],
-});
 
 // GERÇEK ekran boyutu: getBoundingClientRect() / clientHeight'tan alınır ve resize/pageshow/orientationchange'de yeniden ölçülür
 function measureApp() {

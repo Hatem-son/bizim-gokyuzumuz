@@ -1,5 +1,6 @@
 // Giriş akışı: Kimsin → Şifre → Gizli kelime → (Face ID önerisi) → (Bildirim izni).
 // Dönüşte: Face ID kilit ekranı (otomatik başlar; okuyamazsa/iptal edilirse doğrudan ayrı şifre sayfası runPasswordUnlock).
+import { greeting } from './greet';
 import { core } from './core';
 import { h, $, $$, openSheet, sleep, reduced, stagger, toast } from './ui';
 import { I, SIGN } from './icons';
@@ -206,7 +207,7 @@ export const faceAuth = {
 export function runLock(app: HTMLElement, onDone: () => void) {
   const el = h(`<div class="auth lock" style="justify-content:center">
     <div class="center" style="margin-top:-60px"><div class="display" style="font-size:42px">Bizim Gökyüzümüz</div>
-    <div style="font:italic 500 19px var(--serif);color:var(--text-2);margin-top:10px">Tekrar hoş geldin ${PEOPLE[state.me].name}</div></div>
+    <div style="font:italic 500 19px var(--serif);color:var(--text-2);margin-top:10px">${greeting()}</div></div>
     <div style="position:absolute;left:24px;right:24px;bottom:calc(var(--safe-b) + 28px)" class="center">
       <button type="button" class="faceid glass press" data-f aria-label="Face ID ile aç">${I.face(36)}</button>
       <div class="small" data-st>Face ID</div>
@@ -271,7 +272,7 @@ export function runLock(app: HTMLElement, onDone: () => void) {
 /** Kilitten şifreyle giriş: SADECE şifre sayfası. Kişi zaten bilinir; "Kimsin?" ve gizli kelime YOK. */
 export function runPasswordUnlock(app: HTMLElement, onDone: () => void) {
   const el = h(`<div class="auth pwlock">
-    <div class="brand"><div class="display">Bizim Gökyüzümüz</div><div class="sub">Tekrar hoş geldin ${PEOPLE[state.me].name}</div></div>
+    <div class="brand"><div class="display">Bizim Gökyüzümüz</div><div class="sub">${greeting()}</div></div>
     <div class="stage"><form novalidate>
       <div class="eyebrow" style="margin:0 4px 10px">Şifren</div>
       <div class="field"><input type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false" enterkeyhint="go" placeholder="Şifren">
