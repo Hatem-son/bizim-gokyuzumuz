@@ -60,14 +60,14 @@ alter policy "media_delete_allowed" on storage.objects to authenticated;
 -- 5) Storage: bucket private
 update storage.buckets set public = false where id = 'media';
 
--- 5b) Özel Realtime kanalları ('pair:live' ve 'pair:draw'): yalnızca iki izinli profil
+-- 5b) Özel Realtime kanalları ('sky:*', 'pair:live', 'pair:draw'): yalnızca iki izinli profil
 alter table realtime.messages enable row level security;
 drop policy if exists "pair_realtime_select_allowed" on realtime.messages;
 create policy "pair_realtime_select_allowed"
   on realtime.messages for select
   to authenticated
   using (
-    realtime.topic() in ('pair:live', 'pair:draw')
+    (realtime.topic() like 'sky:%' or realtime.topic() in ('pair:live', 'pair:draw'))
     and public.is_allowed_user()
   );
 drop policy if exists "pair_realtime_insert_allowed" on realtime.messages;
@@ -75,9 +75,28 @@ create policy "pair_realtime_insert_allowed"
   on realtime.messages for insert
   to authenticated
   with check (
-    realtime.topic() in ('pair:live', 'pair:draw')
+    (realtime.topic() like 'sky:%' or realtime.topic() in ('pair:live', 'pair:draw'))
     and public.is_allowed_user()
   );
+
+-- 5c) public.stars.kind kısıtına 'draw' ve 'text' türlerini ekle (06-draw-kind.sql)
+do $$
+declare
+  r record;
+begin
+  for r in
+    select c.conname
+    from pg_constraint c
+    where c.conrelid = 'public.stars'::regclass
+      and c.contype = 'c'
+      and pg_get_constraintdef(c.oid) ilike '%kind%'
+  loop
+    execute format('alter table public.stars drop constraint %I', r.conname);
+  end loop;
+  alter table public.stars
+    add constraint stars_kind_check
+    check (kind in ('note', 'miss', 'text', 'photo', 'voice', 'draw'));
+end $$;
 
 -- 6) Kullanılmayan/geniş politika kalmadığından emin ol: `using (true)` olanlar listelenir (BOŞ dönmeli)
 select schemaname, tablename, policyname, roles, qual, with_check

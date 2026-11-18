@@ -11,7 +11,7 @@ create policy "pair_realtime_select_allowed"
   on realtime.messages for select
   to authenticated
   using (
-    realtime.topic() in ('pair:live', 'pair:draw')
+    (realtime.topic() like 'sky:%' or realtime.topic() in ('pair:live', 'pair:draw'))
     and public.is_allowed_user()
   );
 
@@ -20,7 +20,7 @@ create policy "pair_realtime_insert_allowed"
   on realtime.messages for insert
   to authenticated
   with check (
-    realtime.topic() in ('pair:live', 'pair:draw')
+    (realtime.topic() like 'sky:%' or realtime.topic() in ('pair:live', 'pair:draw'))
     and public.is_allowed_user()
   );
 

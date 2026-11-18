@@ -22,6 +22,27 @@ export type DrawLivePacket =
 const LW = 1000, LH = 1333;
 const COLORS = ['#ffffff', '#9db6ff', '#ffadcc', '#e3b866', '#9bb06a', '#b9a2ff', '#ff8a7a', '#ffe08a'];
 const SIZES = [4, 9, 18];
+export const DRAW_DRAFT_KEY = 'gokyuzu.drawDraft.v1';
+
+export function loadSavedDrawingDraft(): Stroke[] | null {
+  try {
+    const raw = localStorage.getItem(DRAW_DRAFT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length > 0 ? (parsed as Stroke[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveDrawingDraft(strokes: Stroke[] | null): void {
+  try {
+    if (!strokes || !strokes.length) localStorage.removeItem(DRAW_DRAFT_KEY);
+    else localStorage.setItem(DRAW_DRAFT_KEY, JSON.stringify(strokes));
+  } catch {
+    // Ignore quota errors
+  }
+}
 
 /** Çizgileri tuvale çiz. upTo: ms (yeniden oynatma için), yoksa tümü. */
 export function renderDrawing(cv: HTMLCanvasElement, strokes: Stroke[], _scale = 1, upTo = Infinity) {
@@ -89,10 +110,14 @@ export function openBoard(existing?: Stroke[] | null): Promise<Stroke[] | null> 
   return new Promise((resolve) => {
     const p = PEOPLE[state.partner];
     let color = COLORS[2], tool: Stroke['k'] = 'pen', size = 1, live = false;
-    const strokes: Stroke[] = existing ? existing.map((s) => ({ ...s, p: s.p.map((q) => [...q] as [number, number, number]) })) : [];
+    const initialStrokes = existing && existing.length ? existing : loadSavedDrawingDraft();
+    const strokes: Stroke[] = initialStrokes
+      ? initialStrokes.map((s) => ({ ...s, p: s.p.map((q) => [...q] as [number, number, number]) }))
+      : [];
     const redo: Stroke[] = [];
     let totalPts = strokes.reduce((acc, s) => acc + s.p.length, 0);
     let seq = 0;
+    let submitting = false;
 
     const partnerHere = () => Boolean(document.querySelector('.lantern.partner.on'));
     const el = h(`<div class="board" role="dialog" aria-label="Çizim tahtası">
@@ -130,8 +155,9 @@ export function openBoard(existing?: Stroke[] | null): Promise<Stroke[] | null> 
     setSize();
     const redraw = () => renderDrawing(cv, strokes);
     const update = () => {
-      ($('[data-done]', el) as HTMLButtonElement).disabled = !strokes.length;
+      if (!submitting) ($('[data-done]', el) as HTMLButtonElement).disabled = !strokes.length;
       $('.ph', el).style.opacity = strokes.length ? '0' : '1';
+      saveDrawingDraft(strokes);
     };
     requestAnimationFrame(() => {
       redraw();
@@ -210,7 +236,10 @@ export function openBoard(existing?: Stroke[] | null): Promise<Stroke[] | null> 
       pendingStrokeIdx = strokes.length - 1;
       pendingMeta = { k: cur.k, c: cur.c, s: cur.s };
       pendingPts.push(pt);
-      if (live && !batchTimer) batchTimer = window.setTimeout(flushBatch, 70);
+      if (live) {
+        core.setMyLiveActivity('drawing');
+        if (!batchTimer) batchTimer = window.setTimeout(flushBatch, 80);
+      }
       redraw();
       update();
     });
@@ -229,7 +258,8 @@ export function openBoard(existing?: Stroke[] | null): Promise<Stroke[] | null> 
         if (live) pendingPts.push(pt);
       }
       if (live && pendingPts.length && !batchTimer) {
-        batchTimer = window.setTimeout(flushBatch, 70);
+        core.setMyLiveActivity('drawing');
+        batchTimer = window.setTimeout(flushBatch, 80);
       }
       redraw();
     });
@@ -322,11 +352,21 @@ export function openBoard(existing?: Stroke[] | null): Promise<Stroke[] | null> 
       resolve(res);
     };
     $('[data-cancel]', el).addEventListener('click', async () => {
+      if (submitting) return;
       if (!strokes.length || (await confirmSheet('Çizimden çıkılsın mı?', 'Çizdiklerin kaydedilmeyecek.', 'Çık', true))) {
+        saveDrawingDraft(null);
         await close(null);
       }
     });
-    $('[data-done]', el).addEventListener('click', () => void close(strokes.slice()));
+    $('[data-done]', el).addEventListener('click', () => {
+      if (submitting || !strokes.length) return;
+      submitting = true;
+      const doneBtn = $<HTMLButtonElement>('[data-done]', el);
+      doneBtn.disabled = true;
+      doneBtn.textContent = 'Gönderiliyor…';
+      saveDrawingDraft(strokes);
+      void close(strokes.slice());
+    });
   });
 }
 
@@ -446,6 +486,11 @@ export function openWatch(onDone?: (strokes: Stroke[]) => void, simStrokes?: Str
     simRaf = requestAnimationFrame(stepSim);
   } else {
     core.sendDrawPacket({ t: 'hello', seq: Date.now() });
+    setTimeout(() => {
+      if (!closed && el.isConnected && !strokes.length) {
+        core.sendDrawPacket({ t: 'hello', seq: Date.now() });
+      }
+    }, 650);
   }
 
   const close = async () => {

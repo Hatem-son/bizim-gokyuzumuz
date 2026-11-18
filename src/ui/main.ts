@@ -38,7 +38,7 @@ setTimeout(() => void lazyPages(), 4000); // boşta önceden ısıt
 import { runAuth, runLock, applyPersona } from './auth';
 import { I } from './icons';
 import { registerServiceWorker } from '../lib/pwa';
-import { isSupabaseConfigured, getSessionFast, inferWhoFromEmail, signOutSupabase } from '../lib/supabase';
+import { isSupabaseConfigured, getSessionFast, getSessionAndProfile, inferWhoFromEmail, signOutSupabase } from '../lib/supabase';
 import { loadSavedKey, clearActiveKey } from '../lib/crypto';
 import { hasBiometric, BACKGROUND_LOCK_MS } from '../lib/lock';
 import { STORAGE_KEYS, store } from '../lib/storage';
@@ -588,7 +588,13 @@ function tapSky(e: PointerEvent) {
 // ---------- Supabase StarRecord -> UI Star dönüşümü (360° dünya koordinatı) ----------
 export function mapRecordToStar(rec: StarRecord, allRecords: StarRecord[], visible = true): Star {
   const kind: Kind =
-    rec.kind === 'photo' ? 'photo' : rec.kind === 'voice' ? 'voice' : rec.kind === 'draw' ? 'draw' : 'text';
+    rec.kind === 'photo'
+      ? 'photo'
+      : rec.kind === 'voice'
+        ? 'voice'
+        : rec.kind === 'draw' || (rec.kind === 'note' && rec.hasMedia)
+          ? 'draw'
+          : 'text';
   const x = mod((rec.x / 100) * geom.panoW, geom.panoW);
   const y = Math.max(70, Math.min(HORIZON - 56, 70 + (rec.y / 100) * (HORIZON - 130)));
   const unlockAt = rec.unlockAt ? Date.parse(rec.unlockAt) : undefined;
@@ -724,11 +730,14 @@ window.addEventListener('offline', () => void syncOfflineAndOutbox());
 
 /** Tek kalıcı Realtime aboneliği: kimlik doğrulama biter bitmez kurulur; ekran değişince yeniden kurulmaz. */
 function ensureRealtimeStarted() {
-  if (!isSupabaseConfigured) return;
+  if (!isSupabaseConfigured) {
+    pairRealtime.start(toDbWho(state.me));
+    return;
+  }
   const dbMe = toDbWho(state.me);
+  pairRealtime.start(dbMe);
   if (realtimeActiveWho === dbMe) return;
   realtimeActiveWho = dbMe;
-  pairRealtime.start(dbMe);
   stopStarsRealtime?.();
   stopStarsRealtime = subscribeStarsRealtime(dbMe, {
     onInsert: (rec) => {
@@ -764,6 +773,10 @@ function ensureRealtimeStarted() {
         if (!stNew.unlockAt || stNew.unlockAt <= getServerNowMs()) {
           void decryptStarPayload(rec, dbMe)
             .then((pl) => {
+              if (pl.subkind === 'draw' || pl.mime === 'application/gzip') {
+                stNew.kind = 'draw';
+                rec.kind = 'draw';
+              }
               stNew.text = pl.text || undefined;
               stNew.caption = pl.caption;
               if (pl.dur) stNew.voiceSec = pl.dur;
@@ -794,8 +807,10 @@ async function resolveBootMode(): Promise<'auth' | 'lock' | 'home'> {
     if (!savedMe || !hasKey) return 'auth';
     return state.settings.faceId ? 'lock' : 'home';
   }
-  const { session, networkFailed } = await getSessionFast();
-  if (session?.user?.email) {
+  const { session, profile, networkFailed } = await getSessionAndProfile();
+  if (profile?.who) {
+    setMe(toUiWho(profile.who));
+  } else if (session?.user?.email) {
     const inferred = inferWhoFromEmail(session.user.email);
     if (inferred) setMe(toUiWho(inferred));
   }
@@ -805,7 +820,6 @@ async function resolveBootMode(): Promise<'auth' | 'lock' | 'home'> {
 }
 
 async function enterHome(preloaded = false, fadeDelay = 150) {
-  ensureRealtimeStarted();
   if (!preloaded) {
     await loadStarsFromBackend();
   }
@@ -831,6 +845,7 @@ async function enterHome(preloaded = false, fadeDelay = 150) {
   starsShown = true;
   for (const t of state.stars) t.visible = true; // yıldızlar hazır yerinde
   core.refreshHome();
+  ensureRealtimeStarted();
   void syncOfflineAndOutbox();
 
   const sp = new URLSearchParams(location.search);
@@ -1006,7 +1021,10 @@ document.addEventListener('visibilitychange', () => {
       inHome = false;
       runLock(app, () => {
         inHome = true;
+        ensureRealtimeStarted();
       });
+    } else if (inHome) {
+      ensureRealtimeStarted();
     }
   }
 });

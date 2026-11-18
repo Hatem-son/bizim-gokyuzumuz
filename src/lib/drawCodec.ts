@@ -1,10 +1,13 @@
 // Çizim vektör verisi sıkıştırma/açma: 1000×1333 mantıksal tuval, en çok 400 çizgi, 30 000 nokta, sıkıştırılmış ≤ 200 KB.
-// Delta kodlama + gzip (CompressionStream), ardından crypto.ts ile AES-GCM şifrelenir.
+// Ramer–Douglas–Peucker (1.5 birim eşik) + tam sayıya yuvarlama + delta kodlama + gzip (CompressionStream), ardından AES-GCM.
 import type { Stroke } from '../ui/draw';
 
 export const MAX_STROKES = 400;
 export const MAX_POINTS = 30_000;
 export const MAX_COMPRESSED_BYTES = 200 * 1024;
+const RDP_EPSILON = 1.5;
+
+type Pt = [number, number, number];
 
 type PackedStroke = {
   k: 'pen' | 'glow' | 'erase';
@@ -21,18 +24,64 @@ type PackedDoc = {
 const TE = new TextEncoder();
 const TD = new TextDecoder();
 
+/** Noktanın (p) a–b doğru parçasına dik uzaklığı. */
+function perpDist(p: Pt, a: Pt, b: Pt): number {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const len2 = dx * dx + dy * dy;
+  if (len2 === 0) return Math.hypot(p[0] - a[0], p[1] - a[1]);
+  const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2));
+  const projX = a[0] + t * dx;
+  const projY = a[1] + t * dy;
+  return Math.hypot(p[0] - projX, p[1] - projY);
+}
+
+/** Ramer–Douglas–Peucker çizgi sadeleştirme (1.5 birim eşik). */
+export function simplifyRdp(pts: Pt[], eps = RDP_EPSILON): Pt[] {
+  if (pts.length <= 2) return pts;
+  const keep = new Uint8Array(pts.length);
+  keep[0] = 1;
+  keep[pts.length - 1] = 1;
+  const stack: [number, number][] = [[0, pts.length - 1]];
+  while (stack.length > 0) {
+    const [first, last] = stack.pop()!;
+    if (last <= first + 1) continue;
+    let maxDist = 0;
+    let index = first;
+    const a = pts[first];
+    const b = pts[last];
+    for (let i = first + 1; i < last; i++) {
+      const d = perpDist(pts[i], a, b);
+      if (d > maxDist) {
+        index = i;
+        maxDist = d;
+      }
+    }
+    if (maxDist > eps) {
+      keep[index] = 1;
+      stack.push([first, index], [index, last]);
+    }
+  }
+  const out: Pt[] = [];
+  for (let i = 0; i < pts.length; i++) {
+    if (keep[i]) out.push(pts[i]);
+  }
+  return out;
+}
+
 export function clampStrokes(strokes: Stroke[]): Stroke[] {
   const out: Stroke[] = [];
   let totalPts = 0;
   for (const st of strokes.slice(0, MAX_STROKES)) {
     if (totalPts >= MAX_POINTS) break;
-    const allow = Math.min(st.p.length, MAX_POINTS - totalPts);
+    const simplified = simplifyRdp(st.p, RDP_EPSILON);
+    const allow = Math.min(simplified.length, MAX_POINTS - totalPts);
     if (allow <= 0) break;
     out.push({
       k: st.k,
       c: st.c,
       s: Math.round(st.s * 10) / 10,
-      p: st.p.slice(0, allow).map(([x, y, t]) => [Math.round(x), Math.round(y), Math.max(0, Math.round(t))]),
+      p: simplified.slice(0, allow).map(([x, y, t]) => [Math.round(x), Math.round(y), Math.max(0, Math.round(t))]),
     });
     totalPts += allow;
   }

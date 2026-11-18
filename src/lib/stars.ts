@@ -12,6 +12,8 @@ export interface StarPayloadData {
   mime?: string;
   dur?: number;
   peaks?: number[];
+  subkind?: StarKind;
+  inlineMedia?: string;
 }
 
 interface DbStarRow {
@@ -415,8 +417,13 @@ export async function prepareEncryptedStar(params: {
         ? +Math.min(10.5, 7.5 + textLen / 120).toFixed(1)
         : 9;
 
-  const sealedPayload = await sealJSON(params.data);
   const sealedMedia = params.mediaBytes ? await sealBytes(params.mediaBytes) : null;
+  const payloadWithInline: StarPayloadData = {
+    ...params.data,
+    subkind: params.kind,
+    ...(sealedMedia && sealedMedia.length <= 750_000 ? { inlineMedia: sealedMedia } : {}),
+  };
+  const sealedPayload = await sealJSON(payloadWithInline);
 
   return {
     id,
@@ -474,41 +481,56 @@ export async function uploadPreparedStar(env: PreparedStarEnvelope): Promise<Sta
     const uid = userRes.user?.id;
     if (!uid) throw new Error('Oturum açık değil.');
 
+    let storageUploaded = false;
     if (env.sealedMedia) {
       const blob = new Blob([env.sealedMedia], { type: 'text/plain;charset=utf-8' });
       const { error: uploadErr } = await sb.storage.from('media').upload(env.id, blob, {
         contentType: 'text/plain',
         upsert: false,
       });
-      if (uploadErr && !/already exists|duplicate/i.test(uploadErr.message || '')) {
-        if (isOfflineLikeError(uploadErr)) {
-          throw new OfflineNetworkError('Şifreli medya çevrimdışı nedeniyle gönderilemedi.');
-        }
+      if (!uploadErr || /already exists|duplicate/i.test(uploadErr.message || '')) {
+        storageUploaded = true;
+      } else if (isOfflineLikeError(uploadErr)) {
+        throw new OfflineNetworkError('Şifreli medya çevrimdışı nedeniyle gönderilemedi.');
+      } else if (env.sealedMedia.length > 750_000) {
         throw new Error('Şifreli medya yüklenemedi.');
       }
     }
 
-    const { data: inserted, error: insertErr } = await sb
+    const buildStarInsert = (k: StarKind) => ({
+      id: env.id,
+      from_user: uid,
+      kind: k,
+      x: env.x,
+      y: env.y,
+      size: env.size,
+      once: env.once,
+      spent: false,
+      has_media: env.hasMedia,
+      unlock_at: env.unlockAt,
+      unlock_notified: false,
+      unlock_push_sent: false,
+    });
+
+    let { data: inserted, error: insertErr } = await sb
       .from('stars')
-      .insert({
-        id: env.id,
-        from_user: uid,
-        kind: env.kind,
-        x: env.x,
-        y: env.y,
-        size: env.size,
-        once: env.once,
-        spent: false,
-        has_media: env.hasMedia,
-        unlock_at: env.unlockAt,
-        unlock_notified: false,
-        unlock_push_sent: false,
-      })
+      .insert(buildStarInsert(env.kind))
       .select('id, from_user, kind, x, y, size, once, spent, has_media, created_at, opened_at, unlock_at, unlock_notified, unlock_push_sent')
       .single();
 
+    // 06-draw-kind.sql henüz çalıştırılmadıysa stars_kind_check 'draw'/'text' değerini reddedebilir → 'note' ile kaydet (şifreli payload içinde subkind:'draw' korunur)
+    if ((insertErr || !inserted) && (env.kind === 'draw' || env.kind === 'text') && !isOfflineLikeError(insertErr)) {
+      const retry = await sb
+        .from('stars')
+        .insert(buildStarInsert('note'))
+        .select('id, from_user, kind, x, y, size, once, spent, has_media, created_at, opened_at, unlock_at, unlock_notified, unlock_push_sent')
+        .single();
+      inserted = retry.data;
+      insertErr = retry.error;
+    }
+
     if (insertErr || !inserted) {
-      if (env.sealedMedia) {
+      if (storageUploaded) {
         await sb.storage.from('media').remove([env.id]).catch(() => undefined);
       }
       if (isOfflineLikeError(insertErr)) {
@@ -520,7 +542,7 @@ export async function uploadPreparedStar(env: PreparedStarEnvelope): Promise<Sta
     const { error: secretErr } = await sb.from('star_secrets').insert({
       star_id: env.id,
       payload: env.sealedPayload,
-      media_path: env.sealedMedia ? env.id : null,
+      media_path: storageUploaded ? env.id : null,
       once: env.once,
     });
 
@@ -530,7 +552,7 @@ export async function uploadPreparedStar(env: PreparedStarEnvelope): Promise<Sta
       } catch {
         // Ignore cleanup errors
       }
-      if (env.sealedMedia) {
+      if (storageUploaded) {
         await sb.storage.from('media').remove([env.id]).catch(() => undefined);
       }
       if (isOfflineLikeError(secretErr)) {
@@ -541,6 +563,7 @@ export async function uploadPreparedStar(env: PreparedStarEnvelope): Promise<Sta
 
     const whoMap = await getUserWhoMap();
     const star = mapDbRow(inserted as DbStarRow, whoMap, env.from);
+    if (env.kind === 'draw') star.kind = 'draw';
 
     void triggerPushNotification({
       sender: env.from,
@@ -637,7 +660,19 @@ export async function downloadAndDecryptMedia(
 
   try {
     const secret = await fetchStarSecret(star, caller);
-    const path = secret?.mediaPath;
+    if (!secret) return null;
+
+    // 1) Şifreli payload içinde inlineMedia varsa doğrudan oradan çöz (Storage ağ turuna gerek kalmaz)
+    try {
+      const pl = await openJSON<StarPayloadData>(secret.payload);
+      if (pl?.inlineMedia) {
+        return await openBytes(pl.inlineMedia);
+      }
+    } catch {
+      // Yedek olarak Storage yoluna devam et
+    }
+
+    const path = secret.mediaPath;
     if (!path) return null;
 
     const sb = getSupabase()!;

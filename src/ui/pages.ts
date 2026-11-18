@@ -57,12 +57,16 @@ async function ensureDecrypted(st: Star): Promise<'ok' | 'locked' | 'network'> {
 
   try {
     const payload = await decryptStarPayload(st.raw, toDbWho(state.me));
+    if (payload.subkind === 'draw' || payload.mime === 'application/gzip') {
+      st.kind = 'draw';
+      st.raw.kind = 'draw';
+    }
     st.text = payload.text || (st.raw.kind === 'miss' ? 'Seni düşündüm.' : '');
     st.caption = payload.caption;
     if (payload.dur) st.voiceSec = payload.dur;
     if (payload.peaks) st.voicePeaks = payload.peaks;
 
-    if (st.raw.hasMedia) {
+    if (st.raw.hasMedia || payload.inlineMedia) {
       const bytes = await downloadAndDecryptMedia(st.raw, toDbWho(state.me));
       if (bytes) {
         if (st.kind === 'photo') {
@@ -411,6 +415,13 @@ export function openArchive() {
       if (incoming && s.opened && !locked && s.kind === 'text' && s.text === undefined && s.raw) {
         void decryptStarPayload(s.raw, toDbWho(state.me))
           .then((pl) => {
+            if (pl.subkind === 'draw' || pl.mime === 'application/gzip') {
+              s.kind = 'draw';
+              if (s.raw) s.raw.kind = 'draw';
+              const t1El = row.querySelector('.t1');
+              if (t1El) t1El.textContent = 'Bir çizim';
+              return;
+            }
             s.text = pl.text || 'Seni düşündüm.';
             const t1El = row.querySelector('.t1');
             if (t1El) t1El.textContent = s.text;

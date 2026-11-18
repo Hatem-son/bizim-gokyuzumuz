@@ -62,10 +62,21 @@
 .lockline { display: flex; align-items: center; gap: 7px; margin-top: 12px; }
 .pick { height: 188px; border-radius: var(--r-l); border: 1.5px dashed rgba(255,255,255,.2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text-2); position: relative; }
 .pick input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-.photo-prev { display: flex; gap: 14px; align-items: flex-start; }
-.photo-prev .polaroid { width: 132px; margin: 4px 0 0 2px; padding: 7px 7px 22px; }
+.photo-prev { display: flex; flex-direction: column; gap: 14px; }
+.photo-prev .photo-top { display: flex; gap: 14px; align-items: center; }
+.photo-prev .polaroid { width: 112px; margin: 2px 0 0 2px; padding: 6px 6px 18px; flex: none; }
 .photo-prev .polaroid img { aspect-ratio: 4/5; }
-.photo-prev .cap { flex: 1; }
+.photo-prev .cap { width: 100%; }
+.photo-prev .cap-head { display: flex; justify-content: space-between; align-items: center; margin: 0 4px 7px; }
+.photo-prev .cap textarea {
+  width: 100%; min-height: 98px; border-radius: var(--r-m); border: 1px solid var(--glass-line);
+  background: rgba(255,255,255,.06); padding: 12px 14px; resize: none; outline: none;
+  font: italic 500 19px/1.35 var(--serif); color: var(--text); caret-color: var(--partner);
+  -webkit-user-select: text !important; user-select: text !important;
+  touch-action: manipulation !important; pointer-events: auto !important;
+}
+.photo-prev .cap textarea:focus { border-color: rgba(255,255,255,.34); background: rgba(255,255,255,.09); }
+.photo-prev .cap textarea::placeholder { color: var(--text-3); }
 .rec { display: flex; flex-direction: column; align-items: center; gap: 14px; padding-top: 6px; }
 .rec-btn { width: 76px; height: 76px; border-radius: 50%; display: grid; place-items: center; background: #f3ecdf; color: #171a2e; position: relative; transition: transform .2s var(--e-out); }
 .rec-btn:active { transform: scale(.94); }

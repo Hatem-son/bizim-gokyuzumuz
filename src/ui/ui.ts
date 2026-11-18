@@ -54,7 +54,7 @@ function dragToDismiss(sheet: HTMLElement, close: () => void) {
   sheet.addEventListener('pointerdown', (e) => {
     const tgt = e.target as HTMLElement;
     const scroller = tgt.closest('[data-scroll]') as HTMLElement | null;
-    if (tgt.closest('input,textarea,button,select,canvas,[data-nodrag]') || (scroller && scroller.scrollTop > 0) || sheet.scrollTop > 0) return;
+    if (tgt.closest('input,textarea,button,select,label,canvas,.field,.cap,[data-nodrag]') || (scroller && scroller.scrollTop > 0) || sheet.scrollTop > 0) return;
     active = true; y0 = e.clientY; t0 = performance.now(); dy = 0;
     sheet.setPointerCapture(e.pointerId);
   });

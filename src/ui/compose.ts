@@ -17,6 +17,7 @@ import {
 import { enqueueEncryptedStar } from '../lib/outbox';
 import { isStarHazel } from '../lib/hazel';
 import { STORAGE_KEYS, store } from '../lib/storage';
+import { loadSavedDrawingDraft, saveDrawingDraft } from './draw';
 import type { StarKind } from '../types';
 
 const QUICK = ['Seni özledim', 'Günaydın', 'İyi geceler', 'Aklımdasın', 'Seni seviyorum', '9 Ocak yakında'];
@@ -39,7 +40,7 @@ export function openCompose(initial: Kind = 'text', restored?: ComposeDraft) {
   let savedCaption = restored?.caption ?? '';
   let photo: CompressedPhoto | null = restored?.photo ?? null;
   let voice: RecordedVoice | null = restored?.voice ?? null;
-  let drawing: unknown[] | null = restored?.drawing ?? null;
+  let drawing: unknown[] | null = restored?.drawing ?? loadSavedDrawingDraft();
   let timed: number | null = restored?.timed ?? null;
   let activeRecorder: VoiceRecorder | null = null;
   let handingOff = false;
@@ -114,11 +115,14 @@ export function openCompose(initial: Kind = 'text', restored?: ComposeDraft) {
           b.animate([{ transform: 'scale(.92)' }, { transform: 'scale(1)' }], { duration: 260, easing: 'cubic-bezier(.3,1.4,.5,1)' });
         })
       );
+      ta.addEventListener('focus', () => {
+        if (ta.value.trim()) core.setMyLiveActivity('writing');
+      });
       ta.addEventListener('input', () => {
         savedText = ta.value;
         store.set(draftKey, savedText);
         $('[data-cnt]', v).textContent = `${ta.value.length} / 600`;
-        if (ta.value.trim()) core.setMyLiveActivity('writing');
+        core.setMyLiveActivity(ta.value.trim() ? 'writing' : 'idle');
         valid();
       });
       body.appendChild(v);
@@ -130,6 +134,7 @@ export function openCompose(initial: Kind = 'text', restored?: ComposeDraft) {
           const f = (e.target as HTMLInputElement).files?.[0];
           if (!f) return;
           try {
+            core.setMyLiveActivity('photo');
             photo = await compressImage(f);
             render();
           } catch {
@@ -138,17 +143,42 @@ export function openCompose(initial: Kind = 'text', restored?: ComposeDraft) {
         });
         body.appendChild(v);
       } else {
-        const v = h(`<div class="photo-prev">
-          <figure class="polaroid"><img src="${photo.preview}" alt=""></figure>
-          <div class="cap"><div class="field"><textarea rows="3" placeholder="Bir not ekle" maxlength="120" style="resize:none;padding:12px 14px;font:italic 500 18px/1.3 var(--serif)"></textarea></div>
-          <button type="button" class="chip" style="margin-top:10px" data-change>${I.camera(15)}<span>Değiştir</span></button></div></div>`);
+        const v = h(`<div class="photo-prev" data-nodrag>
+          <div class="photo-top">
+            <figure class="polaroid"><img src="${photo.preview}" alt=""></figure>
+            <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start">
+              <div class="small">Fotoğraf hazır · cihazında şifrelenecek</div>
+              <button type="button" class="chip" data-change>${I.camera(15)}<span>Fotoğrafı değiştir</span></button>
+            </div>
+          </div>
+          <div class="cap" data-nodrag>
+            <div class="cap-head"><span class="eyebrow">Fotoğrafa bir not yaz</span><span class="small" data-cap-cnt>0 / 120</span></div>
+            <textarea rows="4" placeholder="Bu kareye bir not bırak…" maxlength="120" enterkeyhint="done" autocapitalize="sentences"></textarea>
+          </div></div>`);
         const capTa = $<HTMLTextAreaElement>('textarea', v);
+        const capCnt = $('[data-cap-cnt]', v);
         capTa.value = savedCaption;
-        capTa.addEventListener('input', () => { savedCaption = capTa.value; });
-        $('[data-change]', v).addEventListener('click', () => { photo = null; render(); });
+        capCnt.textContent = `${capTa.value.length} / 120`;
+        capTa.addEventListener('focus', () => core.setMyLiveActivity('photo'));
+        capTa.addEventListener('input', () => {
+          savedCaption = capTa.value;
+          capCnt.textContent = `${capTa.value.length} / 120`;
+          core.setMyLiveActivity('photo');
+        });
+        capTa.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter' && !ev.shiftKey) {
+            ev.preventDefault();
+            capTa.blur();
+          }
+        });
+        $('[data-change]', v).addEventListener('click', () => {
+          photo = null;
+          render();
+        });
         body.appendChild(v);
       }
     } else if (mode === 'voice') {
+      core.setMyLiveActivity('voice');
       body.appendChild(
         voiceUI(
           (rec) => {
@@ -167,9 +197,12 @@ export function openCompose(initial: Kind = 'text', restored?: ComposeDraft) {
       if (drawing?.length) core.renderDrawingPreview($<HTMLCanvasElement>('canvas', v), drawing);
       v.addEventListener('click', async () => {
         const res = await core.openBoard(drawing);
-        if (res) {
+        if (res && res.length) {
           drawing = res;
           render();
+          valid();
+          // Bitti'ye basıldığında çizim yıldız olarak doğrudan gönderilir
+          if (!send.disabled) send.click();
         }
       });
       body.appendChild(v);
@@ -235,7 +268,8 @@ export function openCompose(initial: Kind = 'text', restored?: ComposeDraft) {
       timed,
     };
     await flyAway(sheet, snapshot, () => {
-      store.del(draftKey);
+      if (snapshot.mode === 'text') store.del(draftKey);
+      if (snapshot.mode === 'draw') saveDrawingDraft(null);
     });
   });
 }
@@ -348,7 +382,11 @@ async function flyAway(sheet: Sheet, draft: ComposeDraft, onClearDraft: () => vo
 
   if (!res.ok) {
     openCompose(draft.mode, draft);
-    toast('Gönderilemedi, tekrar dene', I.info(14), 3400);
+    toast(
+      draft.mode === 'draw' ? 'Çizim gönderilemedi · tekrar dene' : 'Gönderilemedi, tekrar dene',
+      I.info(14),
+      3600
+    );
     return;
   }
 
