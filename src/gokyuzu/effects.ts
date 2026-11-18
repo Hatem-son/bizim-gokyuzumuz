@@ -179,8 +179,8 @@ export class Effects {
 }
 
 /**
- * Gönderilen (kalıcı) yıldızı çiz: parlak çekirdek, küçük hale, çok ince 4 difraksiyon ışını (teleskop
- * fotoğraflarındaki gibi), kişinin renginden yalnızca hafif bir ton. Gündüz koyu ince kontur ile okunur.
+ * Gönderilen (kalıcı) yıldızı çiz: kimin yıldızı olduğu (Ham ham mavi, Beto pembe, Ela altın-kehribar)
+ * ilk bakışta net seçilsin diye doygun renkli dış hale + renkli korona halkası + parlak çekirdek + 4 difraksiyon ışını.
  */
 export function drawUserStar(
   c: CanvasRenderingContext2D, x: number, y: number, id: string, now: number,
@@ -193,43 +193,70 @@ export function drawUserStar(
   const period = 2800 + (h % 2400), ph = ((h >>> 9) % 1000) / 1000;
   const sn = Math.sin(((now / period + ph) % 1) * Math.PI * 2);
   const boost = o.arrivedAt && now - o.arrivedAt < 10000 ? 1.4 : 1;
-  const a = clamp(0.84 + 0.1 * sn * boost, 0.65, 1) * ext * exp;
-  const sc = 1 + 0.035 * sn * boost;
-  const col = mix('#ffffff', o.hazel ? '#c9a26a' : o.tint, 0.28);
-  if (o.daylight > 0.3) {
+  const a = clamp(0.88 + 0.1 * sn * boost, 0.72, 1) * ext * exp;
+  const sc = 1 + 0.04 * sn * boost;
+
+  // Doygun renk: mavi (#6b9bff) / pembe (#ff669e) / ela (#e5a84b)
+  const isPink = /ff8db5|ffadcc|f0457c/i.test(o.tint);
+  const baseHue = o.hazel ? '#e5a84b' : isPink ? '#ff629a' : '#6396ff';
+  const haloCol = mix('#ffffff', baseHue, 0.88);
+  const coreRingCol = mix('#ffffff', baseHue, 0.72);
+  const centerCol = mix('#ffffff', baseHue, 0.25);
+
+  if (o.daylight > 0.25) {
     const d = o.daylight * exp;
     c.globalCompositeOperation = 'source-over';
-    c.globalAlpha = 0.18 * d;
-    c.drawImage(glow('#0b1230', 24), x - 7, y - 7, 14, 14);
-    c.globalAlpha = 0.72 * d * a;
-    c.drawImage(glow(col, 48), x - 8.5 * sc, y - 8.5 * sc, 17 * sc, 17 * sc);
-    c.globalAlpha = 0.9 * d;
-    c.fillStyle = '#fff';
-    c.beginPath(); c.arc(x, y, 1.4, 0, 6.2832); c.fill();
+    c.globalAlpha = 0.28 * d;
+    c.drawImage(glow('#091028', 24), x - 10, y - 10, 20, 20);
+    c.globalAlpha = 0.88 * d * a;
+    c.drawImage(glow(haloCol, 48), x - 12 * sc, y - 12 * sc, 24 * sc, 24 * sc);
+    c.globalAlpha = 0.92 * d;
+    c.fillStyle = coreRingCol;
+    c.beginPath(); c.arc(x, y, 2.4 * sc, 0, 6.2832); c.fill();
+    c.fillStyle = '#ffffff';
+    c.beginPath(); c.arc(x, y, 1.25, 0, 6.2832); c.fill();
     c.globalAlpha = 1;
-    if (o.daylight > 0.7) return;
+    if (o.daylight > 0.72) return;
   }
+
+  // 1) Dış renkli atmosfer halesi (source-over katmanı rengin beyaza patlamasını önler ve rengi net gösterir)
+  c.globalCompositeOperation = 'source-over';
+  c.globalAlpha = a * 0.55;
+  const gOuter = 15.5 * sc;
+  c.drawImage(glow(baseHue, 48), x - gOuter, y - gOuter, gOuter * 2, gOuter * 2);
+
+  // 2) Parlak renkli iç hale + difraksiyon ışınları
   c.globalCompositeOperation = 'lighter';
-  c.globalAlpha = a * 0.72;
-  const g = 9.5 * sc;
-  c.drawImage(glow(col, 48), x - g, y - g, g * 2, g * 2);
-  c.globalAlpha = a * 0.92;
-  c.fillStyle = '#ffffff';
-  c.beginPath(); c.arc(x, y, 1.45, 0, 6.2832); c.fill();
-  c.globalAlpha = a * 0.24;
-  c.strokeStyle = col;
-  c.lineWidth = 0.55;
-  const r = 7.5 * sc;
+  c.globalAlpha = a * 0.85;
+  const gMid = 10.5 * sc;
+  c.drawImage(glow(haloCol, 48), x - gMid, y - gMid, gMid * 2, gMid * 2);
+
+  c.globalAlpha = a * 0.52;
+  c.strokeStyle = coreRingCol;
+  c.lineWidth = 0.85;
+  const r = 10.5 * sc;
   c.beginPath();
   c.moveTo(x - r, y); c.lineTo(x + r, y);
   c.moveTo(x, y - r); c.lineTo(x, y + r);
   c.stroke();
+
+  // 3) Renkli korona halkası + sıcak beyaz merkez çekirdek
+  c.globalCompositeOperation = 'source-over';
+  c.globalAlpha = a * 0.95;
+  c.fillStyle = coreRingCol;
+  c.beginPath(); c.arc(x, y, 2.5 * sc, 0, 6.2832); c.fill();
+
+  c.globalAlpha = a;
+  c.fillStyle = centerCol;
+  c.beginPath(); c.arc(x, y, 1.35, 0, 6.2832); c.fill();
+
   if (o.unread) {
+    c.globalCompositeOperation = 'lighter';
     const t = ((now + (h % 6000)) % 6000) / 1600;
     if (t < 1) {
-      c.globalAlpha = 0.24 * Math.sin(Math.PI * t) * ext * exp;
-      const s = 12 + 11 * t;
-      c.drawImage(glow(col, 48), x - s, y - s, s * 2, s * 2);
+      c.globalAlpha = 0.36 * Math.sin(Math.PI * t) * ext * exp;
+      const s = 14 + 13 * t;
+      c.drawImage(glow(haloCol, 48), x - s, y - s, s * 2, s * 2);
     }
   }
   c.globalCompositeOperation = 'source-over';

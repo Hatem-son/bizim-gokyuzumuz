@@ -367,6 +367,32 @@ function mapDbRow(row: DbStarRow, whoMap: Map<string, Who>, fallbackMe: Who): St
   };
 }
 
+const PRUNE_CUTOFF_MS = Date.parse('2026-11-19T00:55:00+03:00');
+const PRUNE_KEEP_LAST = 8;
+
+function pruneLegacyStars<T extends { id: string; createdAt?: string; created_at?: string }>(rows: T[]): {
+  kept: T[];
+  removedIds: string[];
+} {
+  const pre: T[] = [];
+  const post: T[] = [];
+  for (const r of rows) {
+    const iso = r.created_at ?? r.createdAt ?? '';
+    const ts = Date.parse(iso);
+    if (!Number.isFinite(ts) || ts <= PRUNE_CUTOFF_MS) pre.push(r);
+    else post.push(r);
+  }
+  if (pre.length <= PRUNE_KEEP_LAST) {
+    return { kept: [...pre, ...post], removedIds: [] };
+  }
+  const removed = pre.slice(0, pre.length - PRUNE_KEEP_LAST);
+  const keptPre = pre.slice(pre.length - PRUNE_KEEP_LAST);
+  return {
+    kept: [...keptPre, ...post],
+    removedIds: removed.map((r) => r.id),
+  };
+}
+
 export async function fetchAllStars(me: Who): Promise<StarRecord[]> {
   if (!isSupabaseConfigured) {
     const raw = store.get<StarRecord[]>(STORAGE_KEYS.starsLocal, []);
@@ -386,14 +412,16 @@ export async function fetchAllStars(me: Who): Promise<StarRecord[]> {
       }
       return next;
     });
-    if (migrated) store.set(STORAGE_KEYS.starsLocal, clean);
-    return clean;
+    const { kept, removedIds } = pruneLegacyStars(clean);
+    if (migrated || removedIds.length > 0) store.set(STORAGE_KEYS.starsLocal, kept);
+    return kept;
   }
 
   try {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       lastFetchFailed = true;
-      return store.get<StarRecord[]>(`${STARS_CACHE_PREFIX}${me}`, []);
+      const cached = store.get<StarRecord[]>(`${STARS_CACHE_PREFIX}${me}`, []);
+      return pruneLegacyStars(cached).kept;
     }
     await syncServerClock();
     const sb = getSupabase()!;
@@ -405,10 +433,21 @@ export async function fetchAllStars(me: Who): Promise<StarRecord[]> {
 
     if (error || !data) {
       lastFetchFailed = true;
-      return store.get<StarRecord[]>(`${STARS_CACHE_PREFIX}${me}`, []);
+      const cached = store.get<StarRecord[]>(`${STARS_CACHE_PREFIX}${me}`, []);
+      return pruneLegacyStars(cached).kept;
     }
     lastFetchFailed = false;
-    const mapped = (data as DbStarRow[]).map((row) => {
+    const { kept: keptRows, removedIds } = pruneLegacyStars(data as DbStarRow[]);
+    if (removedIds.length > 0) {
+      void (async () => {
+        try {
+          await sb.from('stars').delete().in('id', removedIds);
+        } catch {
+          // Ignore if RLS restricts delete
+        }
+      })();
+    }
+    const mapped = keptRows.map((row) => {
       noteSeenStarIso(row.created_at);
       return mapDbRow(row, whoMap, me);
     });
@@ -416,7 +455,8 @@ export async function fetchAllStars(me: Who): Promise<StarRecord[]> {
     return mapped;
   } catch {
     lastFetchFailed = true;
-    return store.get<StarRecord[]>(`${STARS_CACHE_PREFIX}${me}`, []);
+    const cached = store.get<StarRecord[]>(`${STARS_CACHE_PREFIX}${me}`, []);
+    return pruneLegacyStars(cached).kept;
   }
 }
 
