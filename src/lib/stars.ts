@@ -540,10 +540,18 @@ export async function uploadPreparedStar(env: PreparedStarEnvelope): Promise<Sta
         if (!altErr || /already exists|duplicate/i.test(altErr.message || '')) {
           storagePath = altPath;
         } else if (isOfflineLikeError(uploadErr) || isOfflineLikeError(altErr)) {
-          await sb.from('stars').delete().eq('id', env.id).catch(() => undefined);
+          try {
+            await sb.from('stars').delete().eq('id', env.id);
+          } catch {
+            // Ignore cleanup errors
+          }
           throw new OfflineNetworkError('Şifreli medya çevrimdışı nedeniyle gönderilemedi.');
         } else if (env.sealedMedia.length > 1_400_000) {
-          await sb.from('stars').delete().eq('id', env.id).catch(() => undefined);
+          try {
+            await sb.from('stars').delete().eq('id', env.id);
+          } catch {
+            // Ignore cleanup errors
+          }
           throw new Error('Şifreli medya yüklenemedi.');
         }
       }
