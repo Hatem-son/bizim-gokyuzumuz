@@ -62,48 +62,24 @@ window.addEventListener('scroll', () => {
   if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
 });
 
-const standalone = () =>
-  (navigator as Navigator & { standalone?: boolean }).standalone === true ||
-  matchMedia('(display-mode: standalone)').matches;
-function fitViewport() {
-  if (document.documentElement.classList.contains('kb-open')) return;
-  const h = standalone()
-    ? Math.max(window.innerHeight, window.screen.width > window.screen.height ? 0 : window.screen.height)
-    : window.innerHeight;
-  document.documentElement.style.setProperty('--app-h', Math.round(h) + 'px');
-}
-fitViewport();
-addEventListener('resize', fitViewport);
-addEventListener('pageshow', fitViewport);
-addEventListener('orientationchange', () =>
-  setTimeout(() => {
-    fitViewport();
-    location.reload();
-  }, 300)
-);
-
 initKeyboard({
   hideWhenOpen: () => [...app.querySelectorAll<HTMLElement>('.dock, .gk-cons, .gk-edge, .gk-hint-txt')],
 });
 
-// GERÇEK ekran boyutu: tuvaller hep tüm ekranı kaplar (alt kısım eksik kalmaz)
-const W = Math.round(app.clientWidth || 390);
-const H = Math.round(
-  standalone()
-    ? Math.max(
-        app.clientHeight || 0,
-        window.innerHeight || 0,
-        window.screen.width > window.screen.height ? 0 : window.screen.height || 0
-      )
-    : app.clientHeight || 844
-);
+// GERÇEK ekran boyutu: getBoundingClientRect() / clientHeight'tan alınır ve resize/pageshow/orientationchange'de yeniden ölçülür
+function measureApp() {
+  const r = app.getBoundingClientRect();
+  const w = Math.round(r.width || app.clientWidth || 390);
+  const h = Math.round(r.height || app.clientHeight || 844);
+  return { w, h };
+}
+const initDim = measureApp();
+let W = initDim.w;
+let H = initDim.h;
 const HORIZON = Math.round(H * 0.71);
 const st = document.createElement('style');
 st.textContent = ART_CSS + PALM_CSS + LILY_CSS + '@keyframes spin{to{transform:rotate(360deg)}}';
 document.head.appendChild(st);
-fitViewport();
-addEventListener('resize', fitViewport);
-addEventListener('pageshow', fitViewport);
 initUI(app);
 
 // ---------- katmanlar ----------
@@ -127,7 +103,7 @@ function cv(id: string, maxDpr = 1.5, extraH = 0) {
   c.style.width = `${W}px`;
   c.style.height = `${ch}px`;
   const x = c.getContext('2d')!;
-  x.scale(d, d);
+  x.setTransform(d, 0, 0, d, 0, 0);
   return x;
 }
 
@@ -872,10 +848,6 @@ async function boot(mode?: 'auth' | 'lock' | 'home') {
   for (let i = 0; i < 3; i++) await new Promise((r) => requestAnimationFrame(r));
 
   // Üst boşluk dolgusu: gökyüzü atmosferinin en üst satırı + 2B grenle dikişsiz doldurulur; intro bitince temizlenir.
-  const probe = document.createElement('canvas');
-  probe.width = probe.height = 1;
-  const pc = probe.getContext('2d', { willReadFrequently: true })!;
-  const skyCv = document.getElementById('cSky') as HTMLCanvasElement;
   const capH = Math.ceil(H * 0.46);
   const capDpr = Math.min(devicePixelRatio || 1, 1.5);
   const skyCap = document.createElement('canvas');
@@ -885,27 +857,14 @@ async function boot(mode?: 'auth' | 'lock' | 'home') {
   $('#skyWrap').prepend(skyCap);
   const capCtx = skyCap.getContext('2d')!;
   capCtx.scale(capDpr, capDpr);
-  const topColor = () => {
+  const follow = (until: number) => {
     try {
       sky.drawCap(capCtx, W, capH + 2, core.scrollX);
-      pc.clearRect(0, 0, 1, 1);
-      pc.drawImage(skyCv, Math.floor(skyCv.width / 2), 1, 1, 1, 0, 0, 1, 1);
-      const d = pc.getImageData(0, 0, 1, 1).data;
-      return d[3] > 200 ? `rgb(${d[0]},${d[1]},${d[2]})` : '';
     } catch {
-      return '';
+      // Ignore transient draw error
     }
-  };
-  const follow = (until: number) => {
-    const c = topColor();
-    if (c) app.style.backgroundColor = c;
     if (performance.now() < until) requestAnimationFrame(() => follow(until));
-    else {
-      skyCap.remove();
-      app.style.backgroundColor = 'var(--ground-bot, var(--boot-bot, #070a16))';
-      const gb = getComputedStyle(document.documentElement).getPropertyValue('--ground-bot').trim();
-      if (gb) document.documentElement.style.setProperty('--boot-bot', gb);
-    }
+    else skyCap.remove();
   };
   follow(performance.now() + 3600);
   app.style.visibility = ''; // gökyüzü ilk karesini çizer çizmez başlar; font/ısınma beklemesi YOK (fontlar gömülü)
@@ -1229,22 +1188,33 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-// Ekran boyutu önemli ölçüde değişirse (iOS standalone 54pt geç genişleme veya döndürme; klavye hariç) sahneyi yeniden kur
-let resizeTimer = 0;
-const onViewportChange = () => {
-  fitViewport();
-  clearTimeout(resizeTimer);
-  resizeTimer = window.setTimeout(() => {
-    if (document.documentElement.classList.contains('kb-open')) return;
-    const nw = app.clientWidth;
-    const nh = app.clientHeight;
-    if (nw > 0 && nh > 0 && (Math.abs(nw - W) > 24 || (Math.abs(nh - H) > 24 && nh > H))) {
-      location.reload();
-    }
-  }, 250);
+// resize + pageshow + orientationchange: canvas boyutları getBoundingClientRect() / clientHeight'tan yeniden ölçülür
+const resizeScene = () => {
+  if (document.documentElement.classList.contains('kb-open')) return;
+  const { w: nw, h: nh } = measureApp();
+  if (nw <= 0 || nh <= 0 || (nw === W && nh === H)) return;
+  W = nw;
+  H = nh;
+  geom.W = W;
+  Object.assign(core, { W, H });
+  cv('cSky', 1.5);
+  cv('cWBack', 1.5);
+  cv('cStars', 1.5);
+  cv('cWFront', 1.5);
+  cv('cGround', 1.5, 96);
+  cv('cOcean', 1.5);
+  cv('cFx', 1.5);
+  fx.view.w = W;
+  fx.view.h = H;
+  beach.resize(W, H);
+  if (fg) rebuildFg();
 };
-window.addEventListener('resize', onViewportChange);
-window.addEventListener('pageshow', onViewportChange);
+window.addEventListener('resize', resizeScene);
+window.addEventListener('pageshow', resizeScene);
+window.addEventListener('orientationchange', () => setTimeout(resizeScene, 250));
+if (typeof ResizeObserver !== 'undefined') {
+  new ResizeObserver(resizeScene).observe(app);
+}
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('message', (ev) => {

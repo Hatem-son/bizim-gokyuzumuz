@@ -2,20 +2,17 @@
 <html lang="tr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Gökyüzümüz">
   <meta name="theme-color" content="#070a16">
-  <script>(function(){var d=new Date(),h=d.getHours()+d.getMinutes()/60,g,b;if(h>=7.5&&h<17){g='linear-gradient(180deg,#759cd3 0%,#9fc3ea 55%,#c6dcee 100%)';b='#c6dcee';}else if((h>=5.5&&h<7.5)||(h>=17&&h<19.5)){g='linear-gradient(180deg,#39466f 0%,#7d6f98 55%,#d49a86 100%)';b='#d49a86';}else{g='radial-gradient(120% 70% at 50% 18%,#141b38 0%,#0b1024 55%,#070a16 100%)';b='#070a16';}var s=document.documentElement.style;s.setProperty('--boot-bg',g);s.setProperty('--boot-bot',b);var m=document.querySelector('meta[name=theme-color]');if(m)m.setAttribute('content',h>=7.5&&h<17?'#759cd3':(h>=5.5&&h<19.5?'#39466f':'#070a16'));})();</script>
   <style>
-    html, body { margin: 0; padding: 0; width: 100%; overflow: hidden; overscroll-behavior: none; }
-    html { height: calc(100% + env(safe-area-inset-bottom, 0px)); background: var(--boot-bg, radial-gradient(120% 70% at 50% 18%, #141b38 0%, #0b1024 55%, #070a16 100%)), var(--boot-bot, #070a16); background-color: var(--boot-bot, #070a16); }
-    body { height: 100%; background: transparent; }
-    /* Ekranın dışına taşan sabit zemin: iOS'ta alt güvenli alan / adres çubuğu / aşırı kaydırma bölgesinde beyaz/siyah şerit asla görünmez */
-    html::before { content: ""; position: fixed; left: 0; right: 0; top: -60vh; height: 240vh; z-index: -1; pointer-events: none;
-      background: var(--boot-bg, #070a16), var(--boot-bot, #070a16); }
+    html, body { position: fixed !important; inset: 0 !important; width: 100% !important; height: 100% !important;
+      margin: 0 !important; padding: 0 !important; overflow: hidden !important; background: #070a16 !important; overscroll-behavior: none; }
+    #app, #root, #app-root { position: fixed !important; inset: 0 !important; width: 100% !important; height: 100% !important;
+      min-height: 0 !important; max-height: none !important; margin: 0 !important; padding-bottom: 0 !important; }
   </style>
   <title>Bizim Gökyüzümüz</title>
   <link rel="manifest" href="/manifest.webmanifest">

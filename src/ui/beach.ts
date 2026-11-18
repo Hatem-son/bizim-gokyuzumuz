@@ -125,6 +125,15 @@ export class Beach {
     }
   }
 
+  resize(W: number, H: number) {
+    this.o.W = W;
+    this.o.H = H;
+    const d = Math.min(devicePixelRatio || 1, 2);
+    this.sand.height = Math.ceil((H - this.shoreY + 116) * d);
+    this.sand.getContext('2d')!.setTransform(d, 0, 0, d, 0, 0);
+    this.sandKey = '';
+  }
+
   private drawSand(hor: RGB, top: RGB, day: number, sun: RGB) {
     const c = this.sand.getContext('2d')!;
     const { skyW } = this.o;
@@ -134,8 +143,6 @@ export class Beach {
     const nightS: RGB = mix([28, 30, 40], top, 0.25);
     const base = mix(nightS, dayS, Math.pow(day, 0.8));
     const near = mix(base, [0, 0, 0], 0.22 + 0.2 * (1 - day));
-    const groundBot = css(mix(near, [4, 6, 14], 0.55));
-    document.documentElement.style.setProperty('--ground-bot', groundBot);
     c.clearRect(0, 0, skyW, h);
     const g = c.createLinearGradient(0, 0, 0, h);
     g.addColorStop(0, css(mix(base, hor, 0.15)));
