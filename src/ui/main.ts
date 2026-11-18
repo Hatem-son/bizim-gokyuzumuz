@@ -62,46 +62,16 @@ window.addEventListener('scroll', () => {
   if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
 });
 
-// Tam ekran yüksekliği: iOS Ana Ekran PWA'da window.innerHeight safe-area kadar kısa dönebiliyor → 100lvh ve screen.height ile telefonun en altına kadar indirilir.
-// Safari sekmesinde ise kumsal yine 100lvh boyunca telefonun en altına kadar kesintisiz iner; aradaki fark (--ui-b) yalnızca dock menüsünü Safari çubuğunun üstünde tutar.
-const lvhProbe = document.createElement('div');
-lvhProbe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:100lvh;pointer-events:none;visibility:hidden';
-const fixedProbe = document.createElement('div');
-fixedProbe.style.cssText = 'position:fixed;top:0;bottom:0;left:0;width:0;pointer-events:none;visibility:hidden';
-document.body.append(lvhProbe, fixedProbe);
-
-function fitViewport() {
-  const standalone = matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
-  const innerH = Math.round(window.innerHeight || 0);
-  const clientH = Math.round(document.documentElement.clientHeight || 0);
-  const lvhH = Math.round(lvhProbe.offsetHeight || 0);
-  const fixedH = Math.round(fixedProbe.offsetHeight || 0);
-  const rawScreenH = Math.round(
-    window.innerWidth > innerH && window.screen ? Math.min(window.screen.width, window.screen.height) : window.screen?.height || 0
-  );
-  const screenH = rawScreenH >= innerH && rawScreenH - innerH < 220 ? rawScreenH : 0;
-  const fullH = standalone ? Math.max(innerH, clientH, lvhH, fixedH, screenH) : Math.max(innerH, clientH, lvhH, fixedH);
-  const uiB = standalone ? 0 : Math.max(0, fullH - innerH);
-  document.documentElement.style.setProperty('--app-h', `${fullH}px`);
-  document.documentElement.style.setProperty('--ui-b', `${uiB}px`);
-  return { fullH, visH: standalone ? fullH : innerH || fullH };
-}
-const vp0 = fitViewport();
-addEventListener('orientationchange', () =>
-  setTimeout(() => {
-    fitViewport();
-    location.reload();
-  }, 300)
-);
+addEventListener('orientationchange', () => setTimeout(() => location.reload(), 300));
 
 initKeyboard({
   hideWhenOpen: () => [...app.querySelectorAll<HTMLElement>('.dock, .gk-cons, .gk-edge, .gk-hint-txt')],
 });
 
-// GERÇEK ekran boyutu: tuvaller telefonun en altına kadar kesintisiz iner (+96px alt kumsal tamponu)
+// GERÇEK ekran boyutu: #app { position: fixed; inset: 0 } doğrudan tam ekranı kaplar
 const W = Math.max(320, Math.round(app.clientWidth || window.innerWidth || 390));
-const H = Math.max(520, Math.round(vp0.fullH || app.clientHeight || window.innerHeight || 844));
-const HORIZON = Math.round(Math.max(480, vp0.visH) * 0.71);
+const H = Math.max(480, Math.round(app.clientHeight || window.innerHeight || 844));
+const HORIZON = Math.round(H * 0.71);
 
 const st = document.createElement('style');
 st.textContent = ART_CSS + PALM_CSS + LILY_CSS + '@keyframes spin{to{transform:rotate(360deg)}}';
@@ -1225,7 +1195,6 @@ window.addEventListener('resize', () => {
     const nw = app.clientWidth;
     const nh = app.clientHeight;
     if (nw > 0 && nh > 0 && (Math.abs(nw - W) > 40 || (Math.abs(nh - H) > 160 && nh > H))) {
-      fitViewport();
       location.reload();
     }
   }, 400);

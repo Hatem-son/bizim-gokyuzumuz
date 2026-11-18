@@ -12,37 +12,17 @@ export function initKeyboard(opts: {
 }) {
   const vv = window.visualViewport;
   const root = document.documentElement;
-  const probe = document.createElement('div');
-  probe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:100lvh;pointer-events:none;visibility:hidden';
-  const fixedProbe = document.createElement('div');
-  fixedProbe.style.cssText = 'position:fixed;top:0;bottom:0;left:0;width:0;pointer-events:none;visibility:hidden';
-  document.body.append(probe, fixedProbe);
-
+  const appEl = document.getElementById('app');
   let raf = 0;
   let open = false;
-  let fullBase = measureFullH();
   let visBase = measureVisH();
 
   function measureVisH() {
     return Math.round(vv ? vv.height : window.innerHeight || 0);
   }
 
-  function measureFullH() {
-    const standalone = matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
-    const innerH = Math.round(window.innerHeight || 0);
-    const clientH = Math.round(root.clientHeight || 0);
-    const lvh = Math.round(probe.offsetHeight || 0);
-    const fixedH = Math.round(fixedProbe.offsetHeight || 0);
-    const rawScreenH = Math.round(
-      window.innerWidth > innerH && window.screen ? Math.min(window.screen.width, window.screen.height) : window.screen?.height || 0
-    );
-    const screenH = rawScreenH >= innerH && rawScreenH - innerH < 220 ? rawScreenH : 0;
-    const fullH = standalone ? Math.max(innerH, clientH, lvh, fixedH, screenH) : Math.max(innerH, clientH, lvh, fixedH);
-    if (!open) {
-      const uiB = standalone ? 0 : Math.max(0, fullH - innerH);
-      root.style.setProperty('--ui-b', `${uiB}px`);
-    }
-    return fullH;
+  function measureAppH() {
+    return Math.round(appEl?.clientHeight || window.innerHeight || 0);
   }
 
   function apply() {
@@ -51,25 +31,19 @@ export function initKeyboard(opts: {
     const top = vv ? vv.offsetTop : 0;
     if (!open && h > visBase) visBase = Math.round(h);
     const isOpen = visBase - h > OPEN_THRESHOLD;
-    if (!isOpen) {
-      fullBase = measureFullH();
-      root.style.setProperty('--app-h', `${fullBase}px`);
-    }
+    const fullH = measureAppH();
     // tek yazma fazı
     root.style.setProperty('--vv-h', `${Math.round(h)}px`);
     root.style.setProperty('--vv-top', `${Math.round(top)}px`);
-    root.style.setProperty('--kb', isOpen ? `${Math.max(0, Math.round(fullBase - h - top))}px` : '0px');
+    root.style.setProperty('--kb', isOpen ? `${Math.max(0, Math.round(fullH - h - top))}px` : '0px');
     if (isOpen !== open) {
       open = isOpen;
       root.classList.toggle('kb-open', open);
       for (const el of opts.hideWhenOpen()) el.style.visibility = open ? 'hidden' : '';
       opts.onChange?.(open, h);
       if (!open) {
-        // klavye kapanma animasyonu bittiğinde tekrar ölç (alt siyah blok kalmasın)
         setTimeout(() => {
-          fullBase = measureFullH();
           visBase = measureVisH();
-          root.style.setProperty('--app-h', `${fullBase}px`);
           window.scrollTo(0, 0);
         }, 350);
       }
@@ -81,8 +55,7 @@ export function initKeyboard(opts: {
 
   vv?.addEventListener('resize', schedule);
   vv?.addEventListener('scroll', schedule);
-  window.addEventListener('orientationchange', () => setTimeout(() => { fullBase = measureFullH(); visBase = measureVisH(); schedule(); }, 400));
-  root.style.setProperty('--app-h', `${fullBase}px`);
+  window.addEventListener('orientationchange', () => setTimeout(() => { visBase = measureVisH(); schedule(); }, 400));
   apply();
 
   // odaklanınca sayfa kaymasın

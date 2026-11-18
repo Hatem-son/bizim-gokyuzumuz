@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gk-v20';
+const CACHE_NAME = 'gk-v21';
 const SHELL_URLS = [
   '/',
   '/index.html',
