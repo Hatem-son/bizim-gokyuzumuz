@@ -145,6 +145,32 @@ export class SkyRenderer {
     c.globalAlpha = 1;
   }
 
+  /** Açılışta aşağı inen gökyüzü tuvalinin üstündeki boşluğu atmo dokusunun 0. satırı + 2B grenle dikişsiz doldurur */
+  drawCap(c: CanvasRenderingContext2D, W: number, capH: number, scrollX: number) {
+    const { cur, prev } = this.atmo;
+    if (!cur) return;
+    const P = this.g.panoW, f = c.getTransform().a || 1;
+    const xStart = -Math.round(mod(scrollX, P) * f) / f;
+    const k = this.fade();
+    c.globalCompositeOperation = 'source-over';
+    c.clearRect(0, 0, W, capH);
+    if (prev && k < 1) {
+      c.globalAlpha = 1;
+      for (let x = xStart; x < W; x += P) c.drawImage(prev.img, 0, 0, prev.w, 1, x, 0, P, capH);
+      c.globalAlpha = k;
+    }
+    for (let x = xStart; x < W; x += P) c.drawImage(cur.img, 0, 0, cur.w, 1, x, 0, P, capH);
+    c.globalAlpha = 1;
+    if (this.dither) {
+      c.globalCompositeOperation = 'soft-light';
+      c.globalAlpha = 0.035;
+      c.fillStyle = this.dither;
+      c.fillRect(0, 0, W, capH);
+      c.globalCompositeOperation = 'source-over';
+      c.globalAlpha = 1;
+    }
+  }
+
   frame(now: number, s: SkyState, scrollX: number) {
     const c = this.ctx, g = this.g;
     const W = g.W, H = g.horizonY;
