@@ -62,6 +62,35 @@ import type { StarRecord } from '../types';
 void registerServiceWorker();
 
 const app = document.getElementById('app')!;
+// Çift tıklama (double-tap) ve iki parmakla yakınlaştırmayı (pinch-zoom) iOS Safari & PWA'da kesin olarak engelle
+document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: false });
+document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
+document.addEventListener('gesturechange', (e) => e.preventDefault(), { passive: false });
+document.addEventListener('gestureend', (e) => e.preventDefault(), { passive: false });
+document.addEventListener(
+  'touchmove',
+  (e) => {
+    if (e.touches.length > 1) e.preventDefault();
+  },
+  { passive: false }
+);
+let lastTouchEndAt = 0;
+document.addEventListener(
+  'touchend',
+  (e) => {
+    const now = performance.now();
+    const tgt = e.target as HTMLElement | null;
+    if (now - lastTouchEndAt < 300 && (!tgt || !/^(INPUT|TEXTAREA)$/.test(tgt.tagName))) {
+      e.preventDefault();
+      // Tek tıklama davranışının (button click) kaybolmaması için hedef düğmeyse click tetikle
+      const clickable = tgt?.closest('button,a,label,[role="button"]') as HTMLElement | null;
+      clickable?.click();
+    }
+    lastTouchEndAt = now;
+  },
+  { passive: false }
+);
+
 // Geçiş animasyonu (translateX) sırasında odaklanan öğelerin kapsayıcıyı kaydırmasını engelle
 app.addEventListener('scroll', () => {
   if (app.scrollLeft || app.scrollTop) app.scrollTo(0, 0);
