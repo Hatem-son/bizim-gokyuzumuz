@@ -166,13 +166,8 @@ export class Effects {
       c.globalAlpha = m.dim * (st < 900 ? 1 : 1 - clamp((st - 900) / 300));
       c.drawImage(glow(col, 48), m.b.x - size, m.b.y - size, size * 2, size * 2);
       const ray = lerp(34, 12, ease.inOutCubic(s)) * open;
-      c.globalAlpha *= 0.4;
-      c.strokeStyle = col;
-      c.lineWidth = 0.7;
-      c.beginPath();
-      c.moveTo(m.b.x - ray, m.b.y); c.lineTo(m.b.x + ray, m.b.y);
-      c.moveTo(m.b.x, m.b.y - ray); c.lineTo(m.b.x, m.b.y + ray);
-      c.stroke();
+      const rayAlpha = m.dim * (st < 900 ? 1 : 1 - clamp((st - 900) / 300)) * 0.72;
+      drawSparkle(c, m.b.x, m.b.y, ray, ray * 0.13, 0, col, rayAlpha);
       if (s >= 1 && m.settle) { const cb = m.settle; m.settle = undefined; cb(); }
     }
   }
@@ -192,9 +187,10 @@ export function drawUserStar(
   const h = hash(id);
   const period = 2800 + (h % 2400), ph = ((h >>> 9) % 1000) / 1000;
   const sn = Math.sin(((now / period + ph) % 1) * Math.PI * 2);
+  const sn2 = Math.sin(((now / (period * 1.43) + ph * 1.7) % 1) * Math.PI * 2);
   const boost = o.arrivedAt && now - o.arrivedAt < 10000 ? 1.4 : 1;
   const a = clamp(0.88 + 0.1 * sn * boost, 0.72, 1) * ext * exp;
-  const sc = 1 + 0.04 * sn * boost;
+  const sc = 1 + 0.05 * sn * boost;
 
   // Doygun renk: mavi (#6b9bff) / pembe (#ff669e) / ela (#e5a84b)
   const isPink = /ff8db5|ffadcc|f0457c/i.test(o.tint);
@@ -225,20 +221,21 @@ export function drawUserStar(
   const gOuter = 15.5 * sc;
   c.drawImage(glow(baseHue, 48), x - gOuter, y - gOuter, gOuter * 2, gOuter * 2);
 
-  // 2) Parlak renkli iç hale + difraksiyon ışınları
+  // 2) Parlak renkli iç hale + yumuşak sivrilen yıldız parıltısı (cross değil, tatlı ışıltı animasyonu)
   c.globalCompositeOperation = 'lighter';
   c.globalAlpha = a * 0.85;
   const gMid = 10.5 * sc;
   c.drawImage(glow(haloCol, 48), x - gMid, y - gMid, gMid * 2, gMid * 2);
 
-  c.globalAlpha = a * 0.52;
-  c.strokeStyle = coreRingCol;
-  c.lineWidth = 0.85;
-  const r = 10.5 * sc;
-  c.beginPath();
-  c.moveTo(x - r, y); c.lineTo(x + r, y);
-  c.moveTo(x, y - r); c.lineTo(x, y + r);
-  c.stroke();
+  const baseTilt = ((h % 360) * Math.PI) / 180;
+  const sway = Math.sin(now / (4200 + (h % 1800)) + ph * 6.2832) * 0.13;
+  const tilt = baseTilt + sway;
+  const rMain = 11.4 * sc * (0.94 + 0.1 * sn2);
+  drawSparkle(c, x, y, rMain, rMain * 0.125, tilt, coreRingCol, a * (0.64 + 0.14 * sn2));
+
+  const glint = 0.5 + 0.5 * sn2;
+  const rSub = 5.8 * sc * (0.75 + 0.25 * glint);
+  drawSparkle(c, x, y, rSub, rSub * 0.17, tilt + Math.PI * 0.25, haloCol, a * 0.36 * glint);
 
   // 3) Renkli korona halkası + sıcak beyaz merkez çekirdek
   c.globalCompositeOperation = 'source-over';
@@ -261,6 +258,38 @@ export function drawUserStar(
   }
   c.globalCompositeOperation = 'source-over';
   c.globalAlpha = 1;
+}
+
+function drawSparkle(
+  c: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  r: number,
+  waist: number,
+  angle: number,
+  color: string,
+  alpha: number,
+) {
+  if (alpha < 0.01 || r < 0.5) return;
+  c.save();
+  c.translate(x, y);
+  if (angle) c.rotate(angle);
+  const g = c.createRadialGradient(0, 0, 0, 0, 0, r);
+  g.addColorStop(0, 'rgba(255,255,255,0.96)');
+  g.addColorStop(0.24, rgba(color, 0.85));
+  g.addColorStop(0.6, rgba(color, 0.24));
+  g.addColorStop(1, rgba(color, 0));
+  c.globalAlpha = alpha;
+  c.fillStyle = g;
+  c.beginPath();
+  c.moveTo(0, -r);
+  c.quadraticCurveTo(waist, -waist, r, 0);
+  c.quadraticCurveTo(waist, waist, 0, r);
+  c.quadraticCurveTo(-waist, waist, -r, 0);
+  c.quadraticCurveTo(-waist, -waist, 0, -r);
+  c.closePath();
+  c.fill();
+  c.restore();
 }
 
 function rgba(hex: string, a: number) {
