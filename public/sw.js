@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gk-v40';
+const CACHE_NAME = 'gk-v41';
 const SHELL_URLS = [
   '/',
   '/index.html',
@@ -77,8 +77,8 @@ self.addEventListener('fetch', (event) => {
 
 self.addEventListener('push', (event) => {
   let payload = {
-    title: 'Bizim Gökyüzümüz',
-    body: 'Gökyüzüne yeni bir yıldız düştü',
+    title: 'Bir yıldızın var',
+    body: '',
     url: '/',
     starId: '',
   };
@@ -88,9 +88,7 @@ self.addEventListener('push', (event) => {
       payload = { ...payload, ...parsed };
     }
   } catch {
-    if (event.data) {
-      payload.body = event.data.text();
-    }
+    // Ignore parse error
   }
 
   const targetUrl =
@@ -98,9 +96,10 @@ self.addEventListener('push', (event) => {
       ? `/?star=${encodeURIComponent(payload.starId)}`
       : payload.url || '/';
 
+  // Bildirimde yalnızca "Bir yıldızın var" yazar, başka hiçbir alt metin yazmaz
   const work = [
-    self.registration.showNotification(payload.title, {
-      body: payload.body,
+    self.registration.showNotification('Bir yıldızın var', {
+      body: '',
       icon: '/icons/icon-192.png',
       badge: '/icons/icon-192.png',
       tag: 'bizim-gokyuzumuz-star',

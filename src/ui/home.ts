@@ -188,7 +188,7 @@ export function showLive(
     invite: { title: `${p.name} seni çizime çağırıyor`, sub: 'Aynı tuvalde birlikte çizebilirsiniz', loader: null },
     photo: { title: `${p.name} bir fotoğraf seçiyor`, sub: 'Bir yıldız hazırlanıyor', loader: 'dots' as const },
     voice: { title: `${p.name} sesini kaydediyor`, sub: 'Bir yıldız hazırlanıyor', loader: 'dots' as const },
-    left: { title: `${p.name} bir yıldız bıraktı`, sub: 'Gökyüzüne bak', loader: null },
+    left: { title: 'Bir yıldızın var', sub: '', loader: null },
   }[activity];
   const drawActions =
     (activity === 'drawing' || activity === 'invite') && (o.onWatch || o.onJoin)
@@ -204,7 +204,6 @@ export function showLive(
     color: p.color,
     ...map,
     actions: drawActions,
-    action: !drawActions && activity === 'left' && o.star ? { label: 'Aç', onClick: () => core.openStar(o.star!) } : undefined,
     ms: activity === 'left' ? 5200 : activity === 'drawing' || activity === 'invite' ? 6000 : 6200,
   });
 }

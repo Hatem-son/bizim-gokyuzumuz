@@ -25,7 +25,7 @@ import { core } from './core';
 import { initUI, $, $$, h, toast, sleep, clearPageStack, closeIsland, island } from './ui';
 import { state, PEOPLE, Star, Kind, setMe, toUiWho, toDbWho } from './state';
 import { buildHome, buildForeground, placeForeground, showLive, sendHeart, partnerOnline } from './home';
-import { openCompose, freeSpot } from './compose';
+import { openCompose, freeSpot, recordDailyStarSent } from './compose';
 import { openBoard, openWatch, renderDrawing, Stroke, DrawLivePacket } from './draw';
 import { encodeDrawingBytes, decodeDrawingBytes } from '../lib/drawCodec';
 // Ayarlar/arşiv/yıldız sayfaları ilk çizimden SONRA, ilk kullanımda yüklenir (ana paket küçülür)
@@ -344,6 +344,7 @@ async function landMyDrawing(strokes: Stroke[], sid?: string, collab = true) {
   if (!state.stars.some((s) => s.id === star.id)) {
     state.stars.push(star);
   }
+  recordDailyStarSent(star.createdAt);
   engine.busy(2400);
   fx.land(target, {
     now: performance.now(),
@@ -1209,9 +1210,7 @@ window.setInterval(() => {
       island({
         avatar: I.starFill(18),
         color: PEOPLE[state.partner].color,
-        title: `${PEOPLE[state.partner].of} yıldızı açıldı`,
-        sub: 'Şimdi okuyabilirsin',
-        action: { label: 'Aç', onClick: () => void openStar(s) },
+        title: 'Bir yıldızın var',
         ms: 5200,
       });
       core.refreshHome();

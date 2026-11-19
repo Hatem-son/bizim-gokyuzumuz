@@ -2,6 +2,7 @@
 // Gönderim (AES-GCM şifreleme + Supabase yükleme) animasyonla EŞZAMANLI yürür; hata olursa taslak korunarak kart geri açılır.
 import { h, $, $$, openSheet, segment, sleep, reduced, Sheet, island, toast } from './ui';
 import { raspberry } from './art';
+import { lilyBloom } from './lily';
 import { I, SIGN } from './icons';
 import { state, PEOPLE, Star, Kind, fmtDate, toDbWho } from './state';
 import { core } from './core';
@@ -30,6 +31,144 @@ const SEND_LABELS: Record<Kind, string> = {
   draw: 'Çizimi bırak',
 };
 
+const KIND_NAMES: Record<Kind, string> = {
+  text: 'Yazı',
+  photo: 'Fotoğraf',
+  voice: 'Ses',
+  draw: 'Çizim',
+};
+
+// Günlük 1 yıldız hakkı başlangıç zamanı (bu andan önce atılmış eski test yıldızları bugünkü hakkı kilitlemez)
+const DAILY_LIMIT_SINCE_MS = Date.parse('2026-11-19T20:32:00+03:00');
+const DAILY_STAR_KEY_PREFIX = 'gokyuzu.dailyStarAt.v1.';
+
+export function recordDailyStarSent(ts = getServerNowMs()): void {
+  store.set(`${DAILY_STAR_KEY_PREFIX}${toDbWho(state.me)}`, ts);
+}
+
+export function getDailyStarStatus(): {
+  used: boolean;
+  sentAt: number;
+  star: Star | null;
+  dayStartMs: number;
+  nextResetMs: number;
+} {
+  const now = getServerNowMs();
+  const d = new Date(now);
+  const dayStartMs = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0).getTime();
+  const nextResetMs = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, 0, 0, 0, 0).getTime();
+  const windowStart = Math.max(dayStartMs, DAILY_LIMIT_SINCE_MS);
+
+  let latestStar: Star | null = null;
+  for (const s of state.stars) {
+    if (s.from === state.me && s.createdAt >= windowStart && s.createdAt < nextResetMs) {
+      if (!latestStar || s.createdAt > latestStar.createdAt) {
+        latestStar = s;
+      }
+    }
+  }
+  const savedAt = store.get<number>(`${DAILY_STAR_KEY_PREFIX}${toDbWho(state.me)}`, 0);
+  const sentAt = Math.max(latestStar?.createdAt ?? 0, savedAt >= windowStart && savedAt < nextResetMs ? savedAt : 0);
+
+  return {
+    used: sentAt >= windowStart,
+    sentAt,
+    star: latestStar,
+    dayStartMs,
+    nextResetMs,
+  };
+}
+
+function openDailyCooldownSheet(status: ReturnType<typeof getDailyStarStatus>, initial: Kind) {
+  const me = PEOPLE[state.me];
+  const p = PEOPLE[state.partner];
+  const sentTimeStr = new Date(status.sentAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  const kindLabel = status.star ? KIND_NAMES[status.star.kind] : 'Bugünkü';
+  const r = 74;
+  const circ = +(2 * Math.PI * r).toFixed(2);
+
+  const el = h(`<div class="daily-cd">
+    <button type="button" class="icon-btn dc-close" data-close aria-label="Kapat">${I.close()}</button>
+    <div class="eyebrow" style="margin-top:4px">GÜNLÜK YILDIZ HAKKI</div>
+    <div class="daily-orb">
+      <div class="orb-glow"></div>
+      <svg class="orb-ring" viewBox="0 0 164 164">
+        <circle cx="82" cy="82" r="${r}" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="2" stroke-dasharray="3 5"/>
+        <circle cx="82" cy="82" r="${r}" fill="none" stroke="${me.color}" stroke-width="3" stroke-linecap="round"
+          stroke-dasharray="${circ}" stroke-dashoffset="${circ}" data-arc style="transition:stroke-dashoffset .6s ease-out"/>
+      </svg>
+      <div class="orb-core" style="color:${me.color}">
+        ${I.starFill(34)}
+      </div>
+      <span class="orb-lily">${lilyBloom(34, 14, 'sway')}</span>
+    </div>
+    <div class="title" style="font-size:31px">Bugünkü yıldızını bıraktın</div>
+    <p class="body" style="margin:8px 8px 0;font-size:14.5px">Gökyüzümüze her gün yalnızca bir yıldız bırakabilirsin. Bir sonraki yıldız hakkın için kalan süre:</p>
+    <div class="daily-grid" aria-live="polite">
+      <div class="daily-cell"><b data-h>00</b><span>saat</span></div>
+      <div class="daily-cell"><b data-m>00</b><span>dakika</span></div>
+      <div class="daily-cell"><b data-s>00</b><span>saniye</span></div>
+    </div>
+    <div class="daily-chip">
+      <span style="color:${me.color};display:inline-grid">${I.starFill(13)}</span>
+      <span>Bugün ${sentTimeStr} · ${kindLabel} yıldızı ${p.to} bırakıldı</span>
+    </div>
+    <div class="view-actions" style="margin-top:4px">
+      ${status.star ? `<button type="button" class="btn btn-soft" data-see>${I.star(16)}<span>Gökyüzünde gör</span></button>` : ''}
+      <button type="button" class="btn btn-primary" data-ok>Tamam</button>
+    </div>
+  </div>`);
+
+  let timer = 0;
+  const sheet = openSheet(el, {
+    cls: 'daily-sheet',
+    onClose: () => clearInterval(timer),
+  });
+
+  const hEl = $('[data-h]', el);
+  const mEl = $('[data-m]', el);
+  const sEl = $('[data-s]', el);
+  const arcEl = $('[data-arc]', el);
+  const totalWindow = Math.max(1000, status.nextResetMs - status.dayStartMs);
+
+  const tick = () => {
+    const now = getServerNowMs();
+    const remMs = Math.max(0, status.nextResetMs - now);
+    if (remMs <= 0) {
+      clearInterval(timer);
+      void sheet.close(true).then(() => openCompose(initial));
+      return;
+    }
+    let totalSec = Math.ceil(remMs / 1000);
+    const hrs = Math.floor(totalSec / 3600);
+    totalSec -= hrs * 3600;
+    const mins = Math.floor(totalSec / 60);
+    const secs = totalSec - mins * 60;
+    hEl.textContent = String(hrs).padStart(2, '0');
+    mEl.textContent = String(mins).padStart(2, '0');
+    sEl.textContent = String(secs).padStart(2, '0');
+    const prog = Math.max(0.04, Math.min(1, 1 - remMs / totalWindow));
+    arcEl.style.strokeDashoffset = (circ * (1 - prog)).toFixed(2);
+  };
+  tick();
+  timer = window.setInterval(tick, 1000);
+
+  $('[data-close]', el).addEventListener('click', () => void sheet.close());
+  $('[data-ok]', el).addEventListener('click', () => void sheet.close());
+  $('[data-see]', el)?.addEventListener('click', async () => {
+    await sheet.close();
+    if (status.star) {
+      core.scrollToStar(status.star, 650);
+      setTimeout(() => {
+        if (status.star) {
+          const pos = core.starScreenPos(status.star);
+          core.fx.land(pos, { now: performance.now() - 700, tint: me.color });
+        }
+      }, 660);
+    }
+  });
+}
+
 export type ComposeDraft = {
   mode: Kind;
   text: string;
@@ -43,6 +182,13 @@ export type ComposeDraft = {
 };
 
 export function openCompose(initial: Kind = 'text', restored?: ComposeDraft) {
+  if (!restored) {
+    const daily = getDailyStarStatus();
+    if (daily.used) {
+      openDailyCooldownSheet(daily, initial);
+      return;
+    }
+  }
   const p = PEOPLE[state.partner];
   const draftKey = `${STORAGE_KEYS.draftPrefix}${toDbWho(state.me)}`;
   const captionDraftKey = `${draftKey}.caption`;
@@ -509,6 +655,7 @@ async function flyAway(sheet: Sheet, draft: ComposeDraft, onClearDraft: () => vo
   if (!state.stars.some((s) => s.id === star.id)) {
     state.stars.push(star);
   }
+  recordDailyStarSent(star.createdAt);
   core.fx.land(target, {
     now: performance.now(),
     tint: PEOPLE[state.me].color,

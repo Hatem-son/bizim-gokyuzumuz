@@ -167,18 +167,10 @@ async function processPendingUnlocks(
 
     const recipientWho: 'hamham' | 'beto' = senderProfile.who === 'hamham' ? 'beto' : 'hamham';
     const recipientProfile = profileList.find((p: ProfileSubRow) => p.who === recipientWho);
-    const senderGen = senderProfile.who === 'hamham' ? "Ham ham'ın" : "Beto'nun";
-    const recipientName = recipientWho === 'hamham' ? 'Ham ham' : 'Beto';
 
     await sendToProfile(admin, recipientProfile, {
-      title: `${senderGen} zamanlı yıldızı açıldı`,
-      body: 'Şimdi açabilirsin',
-      url: '/',
-    });
-
-    await sendToProfile(admin, senderProfile, {
-      title: 'Yıldızının kilidi açıldı',
-      body: `${recipientName} artık açabilir`,
+      title: 'Bir yıldızın var',
+      body: '',
       url: '/',
     });
 
@@ -276,28 +268,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return json({ sent: false, reason: 'no_subscription' }, 200, corsHeaders);
     }
 
-    // İçerik bildirimde asla yer almaz
-    let title = `${senderName} sana bir yıldız bıraktı`;
-    let subtitle = 'Gökyüzüne yeni bir yıldız düştü';
-
-    if (body.kind === 'draw') {
-      title = `${senderName} sana bir çizim bıraktı`;
-    } else if (body.kind === 'photo') {
-      title = `${senderName} sana bir fotoğraf bıraktı`;
-      subtitle = body.once ? 'Tek seferlik bir fotoğraf gönderdi' : 'Gökyüzüne yeni bir yıldız düştü';
-    } else if (body.kind === 'voice') {
-      title = `${senderName} sana sesli bir yıldız bıraktı`;
-      subtitle = 'Bir ses kaydı';
-    }
-
-    if (body.unlockAt) {
-      title = `${senderName} sana kilitli bir yıldız bıraktı`;
-      subtitle = formatUnlockLabel(body.unlockAt);
-    }
-
+    // Bildirimde yalnızca "Bir yıldızın var" yazar, başka hiçbir şey yazmaz
     const res = await sendToProfile(admin, recipient, {
-      title,
-      body: subtitle,
+      title: 'Bir yıldızın var',
+      body: '',
       url: '/',
     });
 
