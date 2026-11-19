@@ -4,14 +4,16 @@ import { PEOPLE } from './people';
 import { STORAGE_KEYS, store } from './storage';
 
 /** Yıldız kimliğinden FNV-1a ile deterministik ela yıldız hesabı */
-export function isHazel(id: string): boolean {
+export function isHazel(id: string, every = HAZEL_EVERY): boolean {
   let h = 2166136261 >>> 0;
   for (let i = 0; i < id.length; i++) {
     h ^= id.charCodeAt(i);
     h = Math.imul(h, 16777619) >>> 0;
   }
-  return h % HAZEL_EVERY === 0;
+  return h % every === 0;
 }
+
+const HAZEL_1_IN_30_CUTOFF_ISO = '2026-11-19T22:00:00.000Z';
 
 /** İlk gönderilen yıldız hiçbir zaman ela olmaz; diğerleri id ile deterministik seçilir */
 export function isStarHazel(star: StarRecord, allStars: StarRecord[]): boolean {
@@ -27,7 +29,9 @@ export function isStarHazel(star: StarRecord, allStars: StarRecord[]): boolean {
     }
   }
   if (!hasEarlier) return false;
-  return isHazel(star.id);
+  // v6.0.46 öncesi mevcut ela yıldızlar (1/10) kaybolmasın; yeni yıldızlar 1/30 olasılıkla doğar
+  const every = star.createdAt < HAZEL_1_IN_30_CUTOFF_ISO ? 10 : HAZEL_EVERY;
+  return isHazel(star.id, every);
 }
 
 const HAZEL_LINES: Record<Who, string[]> = {
