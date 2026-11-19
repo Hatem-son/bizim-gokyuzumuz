@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gk-v43';
+const CACHE_NAME = 'gk-v44';
 const SHELL_URLS = [
   '/',
   '/index.html',
@@ -43,6 +43,7 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  if (url.pathname === '/sw.js') return;
 
   if (request.mode === 'navigate' || url.pathname === '/' || url.pathname === '/index.html') {
     // Kabuk: ağ ve önbellek yarışır; ağ 800 ms içinde gelmezse önbellekteki kabuk anında açılır (2. açılış beklemez)

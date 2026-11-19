@@ -211,7 +211,7 @@ canvas { position: absolute; left: 0; top: 0; pointer-events: none; }
 .letter .from { font: italic 600 26px/1 var(--serif); }
 .letter .mini-seal { position: absolute; right: 18px; top: 18px; }
 .letter .meta { font: 500 11px/1 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--paper-ink-2); }
-.letter .text { font: 500 20.5px/1.45 var(--serif); margin: 18px 0 6px; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; max-height: 56vh; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
+.letter .text { font: 500 21px/1.45 var(--serif); margin: 18px 0 6px; white-space: pre-wrap; }
 .polaroid { background: #fffdf8; padding: 10px 10px 16px; border-radius: 4px; box-shadow: 0 10px 24px rgba(30,20,10,.18); transform: rotate(-1.2deg); margin: 18px 6px 4px; position: relative; }
 .polaroid img, .polaroid .ph { width: 100%; aspect-ratio: 4/5; object-fit: cover; border-radius: 2px; display: block; }
 .polaroid figcaption { margin-top: 10px; padding: 0 4px; min-height: 18px; text-align: center; font: italic 500 17.5px/1.3 var(--serif); color: var(--paper-ink); white-space: pre-wrap; overflow-wrap: anywhere; }
