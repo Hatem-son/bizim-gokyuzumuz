@@ -267,7 +267,7 @@ export function openCompose(initial: Kind = 'text', restored?: ComposeDraft) {
     body.innerHTML = '';
     body.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: 'ease-out' });
     if (mode === 'text') {
-      const v = h(`<div style="display:flex;flex-direction:column;min-height:0">
+      const v = h(`<div class="text-pane">
         <div class="quick" data-nodrag>${QUICK.map((q) => `<button type="button" class="chip">${q}</button>`).join('')}</div>
         <div class="write-wrap" data-nodrag>
           <textarea class="write" maxlength="1000" placeholder="${p.name}, aklımdan…" enterkeyhint="done" autocapitalize="sentences"></textarea>
@@ -279,16 +279,17 @@ export function openCompose(initial: Kind = 'text', restored?: ComposeDraft) {
       cntEl.textContent = `${ta.value.length} / 1000`;
 
       const syncWriteHeight = () => {
-        ta.style.height = 'auto';
+        ta.style.height = '0px';
         const kbOpen = document.documentElement.classList.contains('kb-open');
-        const minH = kbOpen ? 108 : 132;
-        const maxH = kbOpen
-          ? Math.max(136, Math.round((window.visualViewport?.height || window.innerHeight) * 0.34))
-          : Math.max(240, Math.round(window.innerHeight * 0.46));
-        const nextH = Math.min(maxH, Math.max(minH, ta.scrollHeight));
+        const vvH = window.visualViewport?.height || window.innerHeight;
+        // Klavye açıkken üstteki sabit alanlar (~170px) düşüldükten sonra kalan yüksekliği asla aşmaz
+        const availH = kbOpen ? Math.max(96, vvH - 210) : Math.max(220, Math.round(window.innerHeight * 0.44));
+        const minH = kbOpen ? Math.min(104, availH) : 124;
+        const nextH = Math.min(availH, Math.max(minH, ta.scrollHeight));
         ta.style.height = `${nextH}px`;
       };
       requestAnimationFrame(syncWriteHeight);
+      window.visualViewport?.addEventListener('resize', syncWriteHeight);
 
       $$('.quick .chip', v).forEach((b) =>
         b.addEventListener('click', () => {
@@ -302,9 +303,11 @@ export function openCompose(initial: Kind = 'text', restored?: ComposeDraft) {
       ta.addEventListener('focus', () => {
         if (ta.value.trim()) core.setMyLiveActivity('writing');
         setTimeout(syncWriteHeight, 60);
+        setTimeout(syncWriteHeight, 260);
       });
       ta.addEventListener('blur', () => {
         setTimeout(syncWriteHeight, 100);
+        setTimeout(syncWriteHeight, 350);
       });
       ta.addEventListener('input', () => {
         savedText = ta.value;
