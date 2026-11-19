@@ -1,6 +1,6 @@
 import type { Who } from './types';
 
-export const APP_VERSION = '6.0.45';
+export const APP_VERSION = '6.0.46';
 
 /**
  * İki kullanıcının Supabase Authentication e-posta adresleri (korunan kullanıcı ayarı).
@@ -10,5 +10,5 @@ export const USER_EMAILS: Record<Who, string> = {
   beto: 'beto@gokyuzu.app',
 };
 
-/** Her ~HAZEL_EVERY yıldızdan biri ela yıldız olarak doğar */
-export const HAZEL_EVERY = 12;
+/** Her yıldızda 1/30 (~%3.3) saf olasılıkla ela yıldız doğar (aylık/dönemlik çıkma zorunluluğu yoktur) */
+export const HAZEL_EVERY = 30;
