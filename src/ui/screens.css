@@ -46,20 +46,40 @@
 
 /* ---------- yazma kartı ---------- */
 .compose { display: flex; flex-direction: column; min-height: 0; }
-.c-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.c-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex: none; transition: margin .2s var(--e-out); }
 .avatar { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; border: 1px solid currentColor; flex: none; }
 .c-head .title { font-size: 30px; }
 .c-head .eyebrow { margin-top: 4px; }
 .c-head .icon-btn { margin-left: auto; color: var(--text-2); }
-.c-body { margin-top: 14px; min-height: 196px; }
-.quick { display: flex; gap: 8px; overflow-x: auto; margin: 0 -20px; padding: 0 20px 2px; scrollbar-width: none; touch-action: pan-x; }
+.c-body { margin-top: 12px; min-height: 0; flex: 1 1 auto; display: flex; flex-direction: column; }
+.quick { display: flex; gap: 8px; overflow-x: auto; margin: 0 -20px 10px; padding: 0 20px 2px; scrollbar-width: none; touch-action: pan-x; flex: none; }
 .quick::-webkit-scrollbar { display: none; }
-.write { width: 100%; height: 150px; margin-top: 12px; resize: none; border: 0; outline: none; background: transparent; padding: 4px 2px;
-  font: italic 500 22px/1.38 var(--serif); color: var(--text); caret-color: var(--partner); }
+.write-wrap {
+  display: flex; flex-direction: column; width: 100%; border-radius: var(--r-m);
+  background: rgba(255, 255, 255, .045); border: 1px solid var(--glass-line);
+  padding: 12px 14px 8px; transition: border-color .2s, background .2s;
+}
+.write-wrap:focus-within { border-color: rgba(255, 255, 255, .28); background: rgba(255, 255, 255, .07); }
+.write {
+  width: 100%; min-height: 116px; max-height: 44vh; resize: none; border: 0; outline: none; background: transparent;
+  padding: 0; margin: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y !important;
+  font: italic 500 20.5px/1.4 var(--serif); color: var(--text); caret-color: var(--partner);
+  transition: height .14s ease-out;
+}
 .write::placeholder { color: var(--text-3); }
-.c-foot { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.write-foot {
+  display: flex; align-items: center; justify-content: flex-end; margin-top: 6px; padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, .06); flex: none; pointer-events: none;
+}
+.c-foot { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex: none; position: relative; z-index: 2; }
 .c-foot .send { height: 50px; padding: 0 20px; }
-.lockline { display: flex; align-items: center; gap: 7px; margin-top: 12px; }
+.lockline { display: flex; align-items: center; gap: 7px; margin-top: 10px; flex: none; }
+html.kb-open .compose .c-head { margin-bottom: 8px; }
+html.kb-open .compose .c-head .title { font-size: 25px; }
+html.kb-open .compose .avatar { width: 38px; height: 38px; }
+html.kb-open .compose .c-body { margin-top: 8px; }
+html.kb-open .compose .c-foot { margin-top: 10px; }
+html.kb-open .compose .lockline { display: none; }
 .pick { height: 188px; border-radius: var(--r-l); border: 1.5px dashed rgba(255,255,255,.2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text-2); position: relative; }
 .pick input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .photo-prev { display: flex; flex-direction: column; gap: 14px; }

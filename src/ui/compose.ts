@@ -267,28 +267,50 @@ export function openCompose(initial: Kind = 'text', restored?: ComposeDraft) {
     body.innerHTML = '';
     body.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: 'ease-out' });
     if (mode === 'text') {
-      const v = h(`<div>
+      const v = h(`<div style="display:flex;flex-direction:column;min-height:0">
         <div class="quick" data-nodrag>${QUICK.map((q) => `<button type="button" class="chip">${q}</button>`).join('')}</div>
-        <textarea class="write" maxlength="600" placeholder="${p.name}, aklımdan…" enterkeyhint="done" autocapitalize="sentences"></textarea>
-        <div class="small" style="text-align:right" data-cnt>0 / 600</div></div>`);
+        <div class="write-wrap" data-nodrag>
+          <textarea class="write" maxlength="1000" placeholder="${p.name}, aklımdan…" enterkeyhint="done" autocapitalize="sentences"></textarea>
+          <div class="write-foot"><span class="small num" data-cnt>0 / 1000</span></div>
+        </div></div>`);
       const ta = $<HTMLTextAreaElement>('textarea', v);
+      const cntEl = $('[data-cnt]', v);
       ta.value = savedText;
-      $('[data-cnt]', v).textContent = `${ta.value.length} / 600`;
+      cntEl.textContent = `${ta.value.length} / 1000`;
+
+      const syncWriteHeight = () => {
+        ta.style.height = 'auto';
+        const kbOpen = document.documentElement.classList.contains('kb-open');
+        const minH = kbOpen ? 108 : 132;
+        const maxH = kbOpen
+          ? Math.max(136, Math.round((window.visualViewport?.height || window.innerHeight) * 0.34))
+          : Math.max(240, Math.round(window.innerHeight * 0.46));
+        const nextH = Math.min(maxH, Math.max(minH, ta.scrollHeight));
+        ta.style.height = `${nextH}px`;
+      };
+      requestAnimationFrame(syncWriteHeight);
+
       $$('.quick .chip', v).forEach((b) =>
         b.addEventListener('click', () => {
           const phrase = b.textContent || '';
-          ta.value = (ta.value ? ta.value.trimEnd() + ' ' : '') + phrase + (phrase.endsWith('.') ? '' : '.');
+          const nextVal = (ta.value ? ta.value.trimEnd() + ' ' : '') + phrase + (phrase.endsWith('.') ? '' : '.');
+          ta.value = nextVal.slice(0, 1000);
           ta.dispatchEvent(new Event('input'));
           b.animate([{ transform: 'scale(.92)' }, { transform: 'scale(1)' }], { duration: 260, easing: 'cubic-bezier(.3,1.4,.5,1)' });
         })
       );
       ta.addEventListener('focus', () => {
         if (ta.value.trim()) core.setMyLiveActivity('writing');
+        setTimeout(syncWriteHeight, 60);
+      });
+      ta.addEventListener('blur', () => {
+        setTimeout(syncWriteHeight, 100);
       });
       ta.addEventListener('input', () => {
         savedText = ta.value;
         store.set(draftKey, savedText);
-        $('[data-cnt]', v).textContent = `${ta.value.length} / 600`;
+        cntEl.textContent = `${ta.value.length} / 1000`;
+        syncWriteHeight();
         core.setMyLiveActivity(ta.value.trim() ? 'writing' : 'idle');
         valid();
       });
