@@ -174,23 +174,38 @@ export function wxIcon(kind: string) {
 }
 
 /* ---------- çentik bildirimleri: karşı tarafın canlı durumu ---------- */
-export function showLive(activity: 'writing' | 'sending' | 'drawing' | 'photo' | 'voice' | 'left', o: { onWatch?: () => void; star?: Star } = {}) {
-  if (!state.settings.live && activity !== 'left') return;
+export function showLive(
+  activity: 'writing' | 'sending' | 'drawing' | 'invite' | 'photo' | 'voice' | 'left',
+  o: { onWatch?: () => void; onJoin?: () => void; star?: Star } = {}
+) {
+  if (!state.settings.live && activity !== 'left' && activity !== 'invite') return;
   const p = PEOPLE[state.partner];
   const av = SIGN[p.sign];
   const map = {
     writing: { title: `${p.name} sana yazıyor`, sub: 'Bir yıldız hazırlanıyor', loader: 'dots' as const },
     sending: { title: `${p.name} gönderiyor`, sub: 'Yıldız yolda…', loader: 'ring' as const },
     drawing: { title: `${p.name} bir şey çiziyor`, sub: 'Canlı izleyebilirsin', loader: null },
+    invite: { title: `${p.name} seni çizime çağırıyor`, sub: 'Aynı tuvalde birlikte çizebilirsiniz', loader: null },
     photo: { title: `${p.name} bir fotoğraf seçiyor`, sub: 'Bir yıldız hazırlanıyor', loader: 'dots' as const },
     voice: { title: `${p.name} sesini kaydediyor`, sub: 'Bir yıldız hazırlanıyor', loader: 'dots' as const },
     left: { title: `${p.name} bir yıldız bıraktı`, sub: 'Gökyüzüne bak', loader: null },
   }[activity];
+  const drawActions =
+    (activity === 'drawing' || activity === 'invite') && (o.onWatch || o.onJoin)
+      ? [
+          ...(o.onWatch ? [{ label: 'İzle', primary: false, onClick: o.onWatch }] : []),
+          ...(o.onJoin
+            ? [{ label: activity === 'invite' ? 'Katıl' : 'Birlikte çiz', primary: true, onClick: o.onJoin }]
+            : []),
+        ]
+      : undefined;
   island({
-    avatar: av, color: p.color, ...map,
-    action: activity === 'drawing' && o.onWatch ? { label: 'İzle', onClick: o.onWatch }
-      : activity === 'left' && o.star ? { label: 'Aç', onClick: () => core.openStar(o.star!) } : undefined,
-    ms: activity === 'left' ? 5200 : activity === 'drawing' ? 9000 : 6200,
+    avatar: av,
+    color: p.color,
+    ...map,
+    actions: drawActions,
+    action: !drawActions && activity === 'left' && o.star ? { label: 'Aç', onClick: () => core.openStar(o.star!) } : undefined,
+    ms: activity === 'left' ? 5200 : activity === 'drawing' || activity === 'invite' ? 6000 : 6200,
   });
 }
 

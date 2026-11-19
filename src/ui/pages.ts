@@ -1,7 +1,7 @@
 // Yıldız açma: zarf + mühür seremonisi, mektup türleri (yazı, polaroid fotoğraf, gerçek ses oynatıcı, çizim yeniden oynatma),
 // kilitli yıldız geri sayımı ve kendi gönderdiğin yıldız görünümü.
 import { h, $, $$, openSheet, popPage, toast, reduced, Sheet } from './ui';
-import { I } from './icons';
+import { I, SIGN } from './icons';
 import { state, PEOPLE, Star, Who, fmtDate, untilParts, toDbWho } from './state';
 import { core } from './core';
 import { fmtSec } from './compose';
@@ -266,13 +266,17 @@ export async function openStar(st: Star, onOpened?: () => void) {
             ? `<div class="player"><button type="button" class="pbtn" aria-label="Oynat">${I.play(18)}</button><div class="wave grow">${peaks.map((pk) => `<i style="transform:scaleY(${(0.2 + pk * 0.8).toFixed(2)})"></i>`).join('')}</div><span class="num" style="font:500 13px var(--sans);color:var(--paper-ink-2)" data-vtime>${fmtSec(st.voiceSec ?? 10)}</span></div>`
             : `<div class="draw-view"><canvas></canvas></div><div class="row-flex" style="justify-content:center;margin-top:10px"><button type="button" class="chip" data-replay style="color:var(--paper-ink);border-color:rgba(28,31,54,.2)">${I.play(14)}<span>Yeniden oynat</span></button></div>`;
 
-    const sealed = !st.opened && !mine;
+    const sealed = !st.opened && !mine && !st.collab;
+    const fromHeader = st.collab
+      ? `<span class="dual-av" aria-hidden="true"><span style="color:#9db6ff">${SIGN.cancer}</span><span style="color:#ffadcc">${SIGN.capricorn}</span></span><div class="from" style="display:inline-block;vertical-align:middle">İkimiz</div>`
+      : `<div class="from">${fromP.from}</div>`;
+    const metaText = st.collab ? `Beraber çizdiniz · ${fmtDate(st.createdAt)}` : fmtDate(st.createdAt);
     content = h(`<div class="env-wrap">
       ${sealed ? envelope(st.from) : ''}
       <article class="letter from-${st.from}">
         ${sealed ? '' : `<div class="mini-seal" style="position:absolute;right:16px;top:14px;width:34px;height:34px">${waxSeal(st.from, 34, true)}</div>`}
-        <div class="row-flex"><div class="from">${st.collab ? 'Birlikte çizdiniz' : fromP.from}</div><span class="grow"></span>${st.hazel ? `<span class="meta" style="color:#a07a3c;margin-right:40px">ela yıldız</span>` : ''}</div>
-        <div class="meta" style="margin-top:8px">${fmtDate(st.createdAt)}</div>
+        <div class="row-flex">${fromHeader}<span class="grow"></span>${st.hazel ? `<span class="meta" style="color:#a07a3c;margin-right:40px">ela yıldız</span>` : ''}</div>
+        <div class="meta" style="margin-top:8px">${metaText}</div>
         ${body}
       </article>
       <div class="view-actions">
@@ -512,12 +516,14 @@ export function openArchive() {
       const incoming = s.from !== state.me;
       const t1 = locked
         ? `${fmtUntil(s.unlockAt!)} sonra açılacak`
-        : !incoming
-          ? `${PEOPLE[state.partner].to} bıraktın`
-          : !s.opened
-            ? 'Açılmamış yıldız'
-            : s.kind === 'text'
-              ? s.text || 'Bir mektup'
+        : s.collab
+          ? 'Beraber çizdiniz'
+          : !incoming
+            ? `${PEOPLE[state.partner].to} bıraktın`
+            : !s.opened
+              ? 'Açılmamış yıldız'
+              : s.kind === 'text'
+                ? s.text || 'Bir mektup'
               : s.kind === 'photo'
                 ? s.caption || 'Bir fotoğraf'
                 : s.kind === 'voice'

@@ -126,15 +126,23 @@ function edgeSwipeBack(page: HTMLElement, prev?: HTMLElement) {
 }
 
 /* ---------------- toast ---------------- */
-export function toast(text: string, icon = I.starFill(14), ms = 2600) {
+export function toast(text: string, icon = I.starFill(14), ms = 1800) {
   app.querySelector('.toast:not(.offline)')?.remove();
   const el = h(`<div class="toast glass-strong" role="status">${icon}<span></span></div>`);
   el.querySelector('span')!.textContent = text;
   app.appendChild(el);
-  el.animate([{ opacity: 0, transform: 'translate(-50%,12px) scale(.96)' }, { opacity: 1, transform: 'translate(-50%,0) scale(1)' }], { duration: 380, easing: 'cubic-bezier(.3,1.3,.5,1)', fill: 'forwards' });
+  el.animate([{ opacity: 0, transform: 'translate(-50%,10px) scale(.96)' }, { opacity: 1, transform: 'translate(-50%,0) scale(1)' }], {
+    duration: reduced() ? 100 : 220,
+    easing: 'cubic-bezier(.2,.8,.2,1)',
+    fill: 'forwards',
+  });
   setTimeout(async () => {
     if (!el.isConnected) return;
-    await el.animate([{ opacity: 1 }, { opacity: 0, transform: 'translate(-50%,8px)' }], { duration: 260, fill: 'forwards' }).finished;
+    await el.animate([{ opacity: 1 }, { opacity: 0, transform: 'translate(-50%,8px)' }], {
+      duration: reduced() ? 100 : 220,
+      easing: 'cubic-bezier(.2,.8,.2,1)',
+      fill: 'forwards',
+    }).finished;
     el.remove();
   }, ms);
 }
@@ -184,12 +192,14 @@ export function stagger(els: Element[], o: { y?: number; delay?: number; gap?: n
 /* ---------------- canlı bildirim kartı ----------------
    Durum çubuğunun altında, yukarıdan yaylanarak iner; içerik değişince yumuşakça yer değiştirir; yukarı süzülerek kapanır.
    Kartı yukarı itince de kapanır. (Gerçek Dynamic Island'a web'den çizilemez; onu taklit eden kapsül saatin üstüne biniyordu.) */
+export type IslandAction = { label: string; primary?: boolean; onClick: () => void };
 export type IslandOpts = {
   avatar: string;
   title: string;
   sub?: string;
   loader?: 'dots' | 'ring' | null;
-  action?: { label: string; onClick: () => void };
+  action?: IslandAction;
+  actions?: IslandAction[];
   color?: string;
   ms?: number;
 };
@@ -200,12 +210,21 @@ export function island(o: IslandOpts) {
   clearTimeout(islandT);
   if (islandEl && !islandEl.isConnected) islandEl = null;
   const col = o.color ?? 'var(--partner)';
+  const actList = o.actions?.length ? o.actions : o.action ? [o.action] : [];
+  const actionsHtml = actList.length
+    ? `<span class="is-acts">${actList
+        .map(
+          (a, idx) =>
+            `<button type="button" class="is-act ${a.primary === false ? 'ghost' : ''}" data-act-i="${idx}">${a.label}</button>`
+        )
+        .join('')}</span>`
+    : '';
   const content = `
     <span class="is-av" style="color:${col}">${o.avatar}</span>
     <span class="is-tx"><b>${o.title}</b>${o.sub ? `<i>${o.sub}</i>` : ''}</span>
     ${o.loader === 'dots' ? `<span class="is-dots" style="color:${col}"><i></i><i></i><i></i></span>` : ''}
     ${o.loader === 'ring' ? `<span class="is-ring" style="color:${col}"></span>` : ''}
-    ${o.action ? `<button type="button" class="is-act">${o.action.label}</button>` : ''}`;
+    ${actionsHtml}`;
   const fresh = !islandEl;
   if (!islandEl) {
     islandEl = h(`<div class="island-pop" role="status" aria-live="polite"><div class="is-in"></div></div>`);
@@ -243,14 +262,17 @@ export function island(o: IslandOpts) {
   if (!fresh) {
     inner.animate([{ opacity: 0, transform: 'translate3d(0,6px,0)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: 'ease-out' });
   }
-  const btn = inner.querySelector('.is-act');
-  if (btn && o.action) {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      o.action!.onClick();
-      void closeIsland();
-    });
-  }
+  inner.querySelectorAll<HTMLButtonElement>('.is-act').forEach((btn) => {
+    const idx = Number(btn.dataset.actI || '0');
+    const act = actList[idx];
+    if (act) {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        act.onClick();
+        void closeIsland();
+      });
+    }
+  });
   if ((o.ms ?? 4200) > 0) {
     islandT = window.setTimeout(() => void closeIsland(), o.ms ?? 4200);
   }

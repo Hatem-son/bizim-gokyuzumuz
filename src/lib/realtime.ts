@@ -421,9 +421,19 @@ export class PairRealtime {
     void this.sendRaw('act', { t: 'act', a: 'heart', pres: true });
   }
 
-  /** HOTFIX 19 & 22: sıralı çizim kuyruğu (dstart, dpts, dundo, dclear, djoin, dsnap, dleave, dfin paketlerini sıra bozmadan yollar). */
+  /** HOTFIX 19, 22 & 24: sıralı çizim kuyruğu (bekleyen dpts paketlerini kuyruk sonunda tek pakette birleştirir, ~10 msg/sn limitini aşmaz). */
   draw(pkt: DrawLivePacket) {
     if (document.hidden || !this.active) return;
+    const tail = this.drawQueue[this.drawQueue.length - 1];
+    if (
+      this.drawSending &&
+      tail &&
+      (tail.t === 'dpts' || tail.t === 'pts') &&
+      (pkt.t === 'dpts' || pkt.t === 'pts')
+    ) {
+      tail.pts = [...tail.pts, ...pkt.pts];
+      return;
+    }
     this.drawQueue.push(pkt);
     if (!this.drawSending) {
       void this.flushDrawQueue();

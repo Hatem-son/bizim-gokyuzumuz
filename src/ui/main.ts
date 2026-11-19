@@ -276,6 +276,9 @@ function landDrawing(strokes: Stroke[], sid?: string, collab = false) {
     }
   );
   showLive('left', { star: stNew });
+  if (isCollab) {
+    toast('Çiziminiz gökyüzünde', I.starFill(14), 1800);
+  }
   core.refreshHome();
 }
 
@@ -351,14 +354,26 @@ async function landMyDrawing(strokes: Stroke[], sid?: string, collab = true) {
     },
   });
   core.refreshHome();
-  const me = PEOPLE[state.me];
-  island({
-    avatar: I.starFill(18),
-    color: me.color,
-    title: isCollab ? 'Ortak çizim gökyüzünde' : `${PEOPLE[state.partner].of} gökyüzünde`,
-    sub: `${PEOPLE[state.partner].name} haber alacak`,
-    ms: 3200,
-  });
+  if (isCollab) {
+    toast('Çiziminiz gökyüzünde', I.starFill(14), 1800);
+  } else {
+    const me = PEOPLE[state.me];
+    island({
+      avatar: I.starFill(18),
+      color: me.color,
+      title: `${PEOPLE[state.partner].of} gökyüzünde`,
+      sub: `${PEOPLE[state.partner].name} haber alacak`,
+      ms: 3200,
+    });
+  }
+}
+
+async function joinCollabDirect(sid?: string) {
+  if (document.querySelector('.board,.watch')) return;
+  const res = await openBoard([], { collab: true, sid, fromWatch: true });
+  if (res && !res.remoteFin && res.strokes.length) {
+    await landMyDrawing(res.strokes, res.sid, true);
+  }
 }
 
 const pairRealtime = new PairRealtime({
@@ -370,7 +385,7 @@ const pairRealtime = new PairRealtime({
       void closeIsland();
       return;
     }
-    // HOTFIX 22: İzleme ekranı / çizim tahtası açıkken hiçbir "yazıyor/çiziyor" kartı çıkmaz
+    // HOTFIX 22 & 24: İzleme ekranı / çizim tahtası açıkken hiçbir "yazıyor/çiziyor" kartı çıkmaz
     if (pairRealtime.inDrawView) return;
     const now = Date.now();
     // Aynı etkinlik için kart 60 sn içinde ikinci kez çıkmaz (gönderen gerçekten null yollayınca sıfırlanır)
@@ -382,6 +397,11 @@ const pairRealtime = new PairRealtime({
           shownAct = { a: 'drawing', t: Date.now() };
           void closeIsland();
           openWatch();
+        },
+        onJoin: () => {
+          shownAct = { a: 'drawing', t: Date.now() };
+          void closeIsland();
+          void joinCollabDirect();
         },
       });
       return;
@@ -396,6 +416,21 @@ const pairRealtime = new PairRealtime({
   },
 });
 pairRealtime.onCollabFin = (strokes, sid, collab) => landDrawing(strokes, sid, collab);
+pairRealtime.onDrawPacket((pkt) => {
+  if (pkt.t === 'dinvite' && inHome && !pairRealtime.inDrawView) {
+    shownAct = { a: 'drawing', t: Date.now() };
+    showLive('invite', {
+      onWatch: () => {
+        void closeIsland();
+        openWatch();
+      },
+      onJoin: () => {
+        void closeIsland();
+        void joinCollabDirect(pkt.sid);
+      },
+    });
+  }
+});
 
 let stopStarsRealtime: (() => void) | null = null;
 let realtimeActiveWho: string | null = null;

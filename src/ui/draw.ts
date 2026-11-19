@@ -1,9 +1,9 @@
-// Çizim tahtası (vektör çizgiler, 1000×1333 mantıksal tuval) + şifreli canlı izleme + beraber çizme (HOTFIX 22) + yeniden oynatma.
+// HOTFIX 22 & 24 — Beraber Çizme + Canlı İzleme + Kişiye Özel Silgi Katmanı + 10 dk Taslak Koruması.
 import { h, $, $$, confirmSheet, reduced, toast, closeIsland } from './ui';
-import { I } from './icons';
+import { I, SIGN } from './icons';
 import { state, PEOPLE, Who } from './state';
 import { core } from './core';
-import { MAX_STROKES, MAX_POINTS } from '../lib/drawCodec';
+import { MAX_STROKES, MAX_POINTS, simplifyRdp } from '../lib/drawCodec';
 
 export type Stroke = {
   k: 'pen' | 'glow' | 'erase';
@@ -22,6 +22,7 @@ export type BoardResult = {
 
 export type DrawLivePacket =
   | { t: 'dreq' | 'hello'; seq: number; sid?: string }
+  | { t: 'dinvite'; seq: number; sid?: string }
   | { t: 'djoin'; seq: number; sid?: string }
   | { t: 'dsnap' | 'snap'; seq: number; strokes: Stroke[]; sid?: string; collab?: boolean }
   | { t: 'dstart'; seq: number; k: Stroke['k']; c: string; s: number; pt: [number, number, number]; sid?: string }
@@ -37,7 +38,8 @@ export type DrawLivePacket =
 const LW = 1000, LH = 1333;
 const COLORS = ['#ffffff', '#9db6ff', '#ffadcc', '#e3b866', '#9bb06a', '#b9a2ff', '#ff8a7a', '#ffe08a'];
 const SIZES = [4, 9, 18];
-export const DRAW_DRAFT_KEY = 'gokyuzu.drawDraft.v1';
+export const DRAW_DRAFT_KEY = 'gokyuzu.drawDraft.v2';
+const DRAFT_TTL_MS = 10 * 60 * 1000; // 10 dakika
 
 function makeSessionId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -51,7 +53,17 @@ export function loadSavedDrawingDraft(): Stroke[] | null {
     const raw = localStorage.getItem(DRAW_DRAFT_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? (parsed as Stroke[]) : null;
+    if (Array.isArray(parsed)) {
+      return parsed.length > 0 ? (parsed as Stroke[]) : null;
+    }
+    if (parsed && Array.isArray(parsed.strokes) && parsed.strokes.length > 0) {
+      if (typeof parsed.ts === 'number' && Date.now() - parsed.ts > DRAFT_TTL_MS) {
+        localStorage.removeItem(DRAW_DRAFT_KEY);
+        return null;
+      }
+      return parsed.strokes as Stroke[];
+    }
+    return null;
   } catch {
     return null;
   }
@@ -60,28 +72,77 @@ export function loadSavedDrawingDraft(): Stroke[] | null {
 export function saveDrawingDraft(strokes: Stroke[] | null): void {
   try {
     if (!strokes || !strokes.length) localStorage.removeItem(DRAW_DRAFT_KEY);
-    else localStorage.setItem(DRAW_DRAFT_KEY, JSON.stringify(strokes));
+    else localStorage.setItem(DRAW_DRAFT_KEY, JSON.stringify({ strokes, ts: Date.now() }));
   } catch {
     // Ignore quota errors
   }
 }
 
-/** Çizgileri tuvale çiz. upTo: ms (yeniden oynatma için), yoksa tümü. */
+// Kişiye özel silgi katmanı için offscreen tuvaller (silgi yalnız kendi çizgilerini siler, karşının katmanına dokunmaz)
+let offHam: HTMLCanvasElement | null = null;
+let offBeto: HTMLCanvasElement | null = null;
+
+function ensureOffscreen(w: number, h: number): [HTMLCanvasElement, HTMLCanvasElement] {
+  if (!offHam) offHam = document.createElement('canvas');
+  if (!offBeto) offBeto = document.createElement('canvas');
+  if (offHam.width !== w || offHam.height !== h) {
+    offHam.width = w;
+    offHam.height = h;
+  }
+  if (offBeto.width !== w || offBeto.height !== h) {
+    offBeto.width = w;
+    offBeto.height = h;
+  }
+  return [offHam, offBeto];
+}
+
+/** Çizgileri tuvale çiz. Silgi varsa her kişinin çizgileri kendi katmanında işlenir (karşı tarafın çizgilerini silmez). */
 export function renderDrawing(cv: HTMLCanvasElement, strokes: Stroke[], _scale = 1, upTo = Infinity) {
   const r = cv.getBoundingClientRect();
   const d = Math.min(devicePixelRatio || 1, 2);
-  const w = (r.width || cv.width) * d, hh = (r.height || cv.height) * d;
-  if (w > 0 && hh > 0 && (cv.width !== Math.round(w) || cv.height !== Math.round(hh))) {
-    cv.width = Math.round(w);
-    cv.height = Math.round(hh);
+  const w = Math.round((r.width || cv.width) * d);
+  const hh = Math.round((r.height || cv.height) * d);
+  if (w > 0 && hh > 0 && (cv.width !== w || cv.height !== hh)) {
+    cv.width = w;
+    cv.height = hh;
   }
   const c = cv.getContext('2d');
-  if (!c) return;
+  if (!c || cv.width <= 0 || cv.height <= 0) return;
   c.setTransform(1, 0, 0, 1, 0, 0);
   c.clearRect(0, 0, cv.width, cv.height);
+
   const k = Math.min(cv.width / LW, cv.height / LH);
-  c.setTransform(k, 0, 0, k, (cv.width - LW * k) / 2, (cv.height - LH * k) / 2);
-  for (const s of strokes) drawStroke(c, s, upTo);
+  const ox = (cv.width - LW * k) / 2;
+  const oy = (cv.height - LH * k) / 2;
+
+  const hasEraser = strokes.some((s) => s.k === 'erase');
+  const hasBothAuthors = hasEraser && new Set(strokes.map((s) => s.by ?? 'ham')).size > 1;
+
+  if (!hasBothAuthors) {
+    c.setTransform(k, 0, 0, k, ox, oy);
+    for (const s of strokes) drawStroke(c, s, upTo);
+    return;
+  }
+
+  const [lHam, lBeto] = ensureOffscreen(cv.width, cv.height);
+  const cHam = lHam.getContext('2d')!;
+  const cBeto = lBeto.getContext('2d')!;
+  cHam.setTransform(1, 0, 0, 1, 0, 0);
+  cHam.clearRect(0, 0, cv.width, cv.height);
+  cHam.setTransform(k, 0, 0, k, ox, oy);
+
+  cBeto.setTransform(1, 0, 0, 1, 0, 0);
+  cBeto.clearRect(0, 0, cv.width, cv.height);
+  cBeto.setTransform(k, 0, 0, k, ox, oy);
+
+  for (const s of strokes) {
+    const targetCtx = (s.by ?? state.me) === 'beto' ? cBeto : cHam;
+    drawStroke(targetCtx, s, upTo);
+  }
+
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.drawImage(lHam, 0, 0);
+  c.drawImage(lBeto, 0, 0);
 }
 
 function drawStroke(c: CanvasRenderingContext2D, s: Stroke, upTo = Infinity) {
@@ -121,23 +182,46 @@ function spawnReactionHeart(host: HTMLElement) {
   f.animate(
     [
       { transform: 'translate(0,0) scale(.5)', opacity: 0 },
-      { transform: `translate(${drift * 0.4}px,-60px) scale(1)`, opacity: 1, offset: 0.3 },
-      { transform: `translate(${drift}px,-220px) scale(.8)`, opacity: 0 },
+      { transform: `translate(${drift * 0.4}px,-60px) scale(1)`, opacity: 1, offset: 0.35 },
+      { transform: `translate(${drift}px,-180px) scale(.82)`, opacity: 0 },
     ],
-    { duration: 1600, easing: 'ease-out' }
+    { duration: 800, easing: 'cubic-bezier(.2,.8,.2,1)' }
   ).finished.then(() => f.remove());
+}
+
+/** Çok uzun çizimde (>MAX_STROKES / >MAX_POINTS) hata vermek yerine eski çizgileri sessizce sadeleştirir (HOTFIX 24 / 4.6). */
+function compactStrokesInPlace(strokes: Stroke[]): number {
+  for (let i = 0; i < Math.min(strokes.length - 1, Math.ceil(strokes.length * 0.6)); i++) {
+    if (strokes[i].p.length > 6) {
+      strokes[i].p = simplifyRdp(strokes[i].p, 2.4);
+    }
+  }
+  while (strokes.length >= MAX_STROKES && strokes.length > 2) {
+    // Aynı kişiye ve aynı kalem/renk/kalınlığa ait ardışık eski iki çizgiyi birleştir veya en eskiyi sıkıştır
+    let merged = false;
+    for (let i = 0; i < strokes.length - 2; i++) {
+      const a = strokes[i], b = strokes[i + 1];
+      if (a.by === b.by && a.k === b.k && a.c === b.c && Math.abs(a.s - b.s) < 0.5) {
+        a.p = simplifyRdp([...a.p, ...b.p], 2.4);
+        strokes.splice(i + 1, 1);
+        merged = true;
+        break;
+      }
+    }
+    if (!merged) strokes.shift();
+  }
+  return strokes.reduce((acc, s) => acc + s.p.length, 0);
 }
 
 export function openBoard(
   existing?: Stroke[] | null,
-  opts?: { collab?: boolean; sid?: string }
+  opts?: { collab?: boolean; sid?: string; fromWatch?: boolean }
 ): Promise<BoardResult | null> {
   return new Promise((resolve) => {
     core.setInDrawView(true);
     void closeIsland();
 
     const p = PEOPLE[state.partner];
-    // Herkesin varsayılan rengi kendi rengi (Ham ham mavi #9db6ff = COLORS[1], Beto pembe #ffadcc = COLORS[2])
     const initColorIdx = state.me === 'ham' ? 1 : 2;
     let color = COLORS[initColorIdx];
     let tool: Stroke['k'] = 'pen';
@@ -148,12 +232,10 @@ export function openBoard(
     const isInitiator = !opts?.collab;
     let sid = opts?.sid || makeSessionId();
 
-    const rawInitial =
-      opts?.collab
-        ? existing ?? []
-        : existing && existing.length
-          ? existing
-          : loadSavedDrawingDraft();
+    const savedDraft = !opts?.collab && (!existing || !existing.length) ? loadSavedDrawingDraft() : null;
+    const hasResumedDraft = Boolean(savedDraft && savedDraft.length > 0);
+    const rawInitial = opts?.collab ? existing ?? [] : existing && existing.length ? existing : savedDraft;
+
     const strokes: Stroke[] = rawInitial
       ? rawInitial.map((s) => ({
           ...s,
@@ -168,20 +250,50 @@ export function openBoard(
     let seq = 0;
     let lastPartnerSeq = 0;
     let lastReqAt = 0;
+    let partnerLastDrawAt = Date.now();
+    let partnerLastSeenAt = Date.now();
     let submitting = false;
     let closed = false;
 
     const partnerHere = () => Boolean(document.querySelector('.lantern.partner.on'));
+    const curRingCol = state.partner === 'beto' ? 'rgba(255,173,204,.22)' : 'rgba(157,182,255,.22)';
+
     const el = h(`<div class="board" role="dialog" aria-label="Çizim tahtası">
       <div class="board-top">
-        <button type="button" class="btn btn-ghost" data-cancel style="height:44px;padding:0 10px">Vazgeç</button>
-        <div class="mid"><div class="h2" data-title>${collab ? 'Beraber çiziyorsunuz' : `${p.to} çizim`}</div>
-          <button type="button" class="livebtn ${live ? 'on' : ''}" data-live><span class="d"></span><span>${collab ? 'Canlı · birlikte' : live ? `${p.name} izleyebilir` : 'Canlı izlet'}</span></button>
-          <div class="small" style="margin-top:4px" data-pres>${partnerHere() ? `${p.name} burada` : ''}</div></div>
-        <button type="button" class="btn btn-primary" data-done style="height:44px;padding:0 16px" disabled>Bitti</button>
+        <button type="button" class="btn btn-ghost" data-cancel style="height:44px;padding:0 10px" aria-label="Vazgeç">Vazgeç</button>
+        <div class="mid">
+          <div class="h2" data-title>${collab ? 'Beraber çiziyorsunuz' : `${p.to} çizim`}</div>
+          <div class="board-pills ${collab ? 'hide' : ''}" data-solo-pills>
+            <button type="button" class="livebtn ${live ? 'on' : ''}" data-live aria-label="Canlı izlet"><span class="d"></span><span>${live ? `${p.name} izleyebilir` : 'Canlı izlet'}</span></button>
+            <button type="button" class="invitebtn" data-invite aria-label="${p.name} kişisini çizime davet et">${I.pen(13)}<span>Davet et</span></button>
+          </div>
+          <div class="collab-sub ${collab ? '' : 'hide'}" data-collab-sub>
+            <span class="av-dots" aria-hidden="true"><i style="background:#9db6ff"></i><i style="background:#ffadcc"></i></span>
+            <span class="pres-dot" data-pres-dot></span>
+            <span data-collab-txt>${p.name} burada</span>
+          </div>
+          <div class="small" style="margin-top:3px" data-pres>${!collab && partnerHere() ? `${p.name} burada` : ''}</div>
+        </div>
+        <button type="button" class="btn btn-primary" data-done style="height:44px;padding:0 16px" disabled aria-label="Bitti">Bitti</button>
       </div>
-      <div class="canvas-wrap"><div class="canvas-box"><canvas></canvas><div class="cur" style="opacity:0;background:${p.color};box-shadow:0 0 16px ${p.color}"></div><div class="ph">Parmağınla bir şey çiz</div></div></div>
-      <div class="tools glass-strong" style="border-radius:26px 26px 0 0;border-bottom:0">
+      <div class="board-net ${navigator.onLine === false ? '' : 'hide'}" data-net-bar>
+        <span>Bağlantı yok… çizimin cihazında korunuyor</span>
+      </div>
+      <div class="board-draft ${hasResumedDraft ? '' : 'hide'}" data-draft-bar>
+        <span>Yarım kalan çizim</span>
+        <span style="display:inline-flex;gap:6px">
+          <button type="button" class="btn-soft" data-draft-keep>Devam et</button>
+          <button type="button" class="btn-ghost" data-draft-del style="color:var(--danger)">Sil</button>
+        </span>
+      </div>
+      <div class="canvas-wrap">
+        <div class="canvas-box">
+          <canvas></canvas>
+          <div class="cur" style="opacity:0;--cur-c:${p.color};--cur-ring:${curRingCol}"><span class="cur-lbl">${p.name}</span></div>
+          <div class="ph">Parmağınla bir şey çiz</div>
+        </div>
+      </div>
+      <div class="tools glass-strong">
         <div class="swatches">${COLORS.map((c, i) => `<button type="button" class="sw ${i === initColorIdx ? 'on' : ''}" aria-label="Renk ${i + 1}"><i style="background:${c}"></i></button>`).join('')}</div>
         <div class="toolrow">
           <button type="button" class="icon-btn on" data-tool="pen" aria-label="Kalem">${I.pen()}</button>
@@ -196,22 +308,73 @@ export function openBoard(
 
     const app = core.homeEl.parentElement!;
     app.appendChild(el);
-    el.animate([{ transform: 'translateY(100%)' }, { transform: 'none' }], {
-      duration: reduced() ? 150 : 460,
-      easing: 'cubic-bezier(.2,.9,.25,1)',
-    });
+    const toolsEl = $('.tools', el);
+    if (opts?.fromWatch) {
+      // 1.4: İzleme ekranından "Birlikte çiz" geçişi (380 ms): tuval yerinde kalır, araç çubuğu aşağıdan çıkar
+      toolsEl.animate([{ transform: 'translateY(100%)', opacity: 0 }, { transform: 'none', opacity: 1 }], {
+        duration: reduced() ? 120 : 380,
+        easing: 'cubic-bezier(.2,.8,.2,1)',
+      });
+    } else {
+      el.animate(
+        reduced() ? [{ opacity: 0 }, { opacity: 1 }] : [{ transform: 'translateY(100%)' }, { transform: 'none' }],
+        {
+          duration: reduced() ? 150 : 380,
+          easing: 'cubic-bezier(.2,.8,.2,1)',
+        }
+      );
+    }
+
     const cv = $<HTMLCanvasElement>('canvas', el);
     const box = $('.canvas-box', el);
     const curEl = $('.cur', el);
     const titleEl = $('[data-title]', el);
+    const soloPills = $('[data-solo-pills]', el);
+    const collabSub = $('[data-collab-sub]', el);
+    const collabTxt = $('[data-collab-txt]', el);
+    const presDot = $('[data-pres-dot]', el);
+    const presEl = $('[data-pres]', el);
     const liveBtn = $('[data-live]', el);
     const liveLbl = $('[data-live] span:last-child', el);
+    const netBar = $('[data-net-bar]', el);
+    const draftBar = $('[data-draft-bar]', el);
     const sizeDot = $('[data-size] i', el);
 
-    const updateHeader = () => {
-      titleEl.textContent = collab ? 'Beraber çiziyorsunuz' : `${p.to} çizim`;
+    $('[data-draft-keep]', el)?.addEventListener('click', () => draftBar.classList.add('hide'));
+    $('[data-draft-del]', el)?.addEventListener('click', () => {
+      strokes.length = 0;
+      redo.length = 0;
+      totalPts = 0;
+      saveDrawingDraft(null);
+      draftBar.classList.add('hide');
+      scheduleRedraw();
+      update();
+    });
+
+    const updateHeader = (animateTitle = false) => {
+      const nextTitle = collab ? 'Beraber çiziyorsunuz' : `${p.to} çizim`;
+      if (titleEl.textContent !== nextTitle) {
+        titleEl.textContent = nextTitle;
+        if (animateTitle && !reduced()) {
+          titleEl.animate([{ opacity: 0.2, transform: 'translateY(-3px)' }, { opacity: 1, transform: 'none' }], {
+            duration: 200,
+            easing: 'cubic-bezier(.2,.8,.2,1)',
+          });
+        }
+      }
+      soloPills.classList.toggle('hide', collab);
+      collabSub.classList.toggle('hide', !collab);
       liveBtn.classList.toggle('on', live);
-      liveLbl.textContent = collab ? 'Canlı · birlikte' : live ? `${p.name} izleyebilir` : 'Canlı izlet';
+      liveLbl.textContent = live ? `${p.name} izleyebilir` : 'Canlı izlet';
+      if (!collab) {
+        if (live && !partnerHere()) {
+          presEl.textContent = `${p.name} şu an çevrimdışı · bitirince yıldız olarak gider`;
+        } else {
+          presEl.textContent = partnerHere() ? `${p.name} burada` : '';
+        }
+      } else {
+        presEl.textContent = '';
+      }
     };
 
     const setSize = () => {
@@ -219,46 +382,62 @@ export function openBoard(
       sizeDot.style.width = sizeDot.style.height = `${s}px`;
     };
     setSize();
-    const redraw = () => renderDrawing(cv, strokes);
+
+    // HOTFIX 21 / 24 Bölüm 3: Kirli bayrak (dirty flag) — boşta tuval yeniden çizilmez
+    let dirtyRaf = 0;
+    const scheduleRedraw = () => {
+      if (dirtyRaf || closed) return;
+      dirtyRaf = requestAnimationFrame(() => {
+        dirtyRaf = 0;
+        if (!closed && el.isConnected) renderDrawing(cv, strokes);
+      });
+    };
+
     const update = () => {
       if (!submitting) ($('[data-done]', el) as HTMLButtonElement).disabled = !strokes.length;
       $('.ph', el).style.opacity = strokes.length ? '0' : '1';
       if (!collab) saveDrawingDraft(strokes);
     };
-    requestAnimationFrame(() => {
-      redraw();
-      update();
-    });
+    scheduleRedraw();
+    update();
 
-    // Karşı tarafın ışıklı parmak imleci
-    let lastCursor: { x: number; y: number; ts: number } | null = null;
+    // Karşı tarafın ışıklı parmak imleci + isim etiketi (500 ms hareketsizlikte söner)
+    let lastCursor: { x: number; y: number } | null = null;
     let cursorRaf = 0;
     let cursorHideTimer = 0;
     const showPartnerCursor = (lx: number, ly: number) => {
-      lastCursor = { x: lx, y: ly, ts: performance.now() };
+      lastCursor = { x: lx, y: ly };
+      partnerLastDrawAt = Date.now();
+      partnerLastSeenAt = Date.now();
+      if (collab) {
+        presDot.classList.remove('wait');
+        collabTxt.textContent = `${p.name} burada`;
+      }
       if (!cursorRaf && !closed && el.isConnected) {
         cursorRaf = requestAnimationFrame(() => {
           cursorRaf = 0;
           if (closed || !el.isConnected || !lastCursor) return;
           const r = box.getBoundingClientRect();
           const k = Math.min(r.width / LW, r.height / LH);
-          curEl.style.transform = `translate3d(${(r.width - LW * k) / 2 + lastCursor.x * k}px, ${(r.height - LH * k) / 2 + lastCursor.y * k}px, 0)`;
+          const cx = (r.width - LW * k) / 2 + lastCursor.x * k;
+          const cy = (r.height - LH * k) / 2 + lastCursor.y * k;
+          curEl.style.transform = `translate3d(${cx.toFixed(1)}px, ${cy.toFixed(1)}px, 0)`;
           curEl.style.opacity = '1';
         });
       }
       clearTimeout(cursorHideTimer);
       cursorHideTimer = window.setTimeout(() => {
         if (!closed && el.isConnected) curEl.style.opacity = '0';
-      }, 650);
+      }, 500);
     };
 
-    // ≥ 80 ms toplu nokta gönderimi
+    // 65 ms toplu nokta gönderimi (50–80 ms penceresi, ~10 msg/sn limitine uyumlu)
     let pendingPts: [number, number, number][] = [];
     let pendingMeta: { k: Stroke['k']; c: string; s: number } | null = null;
     let batchTimer = 0;
 
     const sendPkt = (pkt: DrawLivePacket) => {
-      if (!live && pkt.t !== 'djoin') return;
+      if (!live && pkt.t !== 'djoin' && pkt.t !== 'dinvite') return;
       core.sendDrawPacket(pkt);
     };
 
@@ -288,6 +467,7 @@ export function openBoard(
 
     const unsubDraw = core.onDrawPacket((pkt) => {
       if (closed || !el.isConnected) return;
+      partnerLastSeenAt = Date.now();
 
       if (pkt.t === 'djoin') {
         if (pkt.sid && !isInitiator) sid = pkt.sid;
@@ -295,16 +475,17 @@ export function openBoard(
         live = true;
         collab = true;
         everCollab = true;
-        updateHeader();
+        partnerLastDrawAt = Date.now();
+        updateHeader(true);
         if (!wasCollab) {
-          toast(`${p.name} çizime katıldı`, I.pen(14));
+          toast(`${p.name} katıldı`, `<span style="color:${p.color};display:inline-grid">${SIGN[p.sign]}</span>`, 1800);
         }
         core.setMyLiveActivity('drawing');
         sendMySnap();
         return;
       }
 
-      if (!live) return;
+      if (!live && pkt.t !== 'dfin' && pkt.t !== 'done') return;
 
       if (pkt.t === 'dreq' || pkt.t === 'hello') {
         sendMySnap();
@@ -315,7 +496,6 @@ export function openBoard(
         return;
       }
 
-      // Sıra numarası kontrolü: kayıp paket varsa karşıdan anlık görüntü (dreq) iste
       if (
         (pkt.t === 'dstart' || pkt.t === 'dpts' || pkt.t === 'pts') &&
         lastPartnerSeq > 0 &&
@@ -339,9 +519,8 @@ export function openBoard(
           collab = true;
           everCollab = true;
           live = true;
-          updateHeader();
+          updateHeader(true);
         }
-        // dsnap yalnızca gönderenin kendi çizgilerini taşır; alıcı sadece karşı tarafın çizgilerini değiştirir
         const mine = strokes.filter((s) => (s.by ?? state.me) === state.me);
         const theirs = (pkt.strokes || []).map((s) => ({
           ...s,
@@ -351,16 +530,21 @@ export function openBoard(
         strokes.splice(0, strokes.length, ...theirs, ...mine);
         partnerCur = theirs.length ? theirs[theirs.length - 1] : null;
         totalPts = strokes.reduce((acc, s) => acc + s.p.length, 0);
-        redraw();
+        scheduleRedraw();
         update();
       } else if (pkt.t === 'dstart') {
         if (pkt.sid && !isInitiator) sid = pkt.sid;
+        if (!collab) {
+          collab = true;
+          everCollab = true;
+          updateHeader(true);
+        }
         partnerCur = { k: pkt.k, c: pkt.c, s: pkt.s, p: [pkt.pt], by: state.partner };
         strokes.push(partnerCur);
         partnerRedo.length = 0;
         totalPts++;
         showPartnerCursor(pkt.pt[0], pkt.pt[1]);
-        redraw();
+        scheduleRedraw();
         update();
       } else if (pkt.t === 'dpts' || pkt.t === 'pts') {
         if (pkt.sid && !isInitiator) sid = pkt.sid;
@@ -386,7 +570,7 @@ export function openBoard(
         totalPts += pkt.pts.length;
         const tail = pkt.pts[pkt.pts.length - 1];
         if (tail) showPartnerCursor(tail[0], tail[1]);
-        redraw();
+        scheduleRedraw();
         update();
       } else if (pkt.t === 'dundo' || pkt.t === 'undo') {
         for (let i = strokes.length - 1; i >= 0; i--) {
@@ -398,31 +582,36 @@ export function openBoard(
             break;
           }
         }
-        redraw();
+        scheduleRedraw();
         update();
       } else if (pkt.t === 'dredo' || pkt.t === 'redo') {
         const restored = pkt.stroke ? { ...pkt.stroke, by: state.partner } : partnerRedo.pop();
         if (restored) {
           strokes.push(restored);
           totalPts += restored.p.length;
-          redraw();
+          scheduleRedraw();
           update();
         }
       } else if (pkt.t === 'dclear' || pkt.t === 'clear') {
+        // Kenar durum 4.2: İki taraf aynı anda "Temizle" derse ilk gelen temizler, ikinci boş temizler (hata yok)
+        const hadStrokes = strokes.length > 0;
         strokes.length = 0;
         redo.length = 0;
         partnerRedo.length = 0;
         totalPts = 0;
         partnerCur = null;
-        redraw();
+        scheduleRedraw();
         update();
+        if (hadStrokes) {
+          toast(`${p.name} tuvali temizledi`, I.trash(14), 1800);
+        }
       } else if (pkt.t === 'dleave' || pkt.t === 'bye') {
-        toast(`${p.name} çizimden ayrıldı`, I.pen(14));
+        toast(`${p.name} çizimden ayrıldı`, I.pen(14), 1800);
         collab = false;
         partnerCur = null;
         lastCursor = null;
         curEl.style.opacity = '0';
-        updateHeader();
+        updateHeader(true);
       } else if (pkt.t === 'dfin' || pkt.t === 'done') {
         if (pkt.sid) sid = pkt.sid;
         const finalStrokes = (pkt.strokes || []).map((s) => ({
@@ -430,16 +619,17 @@ export function openBoard(
           p: s.p.map((q) => [...q] as [number, number, number]),
         }));
         strokes.splice(0, strokes.length, ...finalStrokes);
-        redraw();
+        renderDrawing(cv, strokes);
         submitting = true;
         saveDrawingDraft(null);
-        void close({ strokes: finalStrokes, sid, collab: true, remoteFin: true }, true).then(() => {
+        toast('Çizim tamamlandı', I.starFill(14), 1800);
+        void close({ strokes: finalStrokes, sid, collab: true, remoteFin: true }, true, true).then(() => {
           core.onCollabFin(finalStrokes, sid, true);
         });
       }
     });
 
-    // İzleme ekranından "Birlikte çiz" ile girildiyse karşı tarafa djoin yolla
+    // İzleme veya bildirim kartından "Birlikte çiz" ile girildiyse karşı tarafa djoin yolla
     let joinRetryTimer = 0;
     if (collab) {
       core.setMyLiveActivity('drawing');
@@ -448,13 +638,60 @@ export function openBoard(
         if (!closed && el.isConnected && lastPartnerSeq === 0) {
           sendPkt({ t: 'djoin', seq: ++seq, sid });
         }
-      }, 700);
+      }, 650);
     }
 
+    // 1.5 & 4.5: Bekleme (20 sn) ve Çıkış (60 sn çevrimdışı) kontrolü
     const presTimer = window.setInterval(() => {
       if (!el.isConnected || document.hidden) return;
-      $('[data-pres]', el).textContent = partnerHere() ? `${p.name} burada` : '';
+      const on = partnerHere();
+      if (collab) {
+        if (on) partnerLastSeenAt = Date.now();
+        const idleMs = Date.now() - partnerLastDrawAt;
+        const offlineMs = on ? 0 : Date.now() - partnerLastSeenAt;
+        if (offlineMs >= 20_000 || (!on && idleMs >= 60_000)) {
+          toast(`${p.name} çıktı`, I.pen(14), 1800);
+          collab = false;
+          partnerCur = null;
+          curEl.style.opacity = '0';
+          updateHeader(true);
+        } else if (idleMs >= 20_000) {
+          presDot.classList.add('wait');
+          collabTxt.textContent = `${p.name} bekliyor`;
+        } else {
+          presDot.classList.remove('wait');
+          collabTxt.textContent = `${p.name} burada`;
+        }
+      } else {
+        updateHeader(false);
+      }
     }, 2000);
+
+    // 4.4 & 4.5: Ağ kopması / geri gelmesi ve arka plandan dönüşte otomatik eşitlenme
+    const onNetChange = () => {
+      if (!el.isConnected) return;
+      const online = navigator.onLine !== false;
+      netBar.classList.toggle('hide', online);
+      if (online && (live || collab)) {
+        if (collab) sendPkt({ t: 'djoin', seq: ++seq, sid });
+        sendMySnap();
+      }
+    };
+    const onVisChange = () => {
+      if (!el.isConnected) return;
+      if (!document.hidden && (live || everCollab)) {
+        if (everCollab && partnerHere()) {
+          collab = true;
+          live = true;
+          updateHeader(true);
+          sendPkt({ t: 'djoin', seq: ++seq, sid });
+        }
+        sendMySnap();
+      }
+    };
+    window.addEventListener('online', onNetChange);
+    window.addEventListener('offline', onNetChange);
+    document.addEventListener('visibilitychange', onVisChange);
 
     let cur: Stroke | null = null, t0 = 0, penActive = false;
     const toL = (e: PointerEvent): [number, number] => {
@@ -468,9 +705,9 @@ export function openBoard(
     cv.addEventListener('pointerdown', (e) => {
       if (e.pointerType === 'pen') penActive = true;
       else if (penActive) return;
+      draftBar.classList.add('hide');
       if (strokes.length >= MAX_STROKES || totalPts >= MAX_POINTS) {
-        toast('Çizim sınırına ulaşıldı', I.info(14));
-        return;
+        totalPts = compactStrokesInPlace(strokes);
       }
       if (batchTimer) {
         clearTimeout(batchTimer);
@@ -496,15 +733,17 @@ export function openBoard(
         core.setMyLiveActivity('drawing');
         sendPkt({ t: 'dstart', seq: ++seq, k: cur.k, c: cur.c, s: cur.s, pt, sid });
       }
-      redraw();
+      scheduleRedraw();
       update();
     });
 
     cv.addEventListener('pointermove', (e) => {
-      if (!cur || totalPts >= MAX_POINTS) return;
+      if (!cur) return;
+      if (totalPts >= MAX_POINTS) {
+        totalPts = compactStrokesInPlace(strokes);
+      }
       const evs: PointerEvent[] = (e as unknown as { getCoalescedEvents?: () => PointerEvent[] }).getCoalescedEvents?.() ?? [e];
       for (const ev of evs) {
-        if (totalPts >= MAX_POINTS) break;
         const [x, y] = toL(ev);
         const last = cur.p[cur.p.length - 1];
         if (Math.hypot(x - last[0], y - last[1]) < 1.5) continue;
@@ -515,9 +754,9 @@ export function openBoard(
       }
       if (live && pendingPts.length && !batchTimer) {
         core.setMyLiveActivity('drawing');
-        batchTimer = window.setTimeout(flushBatch, 80);
+        batchTimer = window.setTimeout(flushBatch, 65);
       }
-      redraw();
+      scheduleRedraw();
     });
 
     const up = () => {
@@ -548,7 +787,7 @@ export function openBoard(
       setSize();
     });
 
-    // Geri al YALNIZCA kendi son çizgini geri alır (karşı tarafın çizgilerine dokunmaz)
+    // Geri al: yalnız KENDİ son çizgin
     $('[data-undo]', el).addEventListener('click', () => {
       for (let i = strokes.length - 1; i >= 0; i--) {
         if ((strokes[i].by ?? state.me) === state.me) {
@@ -559,10 +798,11 @@ export function openBoard(
           break;
         }
       }
-      redraw();
+      scheduleRedraw();
       update();
     });
 
+    // İleri al: yalnız kendi geri aldığın
     $('[data-redo]', el).addEventListener('click', () => {
       const s = redo.pop();
       if (s) {
@@ -570,33 +810,30 @@ export function openBoard(
         strokes.push(s);
         sendPkt({ t: 'dredo', seq: ++seq, stroke: s, sid });
       }
-      redraw();
+      scheduleRedraw();
       update();
     });
 
-    // Temizle ikisini de temizler (onay sorar)
+    // Temizle: iki tarafın çizgilerini de siler → onay sheet'i ("İkinizin çizimi de silinsin mi?")
     $('[data-clear]', el).addEventListener('click', async () => {
       if (!strokes.length) return;
-      const bodyText = collab ? 'İkinizin de çizdikleri silinecek.' : 'Çizdiklerin silinecek.';
-      if (await confirmSheet('Tuval temizlensin mi?', bodyText, 'Temizle', true)) {
+      const titleText = collab ? 'İkinizin çizimi de silinsin mi?' : 'Tuval temizlensin mi?';
+      const bodyText = collab ? 'Tuvaldeki tüm çizgiler silinecek.' : 'Çizdiklerin silinecek.';
+      if (await confirmSheet(titleText, bodyText, 'Sil', true)) {
         strokes.length = 0;
         redo.length = 0;
         partnerRedo.length = 0;
         totalPts = 0;
         partnerCur = null;
         sendPkt({ t: 'dclear', seq: ++seq, sid });
-        redraw();
+        scheduleRedraw();
         update();
       }
     });
 
     $('[data-live]', el).addEventListener('click', () => {
-      if (collab) {
-        toast('Beraber çizerken canlı bağlantı açık kalır', I.pen(14));
-        return;
-      }
       live = !live;
-      updateHeader();
+      updateHeader(false);
       if (live) {
         core.setMyLiveActivity('drawing');
         sendMySnap();
@@ -606,7 +843,23 @@ export function openBoard(
       }
     });
 
-    const close = async (res: BoardResult | null, silent = false) => {
+    // YENİ (1.1): "Davet et" düğmesi
+    $('[data-invite]', el).addEventListener('click', () => {
+      if (!live) {
+        live = true;
+        updateHeader(false);
+      }
+      core.setMyLiveActivity('drawing');
+      sendPkt({ t: 'dinvite', seq: ++seq, sid });
+      sendMySnap();
+      if (partnerHere()) {
+        toast(`${p.name} çizime çağrıldı`, I.pen(14), 1800);
+      } else {
+        toast(`${p.name} şu an çevrimdışı`, I.info(14), 1800);
+      }
+    });
+
+    const close = async (res: BoardResult | null, silent = false, shrinkToStar = false) => {
       if (closed) return;
       closed = true;
       core.setInDrawView(false);
@@ -615,6 +868,10 @@ export function openBoard(
       clearTimeout(joinRetryTimer);
       clearTimeout(cursorHideTimer);
       cancelAnimationFrame(cursorRaf);
+      cancelAnimationFrame(dirtyRaf);
+      window.removeEventListener('online', onNetChange);
+      window.removeEventListener('offline', onNetChange);
+      document.removeEventListener('visibilitychange', onVisChange);
       unsubDraw();
       if ((live || collab) && !silent) {
         if (res && !res.remoteFin) {
@@ -625,11 +882,27 @@ export function openBoard(
       }
       core.setMyLiveActivity('idle');
       try {
-        await el.animate([{ transform: 'none' }, { transform: 'translateY(100%)' }], {
-          duration: 340,
-          easing: 'cubic-bezier(.4,0,.8,.4)',
-          fill: 'forwards',
-        }).finished;
+        if (shrinkToStar && !reduced()) {
+          // 1.6: Tuval 300 ms'de küçülüp ışık noktasına dönüşür
+          box.animate(
+            [{ transform: 'none', opacity: 1 }, { transform: 'scale(.06)', opacity: 0.2 }],
+            { duration: 300, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'forwards' }
+          );
+          await el.animate([{ opacity: 1 }, { opacity: 0 }], {
+            duration: 300,
+            easing: 'cubic-bezier(.2,.8,.2,1)',
+            fill: 'forwards',
+          }).finished;
+        } else {
+          await el.animate(
+            reduced() ? [{ opacity: 1 }, { opacity: 0 }] : [{ transform: 'none' }, { transform: 'translateY(100%)' }],
+            {
+              duration: reduced() ? 140 : 320,
+              easing: 'cubic-bezier(.2,.8,.2,1)',
+              fill: 'forwards',
+            }
+          ).finished;
+        }
       } catch {
         // Ignore animation cancel
       }
@@ -641,7 +914,7 @@ export function openBoard(
     $('[data-cancel]', el).addEventListener('click', async () => {
       if (submitting) return;
       const hasMyStrokes = strokes.some((s) => (s.by ?? state.me) === state.me);
-      const confirmBody = collab ? `${p.name} çizmeye devam edebilecek.` : 'Çizdiklerin kaydedilmeyecek.';
+      const confirmBody = collab ? `${p.name} tek başına çizmeye devam edebilecek.` : 'Çizdiklerin kaydedilmeyecek.';
       if (!hasMyStrokes || (await confirmSheet('Çizimden çıkılsın mı?', confirmBody, 'Çık', true))) {
         saveDrawingDraft(null);
         await close(null);
@@ -660,17 +933,21 @@ export function openBoard(
       doneBtn.textContent = 'Gönderiliyor…';
       saveDrawingDraft(null);
       const isCollabDraw = everCollab || strokes.some((s) => s.by && s.by !== state.me);
-      void close({
-        strokes: strokes.slice(),
-        sid,
-        collab: isCollabDraw,
-        remoteFin: false,
-      });
+      void close(
+        {
+          strokes: strokes.slice(),
+          sid,
+          collab: isCollabDraw,
+          remoteFin: false,
+        },
+        false,
+        true
+      );
     });
   });
 }
 
-/** Test paneli / önizleme için yerel örnek çizim (kalp + yıldız; sunucuya gönderilmez). */
+/** Test paneli / önizleme için yerel örnek çizim. */
 export function demoDrawing(): Stroke[] {
   const heart: [number, number, number][] = [];
   for (let i = 0; i <= 72; i++) {
@@ -682,7 +959,7 @@ export function demoDrawing(): Stroke[] {
   return [{ k: 'glow', c: PEOPLE[state.partner].color, s: 9, p: heart, by: state.partner }];
 }
 
-/** Karşı tarafın canlı çizimini izle + "Birlikte çiz" ile aynı tuvalde beraber çizime katıl (HOTFIX 22). */
+/** Karşı tarafın canlı çizimini izle (1.3) + "Birlikte çiz" ile aynı tuvalde beraber çizime geç (1.4). */
 export function openWatch(
   onDone?: (strokes: Stroke[], sid?: string, collab?: boolean) => void,
   simStrokes?: Stroke[]
@@ -697,47 +974,71 @@ export function openWatch(
   let sid = '';
   let lastSeq = 0;
   let lastReqAt = 0;
-  let lastCursor: { x: number; y: number; ts: number } | null = null;
+  let partnerEnded = false;
+  const curRingCol = state.partner === 'beto' ? 'rgba(255,173,204,.22)' : 'rgba(157,182,255,.22)';
 
   const el = h(`<div class="watch" role="dialog" aria-label="${p.name} çiziyor">
     <div class="board-top"><span style="width:60px"></span>
-      <div class="mid"><div class="h2">${p.name} çiziyor</div><div class="livebtn on" style="pointer-events:none"><span class="d"></span><span>Canlı</span></div></div>
-      <button type="button" class="btn btn-ghost" data-close style="height:44px;padding:0 10px">Kapat</button></div>
-    <div class="canvas-wrap"><div class="canvas-box"><canvas></canvas><div class="cur" style="opacity:0;background:${p.color};box-shadow:0 0 16px ${p.color}"></div></div></div>
+      <div class="mid"><div class="h2">${p.name} çiziyor</div><div class="livebtn on" style="pointer-events:none;margin-top:6px"><span class="d" style="background:${p.color}"></span><span>Canlı</span></div></div>
+      <button type="button" class="btn btn-ghost" data-close style="height:44px;padding:0 10px" aria-label="Kapat">Kapat</button></div>
+    <div class="canvas-wrap">
+      <div class="canvas-box">
+        <canvas></canvas>
+        <div class="cur" style="opacity:0;--cur-c:${p.color};--cur-ring:${curRingCol}"><span class="cur-lbl">${p.name}</span></div>
+      </div>
+    </div>
     <div class="center" style="padding:16px 0 calc(var(--safe-b) + 20px)">
       <div style="display:flex;gap:10px;justify-content:center;align-items:center">
-        <button type="button" class="btn btn-primary" data-join>${I.pen(17)}<span>Birlikte çiz</span></button>
-        <button type="button" class="btn btn-soft" data-heart>${I.heart(18)}<span>Kalp gönder</span></button>
+        <button type="button" class="btn btn-primary" data-join aria-label="Birlikte çiz">${I.pen(17)}<span>Birlikte çiz</span></button>
+        <button type="button" class="btn btn-soft" data-heart aria-label="Kalp gönder">${I.heart(18)}<span>Kalp gönder</span></button>
       </div>
       <div class="small" style="margin-top:10px">Aynı tuvalde birlikte çiz ya da kalp gönder</div></div></div>`);
 
   const app = core.homeEl.parentElement!;
   app.appendChild(el);
   el.animate([{ opacity: 0, transform: 'scale(.98)' }, { opacity: 1, transform: 'none' }], {
-    duration: 380,
-    easing: 'ease-out',
+    duration: reduced() ? 140 : 380,
+    easing: 'cubic-bezier(.2,.8,.2,1)',
   });
   const cv = $<HTMLCanvasElement>('canvas', el);
   const box = $('.canvas-box', el);
   const curEl = $('.cur', el);
   let closed = false;
-  let raf = 0;
 
-  const placeCursor = () => {
-    if (closed || !el.isConnected) return;
-    if (lastCursor) {
-      const r = box.getBoundingClientRect();
-      const k = Math.min(r.width / LW, r.height / LH);
-      curEl.style.transform = `translate3d(${(r.width - LW * k) / 2 + lastCursor.x * k}px, ${(r.height - LH * k) / 2 + lastCursor.y * k}px, 0)`;
-      curEl.style.opacity = performance.now() - lastCursor.ts < 550 ? '1' : '0';
-    }
-    raf = requestAnimationFrame(placeCursor);
+  // Kirli bayrak (dirty flag) + 500 ms imleç sönmesi (boşta rAF döngüsü yok)
+  let dirtyRaf = 0;
+  const scheduleRedraw = () => {
+    if (dirtyRaf || closed) return;
+    dirtyRaf = requestAnimationFrame(() => {
+      dirtyRaf = 0;
+      if (!closed && el.isConnected) renderDrawing(cv, strokes);
+    });
   };
-  raf = requestAnimationFrame(placeCursor);
+
+  let cursorRaf = 0;
+  let cursorHideTimer = 0;
+  const showCursor = (lx: number, ly: number) => {
+    if (!cursorRaf && !closed && el.isConnected) {
+      cursorRaf = requestAnimationFrame(() => {
+        cursorRaf = 0;
+        if (closed || !el.isConnected) return;
+        const r = box.getBoundingClientRect();
+        const k = Math.min(r.width / LW, r.height / LH);
+        const cx = (r.width - LW * k) / 2 + lx * k;
+        const cy = (r.height - LH * k) / 2 + ly * k;
+        curEl.style.transform = `translate3d(${cx.toFixed(1)}px, ${cy.toFixed(1)}px, 0)`;
+        curEl.style.opacity = '1';
+      });
+    }
+    clearTimeout(cursorHideTimer);
+    cursorHideTimer = window.setTimeout(() => {
+      if (!closed && el.isConnected) curEl.style.opacity = '0';
+    }, 500);
+  };
 
   const unsub = core.onDrawPacket((pkt) => {
     if (closed || !el.isConnected) return;
-    if (pkt.t === 'hello' || pkt.t === 'dreq' || pkt.t === 'react' || pkt.t === 'djoin') return;
+    if (pkt.t === 'hello' || pkt.t === 'dreq' || pkt.t === 'react' || pkt.t === 'djoin' || pkt.t === 'dinvite') return;
     if ('sid' in pkt && pkt.sid) sid = pkt.sid;
 
     if (
@@ -765,12 +1066,12 @@ export function openWatch(
       }));
       strokes.splice(0, strokes.length, ...incoming);
       redo.length = 0;
-      renderDrawing(cv, strokes);
+      scheduleRedraw();
     } else if (pkt.t === 'dstart') {
       strokes.push({ k: pkt.k, c: pkt.c, s: pkt.s, p: [pkt.pt], by: state.partner });
       redo.length = 0;
-      lastCursor = { x: pkt.pt[0], y: pkt.pt[1], ts: performance.now() };
-      renderDrawing(cv, strokes);
+      showCursor(pkt.pt[0], pkt.pt[1]);
+      scheduleRedraw();
     } else if (pkt.t === 'dpts' || pkt.t === 'pts') {
       let target: Stroke | undefined;
       if (typeof pkt.si === 'number') {
@@ -790,21 +1091,22 @@ export function openWatch(
       if (pkt.s) target.s = pkt.s;
       target.p.push(...pkt.pts);
       const tail = pkt.pts[pkt.pts.length - 1];
-      if (tail) lastCursor = { x: tail[0], y: tail[1], ts: performance.now() };
-      renderDrawing(cv, strokes);
+      if (tail) showCursor(tail[0], tail[1]);
+      scheduleRedraw();
     } else if (pkt.t === 'dundo' || pkt.t === 'undo') {
       const s = strokes.pop();
       if (s) redo.push(s);
-      renderDrawing(cv, strokes);
+      scheduleRedraw();
     } else if (pkt.t === 'dredo' || pkt.t === 'redo') {
       const s = pkt.stroke ? { ...pkt.stroke, by: state.partner } : redo.pop();
       if (s) strokes.push(s);
-      renderDrawing(cv, strokes);
+      scheduleRedraw();
     } else if (pkt.t === 'dclear' || pkt.t === 'clear') {
       strokes.length = 0;
       redo.length = 0;
-      renderDrawing(cv, strokes);
+      scheduleRedraw();
     } else if (pkt.t === 'dfin' || pkt.t === 'done') {
+      partnerEnded = true;
       const finalStrokes = (pkt.strokes || []).map((s) => ({
         ...s,
         p: s.p.map((q) => [...q] as [number, number, number]),
@@ -813,7 +1115,8 @@ export function openWatch(
       renderDrawing(cv, strokes);
       void finish(pkt.sid || sid, Boolean(pkt.collab));
     } else if (pkt.t === 'dleave' || pkt.t === 'bye') {
-      toast(`${p.name} çizimden ayrıldı`, I.pen(14));
+      partnerEnded = true;
+      toast(`${p.name} çizimden ayrıldı`, I.pen(14), 1800);
       void close();
     }
   });
@@ -834,7 +1137,7 @@ export function openWatch(
           if (q[2] <= elapsed) curPt = q;
         }
       }
-      if (curPt) lastCursor = { x: curPt[0], y: curPt[1], ts: performance.now() };
+      if (curPt) showCursor(curPt[0], curPt[1]);
       if (elapsed < total + 250) simRaf = requestAnimationFrame(stepSim);
       else void finish();
     };
@@ -853,10 +1156,12 @@ export function openWatch(
     closed = true;
     core.setInDrawView(false);
     unsub();
-    cancelAnimationFrame(raf);
+    clearTimeout(cursorHideTimer);
+    cancelAnimationFrame(cursorRaf);
+    cancelAnimationFrame(dirtyRaf);
     cancelAnimationFrame(simRaf);
     try {
-      await el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, fill: 'forwards' }).finished;
+      await el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 240, fill: 'forwards' }).finished;
     } catch {
       // Ignore
     }
@@ -869,12 +1174,14 @@ export function openWatch(
     closed = true;
     core.setInDrawView(false);
     unsub();
-    cancelAnimationFrame(raf);
+    clearTimeout(cursorHideTimer);
+    cancelAnimationFrame(cursorRaf);
+    cancelAnimationFrame(dirtyRaf);
     cancelAnimationFrame(simRaf);
     try {
       await box.animate(
-        [{ transform: 'none', opacity: 1 }, { transform: 'scale(.06)', opacity: 0.35 }],
-        { duration: 520, easing: 'cubic-bezier(.6,0,.3,1)', fill: 'forwards' }
+        [{ transform: 'none', opacity: 1 }, { transform: 'scale(.06)', opacity: 0.25 }],
+        { duration: 300, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'forwards' }
       ).finished;
     } catch {
       // Ignore
@@ -892,9 +1199,17 @@ export function openWatch(
   });
   $('[data-join]', el).addEventListener('click', async () => {
     if (closed) return;
+    // Kenar durum 4.3: B "Birlikte çiz"e basınca A tahtayı kapatmışsa
+    if (partnerEnded) {
+      toast(`${p.name} çizimi bitirdi`, I.starFill(14), 1800);
+      void close();
+      return;
+    }
     closed = true;
     unsub();
-    cancelAnimationFrame(raf);
+    clearTimeout(cursorHideTimer);
+    cancelAnimationFrame(cursorRaf);
+    cancelAnimationFrame(dirtyRaf);
     cancelAnimationFrame(simRaf);
     const initial = strokes.map((s) => ({
       ...s,
@@ -903,7 +1218,7 @@ export function openWatch(
     }));
     const curSid = sid || undefined;
     el.remove();
-    const res = await openBoard(initial, { collab: true, sid: curSid });
+    const res = await openBoard(initial, { collab: true, sid: curSid, fromWatch: true });
     if (res && !res.remoteFin && res.strokes.length) {
       await core.landMyDrawing(res.strokes, res.sid, true);
     }
