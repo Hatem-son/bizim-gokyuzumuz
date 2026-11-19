@@ -29,8 +29,8 @@ export function isStarHazel(star: StarRecord, allStars: StarRecord[]): boolean {
     }
   }
   if (!hasEarlier) return false;
-  // v6.0.46 öncesi mevcut ela yıldızlar (1/10) kaybolmasın; yeni yıldızlar 1/30 olasılıkla doğar
-  const every = star.createdAt < HAZEL_1_IN_30_CUTOFF_ISO ? 10 : HAZEL_EVERY;
+  // v6.0.46 öncesi mevcut ela yıldızlar (1/12) kaybolmasın; yeni yıldızlar 1/30 olasılıkla doğar
+  const every = star.createdAt < HAZEL_1_IN_30_CUTOFF_ISO ? 12 : HAZEL_EVERY;
   return isHazel(star.id, every);
 }
 
