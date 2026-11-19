@@ -25,12 +25,16 @@ export function updateAppBadge(unreadCount: number): void {
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (!('serviceWorker' in navigator)) return null;
   const hadController = Boolean(navigator.serviceWorker.controller);
-  // index.html her zaman ağdan (no-store) taze çekildiği için açılış/intro ortasında sayfa yenilemesi yapılmaz;
-  // yeni Service Worker arka planda sessizce devreye girer.
-  void hadController;
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController && !reloading) {
+      reloading = true;
+      window.location.reload();
+    }
+  });
 
   try {
-    const reg = await navigator.serviceWorker.register('/sw.js', {
+    const reg = await navigator.serviceWorker.register('/sw.js?v=45', {
       scope: '/',
       updateViaCache: 'none',
     });

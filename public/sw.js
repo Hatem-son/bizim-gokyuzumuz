@@ -1,7 +1,5 @@
-const CACHE_NAME = 'gk-v44';
+const CACHE_NAME = 'gk-v45';
 const SHELL_URLS = [
-  '/',
-  '/index.html',
   '/manifest.webmanifest',
   '/icons/apple-touch-icon.png',
   '/icons/icon-192.png',
@@ -46,18 +44,17 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname === '/sw.js') return;
 
   if (request.mode === 'navigate' || url.pathname === '/' || url.pathname === '/index.html') {
-    // Kabuk: ağ ve önbellek yarışır; ağ 800 ms içinde gelmezse önbellekteki kabuk anında açılır (2. açılış beklemez)
-    const network = fetch(new Request(request, { cache: 'no-store' })).then((res) => {
-      if (res.ok) {
-        const copy = res.clone();
-        caches.open(CACHE_NAME).then((c) => c.put('/index.html', copy));
-      }
-      return res;
-    });
-    const cached = () => caches.match('/index.html').then((r) => r || caches.match('/'));
-    const timeout = new Promise((resolve) => setTimeout(() => resolve(cached()), 800));
+    // Ana HTML kabuğu her zaman ağdan (no-store) taze çekilir; yalnızca çevrimdışıysa önbelleğe düşer
     event.respondWith(
-      Promise.race([network, timeout]).then((r) => r || network).catch(() => cached().then((r) => r || network))
+      fetch('/index.html', { cache: 'no-store' })
+        .then((res) => {
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE_NAME).then((c) => c.put('/index.html', copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match('/index.html').then((r) => r || caches.match('/')))
     );
     return;
   }
