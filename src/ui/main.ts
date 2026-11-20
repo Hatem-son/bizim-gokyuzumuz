@@ -30,8 +30,10 @@ import { openBoard, openWatch, renderDrawing, Stroke, DrawLivePacket } from './d
 import { encodeDrawingBytes, decodeDrawingBytes } from '../lib/drawCodec';
 // Ayarlar/arşiv/yıldız sayfaları ilk çizimden SONRA, ilk kullanımda yüklenir (ana paket küçülür)
 const lazyPages = () => import('./pages');
+const lazyJar = () => import('./jarView');
 const openStar = (st: Star) => lazyPages().then((m) => m.openStar(st));
 const openArchive = () => void lazyPages().then((m) => m.openArchive());
+const openJar = () => void lazyJar().then((m) => m.openDiaryJar());
 const openSettings = () => void lazyPages().then((m) => m.openSettings());
 const openCountdown = () => void lazyPages().then((m) => m.openCountdown());
 setTimeout(() => void lazyPages(), 400); // hemen önceden ısıt
@@ -530,6 +532,7 @@ Object.assign(core, {
   },
   openCompose,
   openArchive,
+  openJar,
   openSettings,
   openCountdown,
   openStar: (stObj: Star) => void openStar(stObj),

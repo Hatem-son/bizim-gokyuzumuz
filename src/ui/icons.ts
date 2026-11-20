@@ -41,6 +41,7 @@ export const I = {
   bolt: (s = 16) => S('<path d="M13 3 5.5 13.5H12L11 21l7.5-10.5H12Z"/>', s),
   info: (s = 20) => S('<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/>', s),
   spark: (s = 20) => S('<path d="M12 4v4M12 16v4M4 12h4M16 12h4"/>', s),
+  jar: (s = 22) => S('<path d="M8.5 3.8h7M7 6.8h10l1.4 3.4v8.3A2.5 2.5 0 0 1 15.9 21H8.1a2.5 2.5 0 0 1-2.5-2.5v-8.3L7 6.8Z"/><path d="M9.2 13.4l2.4 1.8 3.4-2.5"/>', s),
 };
 
 export const SIGN = {

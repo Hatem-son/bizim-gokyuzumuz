@@ -31,6 +31,7 @@ export const core = {
   logout: async () => {},
   openCompose: (_initial?: Kind) => {},
   openArchive: () => {},
+  openJar: () => {},
   openSettings: () => {},
   openCountdown: () => {},
   openStar: (_st: Star) => {},

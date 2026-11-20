@@ -29,6 +29,7 @@ export function buildHome(): HTMLElement {
     </header>
     <nav class="dock glass" aria-label="Ana menü">
       <button type="button" class="icon-btn" data-arch aria-label="Yıldızlarımız">${I.archive(22)}<span class="badge hide"></span></button>
+      <button type="button" class="icon-btn" data-jar aria-label="Ortak kavanoz">${I.jar(22)}</button>
       <button type="button" class="btn btn-primary send" data-send>${state.me === 'beto' ? `<span class="rb">${raspberry(12)}</span>` : I.star(18)}<span>Yıldız bırak</span></button>
       <button type="button" class="icon-btn" data-set aria-label="Ayarlar">${I.gear(22)}</button>
     </nav>
@@ -37,6 +38,7 @@ export function buildHome(): HTMLElement {
 
   $('[data-send]', el).addEventListener('click', () => core.openCompose());
   $('[data-arch]', el).addEventListener('click', () => core.openArchive());
+  $('[data-jar]', el).addEventListener('click', () => core.openJar());
   $('[data-count]', el).addEventListener('click', () => core.openArchive());
   $('[data-set]', el).addEventListener('click', () => core.openSettings());
   $('.counter', el).addEventListener('click', () => core.openCountdown());
