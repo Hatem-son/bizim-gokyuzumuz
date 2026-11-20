@@ -369,8 +369,8 @@ function mapDbRow(row: DbStarRow, whoMap: Map<string, Who>, fallbackMe: Who): St
   };
 }
 
-const PRUNE_CUTOFF_MS = Date.parse('2026-11-19T00:55:00+03:00');
-const PRUNE_KEEP_LAST = 8;
+const PRUNE_CUTOFF_MS = Date.parse('2026-11-20T17:21:00+03:00');
+const PRUNE_KEEP_LAST = 2;
 
 function pruneLegacyStars<T extends { id: string; createdAt?: string; created_at?: string }>(rows: T[]): {
   kept: T[];
