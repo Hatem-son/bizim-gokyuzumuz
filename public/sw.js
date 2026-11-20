@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gk-v53';
+const CACHE_NAME = 'gk-v54';
 const SHELL_URLS = [
   '/manifest.webmanifest',
   '/icons/apple-touch-icon.png',
