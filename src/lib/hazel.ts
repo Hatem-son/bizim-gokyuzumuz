@@ -14,22 +14,18 @@ export function isHazel(id: string, every = HAZEL_EVERY): boolean {
 }
 
 const HAZEL_1_IN_30_CUTOFF_ISO = '2026-11-19T22:00:00.000Z';
+const NOV_19_START_ISO = '2026-11-18T21:00:00.000Z';
+const NOV_19_END_ISO = '2026-11-19T21:00:00.000Z';
 
-/** İlk gönderilen yıldız hiçbir zaman ela olmaz; diğerleri id ile deterministik seçilir */
-export function isStarHazel(star: StarRecord, allStars: StarRecord[]): boolean {
-  let hasEarlier = false;
-  for (const other of allStars) {
-    if (other.from !== star.from) continue;
-    if (
-      other.createdAt < star.createdAt ||
-      (other.createdAt === star.createdAt && other.id < star.id)
-    ) {
-      hasEarlier = true;
-      break;
-    }
+/** Yıldız kimliğinden (ve korunan 19 Kasım ela yıldızından) deterministik ela yıldız hesabı */
+export function isStarHazel(star: StarRecord, _allStars: StarRecord[]): boolean {
+  if (
+    star.from === 'beto' &&
+    star.createdAt >= NOV_19_START_ISO &&
+    star.createdAt < NOV_19_END_ISO
+  ) {
+    return true;
   }
-  if (!hasEarlier) return false;
-  // v6.0.46 öncesi mevcut ela yıldızlar (1/12) kaybolmasın; yeni yıldızlar 1/30 olasılıkla doğar
   const every = star.createdAt < HAZEL_1_IN_30_CUTOFF_ISO ? 12 : HAZEL_EVERY;
   return isHazel(star.id, every);
 }

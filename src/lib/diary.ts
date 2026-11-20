@@ -1,11 +1,14 @@
 import { getSupabase } from './supabase';
-import { openJSON, sealJSON } from './crypto';
+import { hasActiveKey, openJSON, sealJSON } from './crypto';
 import { store } from './storage';
 import { state, toDbWho } from '../ui/state';
 import type { Who } from '../types';
 
 export type DiaryMood = 'sun' | 'coffee' | 'moon' | 'rain' | 'heart' | 'spark';
 export type DiaryStickerId = 'plead' | 'kiss' | 'shy' | 'sparkle' | 'hug';
+
+export const BOTTLE_PER_PERSON = 10;
+export const BOTTLE_TOTAL = 20;
 
 export interface DiaryEntryMeta {
   id: string;
@@ -46,25 +49,176 @@ export type DiaryPeekRes = {
 
 export type DiaryPeekPacket = DiaryPeekReq | DiaryPeekRes;
 
-export const pendingPeekRequests: DiaryPeekReq[] = [];
-export const grantedPeekEntries = new Map<string, DiaryEntryContent>();
+export type PeekStatus = 'none' | 'sent' | 'approved' | 'denied';
 
-export function recordIncomingDiaryPacket(pkt: DiaryPeekPacket): void {
-  if (pkt.t === 'dpeek_req') {
-    if (!pendingPeekRequests.some((r) => r.reqId === pkt.reqId)) {
-      pendingPeekRequests.unshift(pkt);
-    }
-  } else if (pkt.t === 'dpeek_res' && pkt.approved && pkt.content) {
-    grantedPeekEntries.set(pkt.diaryId, pkt.content);
-  }
-}
+type PeekSentRecord = {
+  req: DiaryPeekReq;
+  status: 'sent' | 'approved' | 'denied';
+};
 
 type LocalDiaryRecord = DiaryEntryMeta & {
   payload: string;
 };
 
 const LOCAL_DIARY_KEY = 'gokyuzu.diary.jar.v1';
+const PEEK_SENT_KEY = 'gokyuzu.diary.peekState.v2';
+const PEEK_GRANTED_KEY = 'gokyuzu.diary.peekGranted.v2';
+const PEEK_ANSWERED_KEY = 'gokyuzu.diary.peekAnswered.v2';
+
 const decryptedCache = new Map<string, DiaryEntryContent>();
+export const pendingPeekRequests: DiaryPeekReq[] = [];
+export const grantedPeekEntries = new Map<string, DiaryEntryContent>();
+
+function readSentMap(): Record<string, PeekSentRecord> {
+  return store.get<Record<string, PeekSentRecord>>(PEEK_SENT_KEY, {});
+}
+
+function writeSentMap(map: Record<string, PeekSentRecord>): void {
+  store.set(PEEK_SENT_KEY, map);
+}
+
+function readAnsweredIds(): string[] {
+  return store.get<string[]>(PEEK_ANSWERED_KEY, []);
+}
+
+function markAnsweredId(diaryId: string): void {
+  const cur = readAnsweredIds();
+  if (!cur.includes(diaryId)) {
+    store.set(PEEK_ANSWERED_KEY, [diaryId, ...cur].slice(0, 200));
+  }
+}
+
+export function getPeekStatus(diaryId: string): PeekStatus {
+  if (grantedPeekEntries.has(diaryId)) return 'approved';
+  const rec = readSentMap()[diaryId];
+  return rec ? rec.status : 'none';
+}
+
+export function canSendPeekRequest(diaryId: string): boolean {
+  return getPeekStatus(diaryId) === 'none';
+}
+
+export function markPeekRequestSent(req: DiaryPeekReq): void {
+  const map = readSentMap();
+  map[req.diaryId] = { req, status: 'sent' };
+  writeSentMap(map);
+}
+
+export async function loadPersistedGrantedPeeks(): Promise<void> {
+  if (!hasActiveKey()) return;
+  const raw = store.get<Record<string, string>>(PEEK_GRANTED_KEY, {});
+  for (const [diaryId, sealed] of Object.entries(raw)) {
+    if (grantedPeekEntries.has(diaryId)) continue;
+    try {
+      const content = await openJSON<DiaryEntryContent>(sealed);
+      grantedPeekEntries.set(diaryId, content);
+    } catch {
+      // ignore corrupted entry
+    }
+  }
+}
+
+async function persistGrantedPeek(diaryId: string, content: DiaryEntryContent): Promise<void> {
+  grantedPeekEntries.set(diaryId, content);
+  if (!hasActiveKey()) return;
+  try {
+    const raw = store.get<Record<string, string>>(PEEK_GRANTED_KEY, {});
+    raw[diaryId] = await sealJSON(content);
+    store.set(PEEK_GRANTED_KEY, raw);
+  } catch {
+    // ignore storage quota errors
+  }
+}
+
+export function resendPendingPeekRequests(send: (pkt: DiaryPeekPacket) => void): void {
+  const map = readSentMap();
+  for (const rec of Object.values(map)) {
+    if (rec.status === 'sent') {
+      send(rec.req);
+    }
+  }
+}
+
+export function recordIncomingDiaryPacket(pkt: DiaryPeekPacket): boolean {
+  if (pkt.t === 'dpeek_req') {
+    // Daha önce cevaplanmış bir mektup için tekrar istek gösterilmez (1 kez kuralı)
+    if (readAnsweredIds().includes(pkt.diaryId)) return false;
+    if (pendingPeekRequests.some((r) => r.diaryId === pkt.diaryId || r.reqId === pkt.reqId)) {
+      return false;
+    }
+    pendingPeekRequests.unshift(pkt);
+    return true;
+  }
+  if (pkt.t === 'dpeek_res') {
+    const map = readSentMap();
+    const prev = map[pkt.diaryId];
+    if (prev) {
+      prev.status = pkt.approved ? 'approved' : 'denied';
+      writeSentMap(map);
+    } else {
+      map[pkt.diaryId] = {
+        req: {
+          t: 'dpeek_req',
+          reqId: pkt.reqId,
+          diaryId: pkt.diaryId,
+          entryDate: pkt.content?.entryDate ?? '',
+          message: '',
+          emojis: [],
+          sticker: 'plead',
+          at: pkt.at,
+        },
+        status: pkt.approved ? 'approved' : 'denied',
+      };
+      writeSentMap(map);
+    }
+    if (pkt.approved && pkt.content) {
+      void persistGrantedPeek(pkt.diaryId, pkt.content);
+    }
+    return true;
+  }
+  return false;
+}
+
+export async function respondToPeekRequest(
+  req: DiaryPeekReq,
+  approved: boolean,
+  send: (pkt: DiaryPeekPacket) => void,
+): Promise<boolean> {
+  const removePending = () => {
+    for (let i = pendingPeekRequests.length - 1; i >= 0; i--) {
+      if (pendingPeekRequests[i].diaryId === req.diaryId || pendingPeekRequests[i].reqId === req.reqId) {
+        pendingPeekRequests.splice(i, 1);
+      }
+    }
+    markAnsweredId(req.diaryId);
+  };
+
+  if (!approved) {
+    send({
+      t: 'dpeek_res',
+      reqId: req.reqId,
+      diaryId: req.diaryId,
+      approved: false,
+      replyText: 'Bu mektup şimdilik şişede sır kaldı 🤫🤍',
+      at: Date.now(),
+    });
+    removePending();
+    return true;
+  }
+
+  const content = await openMyDiaryEntry(req.diaryId);
+  if (!content) return false;
+  send({
+    t: 'dpeek_res',
+    reqId: req.reqId,
+    diaryId: req.diaryId,
+    approved: true,
+    content,
+    at: Date.now(),
+  });
+  removePending();
+  return true;
+}
 
 function isMissingTableError(err: unknown): boolean {
   const e = err as { code?: string; message?: string; status?: number } | null;
@@ -86,6 +240,7 @@ function writeLocalRecords(rows: LocalDiaryRecord[]): void {
 }
 
 export async function fetchDiaryJar(): Promise<{ entries: DiaryEntryMeta[]; needsSql: boolean }> {
+  await loadPersistedGrantedPeeks();
   const meDb = toDbWho(state.me);
   const sb = getSupabase();
   if (!sb) {

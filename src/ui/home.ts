@@ -29,7 +29,7 @@ export function buildHome(): HTMLElement {
     </header>
     <nav class="dock glass" aria-label="Ana menü">
       <button type="button" class="icon-btn" data-arch aria-label="Yıldızlarımız">${I.archive(22)}<span class="badge hide"></span></button>
-      <button type="button" class="icon-btn" data-jar aria-label="Ortak kavanoz">${I.jar(22)}</button>
+      <button type="button" class="icon-btn" data-jar aria-label="Denizdeki şişemiz">${I.jar(22)}</button>
       <button type="button" class="btn btn-primary send" data-send>${state.me === 'beto' ? `<span class="rb">${raspberry(12)}</span>` : I.star(18)}<span>Yıldız bırak</span></button>
       <button type="button" class="icon-btn" data-set aria-label="Ayarlar">${I.gear(22)}</button>
     </nav>
@@ -129,6 +129,30 @@ export function buildForeground(P: number, H: number, shoreY: number, x0: number
     e.stopPropagation();
     toast(`${PEOPLE[pa].of} mumu · ${pa === 'beto' ? 'ahududu kokulu' : 'vanilya kokulu'}`, I.heart(14));
   });
+
+  // Denizde dalgalarla süzülen mektup şişesi (dokununca Denizdeki Şişemiz açılır)
+  const seaBottleWrap = add(
+    x0 + 24,
+    shoreY - 38,
+    56,
+    `<button type="button" class="sea-bottle" aria-label="Denizdeki şişemiz">
+      <span class="sb-ripple"></span>
+      <svg class="sb-svg" viewBox="0 0 48 48" width="44" height="44">
+        <g transform="rotate(24 24 24)">
+          <rect x="20.5" y="5" width="7" height="5" rx="1.5" fill="#c99b6b"/>
+          <path d="M19.5 10h9l4.5 6.5v16a4.5 4.5 0 0 1-4.5 4.5h-9A4.5 4.5 0 0 1 15 32.5v-16L19.5 10Z" fill="rgba(195,232,255,0.28)" stroke="rgba(255,255,255,0.62)" stroke-width="1.3"/>
+          <rect x="20.5" y="18" width="4.2" height="11" rx="1.5" transform="rotate(-10 22.5 23.5)" fill="#f3e4c6"/>
+          <rect x="23.5" y="19" width="4.2" height="10.5" rx="1.5" transform="rotate(12 25.5 24)" fill="#f3e4c6"/>
+          <path d="M17.5 18v12" stroke="rgba(255,255,255,0.45)" stroke-width="1.3" stroke-linecap="round"/>
+        </g>
+      </svg>
+    </button>`,
+  );
+  seaBottleWrap.querySelector('.sea-bottle')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    core.openJar();
+  });
+
   return fg;
 }
 
