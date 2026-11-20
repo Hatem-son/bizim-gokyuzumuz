@@ -41,34 +41,64 @@ const PAPER_STYLES: { id: PaperStyle; name: string; sub: string }[] = [
   { id: 'night', name: 'Gece Mavisi Kart', sub: 'Altın gece mürekkebi' },
 ];
 
-type BottleBucket = {
-  index: number;
+const BOTTLE_SHORT_NAMES: Record<BottleStyle, string> = {
+  emerald: 'Eski Yeşil Cam',
+  crystal: 'Şeffaf Kristal',
+  shell: 'Deniz Kabuklu',
+};
+
+type SeaBottle = {
+  key: string;
+  style: BottleStyle;
+  subIndex: number;
   entries: DiaryEntryMeta[];
   mineCount: number;
   partnerCount: number;
 };
 
-function partitionIntoBottles(allDesc: DiaryEntryMeta[]): BottleBucket[] {
+const STYLE_ORDER: BottleStyle[] = ['emerald', 'crystal', 'shell'];
+
+function partitionIntoSeaBottles(allDesc: DiaryEntryMeta[], emptyFallback: BottleStyle): SeaBottle[] {
+  if (!allDesc.length) {
+    return [{ key: `${emptyFallback}-1`, style: emptyFallback, subIndex: 1, entries: [], mineCount: 0, partnerCount: 0 }];
+  }
+
   const asc = [...allDesc].reverse();
-  const counts: Record<'hamham' | 'beto', number> = { hamham: 0, beto: 0 };
-  const buckets = new Map<number, DiaryEntryMeta[]>();
+  const counts: Record<BottleStyle, Record<'hamham' | 'beto', number>> = {
+    emerald: { hamham: 0, beto: 0 },
+    crystal: { hamham: 0, beto: 0 },
+    shell: { hamham: 0, beto: 0 },
+  };
+  const buckets = new Map<string, { style: BottleStyle; subIndex: number; list: DiaryEntryMeta[] }>();
+  const firstSeenOrder: string[] = [];
 
   for (const e of asc) {
-    const idx = Math.floor(counts[e.from] / BOTTLE_PER_PERSON) + 1;
-    counts[e.from]++;
-    const arr = buckets.get(idx) ?? [];
-    arr.push(e);
-    buckets.set(idx, arr);
+    const st: BottleStyle = STYLE_ORDER.includes(e.bottleStyle) ? e.bottleStyle : 'emerald';
+    const subIdx = Math.floor(counts[st][e.from] / BOTTLE_PER_PERSON) + 1;
+    counts[st][e.from]++;
+    const key = `${st}-${subIdx}`;
+    let b = buckets.get(key);
+    if (!b) {
+      b = { style: st, subIndex: subIdx, list: [] };
+      buckets.set(key, b);
+      firstSeenOrder.push(key);
+    }
+    b.list.push(e);
   }
 
-  const maxIdx = Math.max(1, ...buckets.keys());
-  const out: BottleBucket[] = [];
-  for (let i = 1; i <= maxIdx; i++) {
-    const list = (buckets.get(i) ?? []).slice().reverse();
-    const mineCount = list.filter((x) => x.mine).length;
-    out.push({ index: i, entries: list, mineCount, partnerCount: list.length - mineCount });
-  }
-  return out;
+  return firstSeenOrder.map((key) => {
+    const b = buckets.get(key)!;
+    const descList = b.list.slice().reverse();
+    const mineCount = descList.filter((x) => x.mine).length;
+    return {
+      key,
+      style: b.style,
+      subIndex: b.subIndex,
+      entries: descList,
+      mineCount,
+      partnerCount: descList.length - mineCount,
+    };
+  });
 }
 
 function todayIso(): string {
@@ -152,15 +182,84 @@ function cassetteReelSVG(): string {
   </svg>`;
 }
 
-function rolledScrollSVG(who: 'hamham' | 'beto'): string {
-  const ribbon = who === 'beto' ? '#ff84b0' : '#739dff';
-  const seal = who === 'beto' ? '#c84b76' : '#436cd4';
-  const paper = who === 'beto' ? '#f9ecee' : '#f4e6ca';
+function scrollPalette(paperStyle: PaperStyle, who: 'hamham' | 'beto') {
+  const ribbon = who === 'beto' ? '#ff84b0' : '#7ba6ff';
+  const seal = who === 'beto' ? '#c84b76' : '#3e68d4';
+  if (paperStyle === 'straw') {
+    return {
+      bodyA: '#f2d394',
+      bodyB: '#d19e4c',
+      rim: '#fbe9c2',
+      stroke: '#875b21',
+      ribbon,
+      seal,
+      sealRim: 'rgba(255,248,230,0.6)',
+      stars: false,
+    };
+  }
+  if (paperStyle === 'night') {
+    return {
+      bodyA: '#233b7d',
+      bodyB: '#101d45',
+      rim: '#3857a8',
+      stroke: '#f2cc7e',
+      ribbon,
+      seal,
+      sealRim: '#f6d58e',
+      stars: true,
+    };
+  }
+  return {
+    bodyA: '#fffafb',
+    bodyB: '#f1dae4',
+    rim: '#ffffff',
+    stroke: '#be899e',
+    ribbon,
+    seal,
+    sealRim: 'rgba(255,255,255,0.68)',
+    stars: false,
+  };
+}
+
+let scrUid = 0;
+function rolledScrollSVG(who: 'hamham' | 'beto', paperStyle: PaperStyle = 'sea', big = false): string {
+  const id = `scr${++scrUid}`;
+  const p = scrollPalette(paperStyle, who);
+  if (big) {
+    return `<svg viewBox="0 0 36 86" width="34" height="80" aria-hidden="true">
+      <defs>
+        <linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="${p.bodyA}"/>
+          <stop offset="100%" stop-color="${p.bodyB}"/>
+        </linearGradient>
+      </defs>
+      <rect x="4" y="3" width="28" height="80" rx="9" fill="url(#${id})" stroke="${p.stroke}" stroke-width="1.45"/>
+      <ellipse cx="18" cy="7.5" rx="11" ry="3.6" fill="${p.rim}" opacity=".92"/>
+      ${
+        p.stars
+          ? `<circle cx="11" cy="24" r="1.2" fill="#ffe5a3" opacity=".9"/><circle cx="24" cy="63" r="1.3" fill="#ffe5a3" opacity=".85"/><circle cx="13" cy="68" r="0.9" fill="#ffe5a3" opacity=".7"/>`
+          : `<path d="M9 23 H27 M9 62 H25" stroke="${p.stroke}" stroke-width="0.9" opacity=".28" stroke-linecap="round"/>`
+      }
+      <path d="M4 42 H32" stroke="${p.ribbon}" stroke-width="5"/>
+      <circle cx="18" cy="42" r="6.5" fill="${p.seal}" stroke="${p.sealRim}" stroke-width="1.1"/>
+    </svg>`;
+  }
   return `<svg viewBox="0 0 18 40" width="16" height="36" aria-hidden="true">
-    <rect x="2.5" y="2" width="13" height="36" rx="4.5" fill="${paper}" stroke="#ba9c70" stroke-width="0.85"/>
-    <ellipse cx="9" cy="4.2" rx="5.2" ry="1.8" fill="#dfc9a0"/>
-    <path d="M2.5 18.5 H15.5" stroke="${ribbon}" stroke-width="2.6"/>
-    <circle cx="9" cy="18.5" r="3.1" fill="${seal}" stroke="#fff5" stroke-width="0.6"/>
+    <defs>
+      <linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="${p.bodyA}"/>
+        <stop offset="100%" stop-color="${p.bodyB}"/>
+      </linearGradient>
+    </defs>
+    <rect x="2.3" y="2" width="13.4" height="36" rx="4.5" fill="url(#${id})" stroke="${p.stroke}" stroke-width="0.95"/>
+    <ellipse cx="9" cy="4.2" rx="5.2" ry="1.8" fill="${p.rim}" opacity=".92"/>
+    ${
+      p.stars
+        ? `<circle cx="6.2" cy="11.5" r="0.85" fill="#ffe5a3"/><circle cx="11.8" cy="29.5" r="0.9" fill="#ffe5a3"/>`
+        : ''
+    }
+    <path d="M2.3 18.5 H15.7" stroke="${p.ribbon}" stroke-width="2.6"/>
+    <circle cx="9" cy="18.5" r="3.1" fill="${p.seal}" stroke="${p.sealRim}" stroke-width="0.65"/>
   </svg>`;
 }
 
@@ -286,9 +385,9 @@ export function openDiaryJar(): void {
   const isBeto = state.me === 'beto';
   const pa = PEOPLE[state.partner];
   let tab: 'mine' | 'partner' = 'mine';
-  let activeBottleIdx = 1;
-  let castingAnim = false;
-  let liveDriftX = 0;
+  let selectedBottleKey: 'all' | string = 'all';
+  let seaPageIdx = 0;
+  let castingBottleKey: string | null = null;
   let pref = getSavedAtelierStyle();
 
   const el = h(`<div class="screen page jar-page">
@@ -303,14 +402,7 @@ export function openDiaryJar(): void {
       <div class="ocean-moon-glow"></div>
       <div class="jar-motes" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
       <canvas class="ocean-cv back" data-cv-back></canvas>
-      <div class="bottle-actor" data-actor>
-        <div class="bottle-ripple" data-ripple></div>
-        <div class="bottle-body" data-bottle-model>
-          ${seaBottleSVG(pref.bottle, isBeto)}
-          <div class="btl-scrolls" data-notes></div>
-          ${seaBottleSheenSVG()}
-        </div>
-      </div>
+      <div class="bottles-stage" data-bottles-stage></div>
       <canvas class="ocean-cv front" data-cv-front></canvas>
       <div class="sea-splash-layer" data-sparks></div>
     </div>
@@ -321,6 +413,7 @@ export function openDiaryJar(): void {
       </button>
     </div>
 
+    <div class="bottle-filter-row hide" data-btl-filter></div>
     <div data-seg-wrap style="margin-bottom:12px"></div>
     <div class="jar-entries" data-entries></div>
   </div>`);
@@ -329,24 +422,22 @@ export function openDiaryJar(): void {
   const oceanEl = $('[data-ocean]', el);
   const cvBack = $<HTMLCanvasElement>('[data-cv-back]', el);
   const cvFront = $<HTMLCanvasElement>('[data-cv-front]', el);
-  const actorEl = $('[data-actor]', el);
-  const bottleModelEl = $('[data-bottle-model]', el);
-  const rippleEl = $('[data-ripple]', el);
-  let notesEl = $('[data-notes]', el);
+  const stageActorsEl = $('[data-bottles-stage]', el);
   const sparksEl = $('[data-sparks]', el);
   const writeBtn = $<HTMLButtonElement>('[data-write]', el);
   const switcherEl = $('[data-switcher]', el);
+  const filterRowEl = $('[data-btl-filter]', el);
   const entriesEl = $('[data-entries]', el);
 
-  const refreshBottleModel = (style: BottleStyle) => {
-    bottleModelEl.innerHTML = `
-      ${seaBottleSVG(style, isBeto)}
-      <div class="btl-scrolls" data-notes></div>
-      ${seaBottleSheenSVG()}
-    `;
-    notesEl = $('[data-notes]', bottleModelEl);
-    renderBottleScrolls();
+  type ActorNode = {
+    key: string;
+    actorEl: HTMLElement;
+    rippleEl: HTMLElement;
+    liveDriftX: number;
+    liveBobY: number;
+    liveScale: number;
   };
+  let actorNodes: ActorNode[] = [];
 
   $('[data-seg-wrap]', el).appendChild(
     segment(['Benim Anılarım', pa.name], 0, (i) => {
@@ -356,8 +447,14 @@ export function openDiaryJar(): void {
   );
 
   let entries: DiaryEntryMeta[] = [];
-  let bottles: BottleBucket[] = [{ index: 1, entries: [], mineCount: 0, partnerCount: 0 }];
-  let manualExtraBottle = false;
+  let bottles: SeaBottle[] = partitionIntoSeaBottles([], pref.bottle);
+
+  const MAX_PER_SEA_PAGE = 3;
+  const visibleSeaBottles = (): SeaBottle[] => {
+    const maxPage = Math.max(0, Math.ceil(bottles.length / MAX_PER_SEA_PAGE) - 1);
+    if (seaPageIdx > maxPage) seaPageIdx = maxPage;
+    return bottles.slice(seaPageIdx * MAX_PER_SEA_PAGE, (seaPageIdx + 1) * MAX_PER_SEA_PAGE);
+  };
 
   let waveRaf = 0;
   let wW = 340;
@@ -385,6 +482,46 @@ export function openDiaryJar(): void {
       Math.sin(x * 0.02 + tSec * (1.15 + layer * 0.42) + layer) * a1 +
       Math.cos(x * 0.034 - tSec * (0.85 + layer * 0.22)) * a2
     );
+  };
+
+  const computeSlotPose = (slotIdx: number, slotCount: number, tSec: number, isFocused: boolean) => {
+    let driftX = 0;
+    let driftVx = 0;
+    let scale = 0.98;
+    if (slotCount <= 1) {
+      const maxDrift = Math.max(42, (wW - 150) * 0.44);
+      const ph1 = tSec * 0.44;
+      const ph2 = tSec * 0.21 + 1.3;
+      driftX = Math.sin(ph1) * (maxDrift * 0.72) + Math.sin(ph2) * (maxDrift * 0.28);
+      driftVx = Math.cos(ph1) * 0.44 * (maxDrift * 0.72) + Math.cos(ph2) * 0.21 * (maxDrift * 0.28);
+      scale = 0.98;
+    } else if (slotCount === 2) {
+      const lane = (slotIdx === 0 ? -1 : 1) * Math.min(92, wW * 0.23);
+      const amp = Math.min(20, wW * 0.052);
+      const spd = 0.46 + slotIdx * 0.07;
+      const ph = tSec * spd + slotIdx * 2.35;
+      driftX = lane + Math.sin(ph) * amp;
+      driftVx = Math.cos(ph) * spd * amp;
+      scale = isFocused ? 0.9 : 0.84;
+    } else {
+      const lane = (slotIdx - 1) * Math.min(108, wW * 0.305);
+      const amp = Math.min(11, wW * 0.03);
+      const spd = 0.45 + slotIdx * 0.06;
+      const ph = tSec * spd + slotIdx * 2.1;
+      driftX = lane + Math.sin(ph) * amp;
+      driftVx = Math.cos(ph) * spd * amp;
+      const baseScale = slotIdx === 1 ? 0.77 : 0.73;
+      scale = isFocused ? baseScale + 0.07 : baseScale;
+    }
+
+    const cx = wW * 0.5 + driftX;
+    const wy = waveHeightAt(cx, tSec, 1);
+    const wyNext = waveHeightAt(cx + 8, tSec, 1);
+    const slopeDeg = (Math.atan2(wyNext - wy, 8) * 180) / Math.PI;
+    const baseLean = slotCount === 1 ? 9 : slotIdx % 2 === 0 ? 7 : -6;
+    const tilt = baseLean + slopeDeg * 0.92 + driftVx * 0.14 + Math.sin(tSec * 1.35 + slotIdx * 1.7) * 3.2;
+    const bobY = wy - wH * 0.62;
+    return { driftX, bobY, tilt, scale };
   };
 
   const drawWavePoly = (
@@ -440,95 +577,165 @@ export function openDiaryJar(): void {
           drawWavePoly(fCtx, t, 2, 'rgba(26, 68, 126, 0.46)', 'rgba(7, 16, 38, 0.82)', 'rgba(210, 244, 255, 0.42)');
         }
       }
-      if (!castingAnim) {
-        const maxDrift = Math.max(46, (wW - 144) * 0.46);
-        const ph1 = t * 0.44;
-        const ph2 = t * 0.21 + 1.3;
-        const driftX = Math.sin(ph1) * (maxDrift * 0.72) + Math.sin(ph2) * (maxDrift * 0.28);
-        const driftVx =
-          Math.cos(ph1) * 0.44 * (maxDrift * 0.72) + Math.cos(ph2) * 0.21 * (maxDrift * 0.28);
-        liveDriftX = driftX;
 
-        const cx = wW * 0.5 + driftX;
-        const wy = waveHeightAt(cx, t, 1);
-        const wyNext = waveHeightAt(cx + 8, t, 1);
-        const slopeDeg = (Math.atan2(wyNext - wy, 8) * 180) / Math.PI;
-        const tilt = 10 + slopeDeg * 0.92 + driftVx * 0.14 + Math.sin(t * 1.35) * 3.4;
-        const bobY = wy - wH * 0.62;
-
-        actorEl.style.transform = `translate3d(${driftX.toFixed(1)}px, ${bobY.toFixed(1)}px, 0) rotate(${tilt.toFixed(2)}deg)`;
-        const rScale = 0.9 + 0.16 * Math.sin(t * 2.2);
-        rippleEl.style.transform = `translate(-50%, -50%) scale(${rScale.toFixed(2)})`;
+      const n = actorNodes.length;
+      for (let i = 0; i < n; i++) {
+        const node = actorNodes[i];
+        const isFocused = selectedBottleKey !== 'all' && selectedBottleKey === node.key;
+        const pose = computeSlotPose(i, n, t, isFocused);
+        node.liveDriftX = pose.driftX;
+        node.liveBobY = pose.bobY;
+        node.liveScale = pose.scale;
+        if (castingBottleKey === node.key) continue;
+        node.actorEl.style.transform = `translate3d(${pose.driftX.toFixed(1)}px, ${pose.bobY.toFixed(1)}px, 0) rotate(${pose.tilt.toFixed(2)}deg) scale(${pose.scale.toFixed(3)})`;
+        const rScale = 0.88 + 0.16 * Math.sin(t * 2.2 + i * 1.5);
+        node.rippleEl.style.transform = `translate(-50%, -50%) scale(${rScale.toFixed(2)})`;
       }
     }
     if (!reduced()) waveRaf = requestAnimationFrame(stepWaves);
   };
   waveRaf = requestAnimationFrame(stepWaves);
 
-  const currentBucket = (): BottleBucket =>
-    bottles.find((b) => b.index === activeBottleIdx) ?? bottles[bottles.length - 1];
+  const bottleLabel = (b: SeaBottle): string => {
+    const sameStyleCount = bottles.filter((x) => x.style === b.style).length;
+    return sameStyleCount > 1 ? `${BOTTLE_SHORT_NAMES[b.style]} #${b.subIndex}` : BOTTLE_SHORT_NAMES[b.style];
+  };
 
   const renderBottleSwitcher = () => {
-    const b = currentBucket();
-    if (bottles.length > 1) {
+    const totalPages = Math.ceil(bottles.length / MAX_PER_SEA_PAGE);
+    if (totalPages > 1) {
       switcherEl.classList.remove('hide');
-      switcherEl.innerHTML = bottles
-        .map((bt) => `<button type="button" class="btl-dot ${bt.index === b.index ? 'on' : ''}" data-bidx="${bt.index}">${bt.index}</button>`)
-        .join('');
-      $$('[data-bidx]', switcherEl).forEach((btn) =>
+      switcherEl.innerHTML = Array.from({ length: totalPages }, (_, idx) => {
+        return `<button type="button" class="btl-dot ${idx === seaPageIdx ? 'on' : ''}" data-spg="${idx}">${idx + 1}</button>`;
+      }).join('');
+      $$('[data-spg]', switcherEl).forEach((btn) =>
         btn.addEventListener('click', () => {
-          activeBottleIdx = Number((btn as HTMLElement).dataset.bidx) || 1;
+          seaPageIdx = Number((btn as HTMLElement).dataset.spg) || 0;
           renderBottleSwitcher();
-          renderBottleScrolls();
-          renderList();
+          renderSeaBottles();
         }),
       );
     } else {
       switcherEl.classList.add('hide');
     }
+
+    if (bottles.length > 1) {
+      filterRowEl.classList.remove('hide');
+      filterRowEl.innerHTML =
+        `<button type="button" class="btl-fchip ${selectedBottleKey === 'all' ? 'on' : ''}" data-bf="all">Tüm Şişeler</button>` +
+        bottles
+          .map(
+            (b) =>
+              `<button type="button" class="btl-fchip ${selectedBottleKey === b.key ? 'on' : ''}" data-bf="${b.key}">${bottleLabel(b)}</button>`,
+          )
+          .join('');
+      $$('[data-bf]', filterRowEl).forEach((btn) =>
+        btn.addEventListener('click', () => {
+          const k = (btn as HTMLElement).dataset.bf || 'all';
+          selectedBottleKey = k;
+          if (k !== 'all') {
+            const idx = bottles.findIndex((b) => b.key === k);
+            if (idx >= 0) seaPageIdx = Math.floor(idx / MAX_PER_SEA_PAGE);
+          }
+          renderBottleSwitcher();
+          renderSeaBottles();
+          renderList();
+        }),
+      );
+    } else {
+      selectedBottleKey = 'all';
+      filterRowEl.classList.add('hide');
+    }
   };
 
-  const renderBottleScrolls = () => {
-    notesEl.innerHTML = '';
-    const b = currentBucket();
-    const visible = b.entries.slice(0, BOTTLE_TOTAL).reverse();
-    visible.forEach((entry, idx) => {
-      const hVal = hash(entry.id);
-      const col = idx % 5;
-      const row = Math.floor(idx / 5);
-      const jitterX = (hVal % 11) - 5;
-      const jitterY = ((hVal >>> 4) % 7) - 3;
-      const rot = ((hVal >>> 8) % 34) - 17;
-      const leftPct = 9 + col * 18.5 + jitterX * 0.5;
-      const bottomPx = 6 + row * 22 + jitterY * 0.6;
-      const btn = h(`<button type="button" class="btl-scroll ${entry.from} ${entry.mine ? 'mine' : 'sealed'}"
-        style="left:${leftPct.toFixed(1)}%;bottom:${bottomPx.toFixed(1)}px;--r:${rot}deg"
-        aria-label="${entry.mine ? fmtVintageDate(entry.entryDate) : pa.name}">
-        ${rolledScrollSVG(entry.from)}
-      </button>`);
-      btn.addEventListener('click', () => {
-        if (entry.mine) {
-          void openVintageReader(entry);
-        } else {
-          btn.animate(
-            [
-              { transform: `rotate(${rot}deg) translateX(0)` },
-              { transform: `rotate(${rot - 8}deg) translateX(-2px)` },
-              { transform: `rotate(${rot + 8}deg) translateX(2px)` },
-              { transform: `rotate(${rot}deg) translateX(0)` },
-            ],
-            { duration: 340, easing: 'ease-out' },
-          );
-          toast(`${pa.of} anısı · İleride birlikte açmak için şişede birikiyor`, I.lock(14), 2600);
-        }
+  const renderSeaBottles = () => {
+    stageActorsEl.innerHTML = '';
+    actorNodes = [];
+    const vis = visibleSeaBottles();
+    const nowSec = performance.now() * 0.001;
+
+    vis.forEach((btl, slotIdx) => {
+      const isFocused = selectedBottleKey !== 'all' && selectedBottleKey === btl.key;
+      const isDimmed = selectedBottleKey !== 'all' && selectedBottleKey !== btl.key;
+      const nodeEl = h(`<div class="bottle-actor ${isFocused ? 'focused' : ''} ${isDimmed ? 'dimmed' : ''}" data-bkey="${btl.key}">
+        <div class="bottle-ripple" data-ripple></div>
+        <div class="bottle-body">
+          ${seaBottleSVG(btl.style, isBeto)}
+          <div class="btl-scrolls" data-notes></div>
+          ${seaBottleSheenSVG()}
+        </div>
+      </div>`);
+
+      const rippleEl = $('[data-ripple]', nodeEl);
+      const notesEl = $('[data-notes]', nodeEl);
+
+      const visibleEntries = btl.entries.slice(0, BOTTLE_TOTAL).reverse();
+      visibleEntries.forEach((entry, idx) => {
+        const hVal = hash(entry.id);
+        const col = idx % 5;
+        const row = Math.floor(idx / 5);
+        const jitterX = (hVal % 11) - 5;
+        const jitterY = ((hVal >>> 4) % 7) - 3;
+        const rot = ((hVal >>> 8) % 34) - 17;
+        const leftPct = 9 + col * 18.5 + jitterX * 0.5;
+        const bottomPx = 6 + row * 22 + jitterY * 0.6;
+        const btn = h(`<button type="button" class="btl-scroll ${entry.from} ${entry.mine ? 'mine' : 'sealed'}"
+          style="left:${leftPct.toFixed(1)}%;bottom:${bottomPx.toFixed(1)}px;--r:${rot}deg"
+          aria-label="${entry.mine ? fmtVintageDate(entry.entryDate) : pa.name}">
+          ${rolledScrollSVG(entry.from, entry.paperStyle)}
+        </button>`);
+        btn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          if (entry.mine) {
+            void openVintageReader(entry);
+          } else {
+            btn.animate(
+              [
+                { transform: `rotate(${rot}deg) translateX(0)` },
+                { transform: `rotate(${rot - 8}deg) translateX(-2px)` },
+                { transform: `rotate(${rot + 8}deg) translateX(2px)` },
+                { transform: `rotate(${rot}deg) translateX(0)` },
+              ],
+              { duration: 340, easing: 'ease-out' },
+            );
+            toast(`${pa.of} anısı · İleride birlikte açmak için şişede birikiyor`, I.lock(14), 2600);
+          }
+        });
+        notesEl.appendChild(btn);
       });
-      notesEl.appendChild(btn);
+
+      if (bottles.length > 1) {
+        nodeEl.addEventListener('click', () => {
+          selectedBottleKey = selectedBottleKey === btl.key ? 'all' : btl.key;
+          renderBottleSwitcher();
+          renderSeaBottles();
+          renderList();
+        });
+      }
+
+      const pose = computeSlotPose(slotIdx, vis.length, nowSec, isFocused);
+      if (castingBottleKey === btl.key) {
+        nodeEl.style.opacity = '0';
+      }
+      nodeEl.style.transform = `translate3d(${pose.driftX.toFixed(1)}px, ${pose.bobY.toFixed(1)}px, 0) rotate(${pose.tilt.toFixed(2)}deg) scale(${pose.scale.toFixed(3)})`;
+      stageActorsEl.appendChild(nodeEl);
+      actorNodes.push({
+        key: btl.key,
+        actorEl: nodeEl,
+        rippleEl,
+        liveDriftX: pose.driftX,
+        liveBobY: pose.bobY,
+        liveScale: pose.scale,
+      });
     });
   };
 
   const renderList = () => {
-    const b = currentBucket();
-    const list = tab === 'mine' ? b.entries.filter((e) => e.mine) : b.entries.filter((e) => !e.mine);
+    const sourceEntries =
+      selectedBottleKey === 'all'
+        ? entries
+        : bottles.find((b) => b.key === selectedBottleKey)?.entries ?? [];
+    const list = tab === 'mine' ? sourceEntries.filter((e) => e.mine) : sourceEntries.filter((e) => !e.mine);
     entriesEl.innerHTML = '';
 
     if (!list.length) {
@@ -541,16 +748,16 @@ export function openDiaryJar(): void {
     for (const entry of list) {
       if (entry.mine) {
         const card = h(`<button type="button" class="v-mini press">
-          <span class="v-mini-seal ${entry.from}">${I.text(15)}</span>
-          <span class="v-mini-body"><b>${fmtVintageDate(entry.entryDate)}</b></span>
+          <span class="v-mini-seal ${entry.from} p-${entry.paperStyle}">${I.text(15)}</span>
+          <span class="v-mini-body"><b>${fmtVintageDate(entry.entryDate)}</b><i>${BOTTLE_SHORT_NAMES[entry.bottleStyle]}</i></span>
           <span class="v-mini-chev">${I.chevron(16)}</span>
         </button>`);
         card.addEventListener('click', () => void openVintageReader(entry));
         entriesEl.appendChild(card);
       } else {
         const card = h(`<div class="v-mini sealed-row">
-          <span class="v-mini-seal ${entry.from}">${I.lock(14)}</span>
-          <span class="v-mini-body"><b>${fmtVintageDate(entry.entryDate)}</b></span>
+          <span class="v-mini-seal ${entry.from} p-${entry.paperStyle}">${I.lock(14)}</span>
+          <span class="v-mini-body"><b>${fmtVintageDate(entry.entryDate)}</b><i>${BOTTLE_SHORT_NAMES[entry.bottleStyle]}</i></span>
           <span class="v-ask-pill sent">Şişede saklı</span>
         </div>`);
         entriesEl.appendChild(card);
@@ -558,42 +765,67 @@ export function openDiaryJar(): void {
     }
   };
 
-  const reload = async (jumpToLatestBottle = false) => {
+  const reload = async (focusKey?: string) => {
     try {
       const res = await fetchDiaryJar();
       entries = res.entries;
-      bottles = partitionIntoBottles(entries);
-      if (manualExtraBottle) {
-        const last = bottles[bottles.length - 1];
-        if (last.mineCount >= BOTTLE_PER_PERSON) {
-          bottles.push({ index: last.index + 1, entries: [], mineCount: 0, partnerCount: 0 });
-        } else {
-          manualExtraBottle = false;
-        }
+      bottles = partitionIntoSeaBottles(entries, pref.bottle);
+      if (focusKey) {
+        const idx = bottles.findIndex((b) => b.key === focusKey);
+        if (idx >= 0) seaPageIdx = Math.floor(idx / MAX_PER_SEA_PAGE);
       }
-      if (jumpToLatestBottle || !bottles.some((b) => b.index === activeBottleIdx)) {
-        activeBottleIdx = bottles[bottles.length - 1].index;
+      if (selectedBottleKey !== 'all' && !bottles.some((b) => b.key === selectedBottleKey)) {
+        selectedBottleKey = 'all';
       }
       renderBottleSwitcher();
-      renderBottleScrolls();
+      renderSeaBottles();
       renderList();
     } catch {
       toast('Şişe yüklenemedi', I.info(14));
     }
   };
 
+  const prepareTargetBottleForCast = (bStyle: BottleStyle): string => {
+    if (!entries.length) {
+      const k = `${bStyle}-1`;
+      bottles = [{ key: k, style: bStyle, subIndex: 1, entries: [], mineCount: 0, partnerCount: 0 }];
+      seaPageIdx = 0;
+      renderBottleSwitcher();
+      renderSeaBottles();
+      return k;
+    }
+    const matching = bottles.filter((b) => b.style === bStyle);
+    const last = matching[matching.length - 1];
+    if (last && last.mineCount < BOTTLE_PER_PERSON) {
+      const idx = bottles.findIndex((b) => b.key === last.key);
+      if (idx >= 0) seaPageIdx = Math.floor(idx / MAX_PER_SEA_PAGE);
+      renderBottleSwitcher();
+      renderSeaBottles();
+      return last.key;
+    }
+    const nextSub = last ? last.subIndex + 1 : 1;
+    const newKey = `${bStyle}-${nextSub}`;
+    bottles.push({ key: newKey, style: bStyle, subIndex: nextSub, entries: [], mineCount: 0, partnerCount: 0 });
+    seaPageIdx = Math.floor((bottles.length - 1) / MAX_PER_SEA_PAGE);
+    renderBottleSwitcher();
+    renderSeaBottles();
+    return newKey;
+  };
+
   const playCastIntoSea = async (
     who: 'hamham' | 'beto',
     bStyle: BottleStyle,
     pStyle: PaperStyle,
+    targetKey: string,
     fromRect: DOMRect,
     snippetText: string,
   ) => {
     if (reduced()) return;
-    castingAnim = true;
+    castingBottleKey = targetKey;
+    const targetNode = actorNodes.find((n) => n.key === targetKey);
+    if (targetNode) targetNode.actorEl.style.opacity = '0';
+
     const root = document.getElementById('app') || document.body;
-    const ribbonCol = '#ff84b0';
-    const sealCol = who === 'beto' ? '#c84b76' : '#436cd4';
     const stage = h(`<div class="cast-cinema" aria-hidden="true"></div>`);
     root.appendChild(stage);
 
@@ -642,14 +874,8 @@ export function openDiaryJar(): void {
       ).finished;
       paperClone.remove();
 
-      const rollFill = pStyle === 'night' ? '#1c2b56' : pStyle === 'straw' ? '#e7d2a8' : '#f7eee0';
       const bigScroll = h(`<div class="cinema-scroll" style="left:${cx}px;top:${cy - 86}px">
-        <svg viewBox="0 0 36 86" width="34" height="80">
-          <rect x="4" y="3" width="28" height="80" rx="9" fill="${rollFill}" stroke="#ba9c70" stroke-width="1.4"/>
-          <ellipse cx="18" cy="7.5" rx="11" ry="3.6" fill="#dec89f"/>
-          <path d="M4 42 H32" stroke="${ribbonCol}" stroke-width="5"/>
-          <circle cx="18" cy="42" r="6.5" fill="${sealCol}" stroke="#fff7" stroke-width="1"/>
-        </svg>
+        ${rolledScrollSVG(who, pStyle, true)}
       </div>`);
       stage.appendChild(bigScroll);
       await bigScroll.animate(
@@ -661,10 +887,9 @@ export function openDiaryJar(): void {
         { duration: 240, easing: 'cubic-bezier(.2,1.3,.4,1)', fill: 'forwards' },
       ).finished;
 
-      actorEl.style.opacity = '0';
       const flyBottle = h(`<div class="cinema-bottle" style="left:${cx}px;top:${cy + 36}px">
         ${seaBottleSVG(bStyle, who === 'beto')}
-        <div class="cinema-inner-scroll hide">${rolledScrollSVG(who)}</div>
+        <div class="cinema-inner-scroll hide">${rolledScrollSVG(who, pStyle, false)}</div>
         ${seaBottleSheenSVG()}
       </div>`);
       stage.appendChild(flyBottle);
@@ -702,20 +927,23 @@ export function openDiaryJar(): void {
         ).finished;
       }
 
+      const liveNode = actorNodes.find((n) => n.key === targetKey);
+      const landDriftX = liveNode ? liveNode.liveDriftX : 0;
+      const landScale = liveNode ? liveNode.liveScale : 0.9;
       const oceanRect = oceanEl.getBoundingClientRect();
-      const targetX = oceanRect.left - rootRect.left + oceanRect.width * 0.5 + liveDriftX;
+      const targetX = oceanRect.left - rootRect.left + oceanRect.width * 0.5 + landDriftX;
       const targetY = oceanRect.top - rootRect.top + oceanRect.height * 0.56;
       const dx = targetX - cx;
       const dy = targetY - (cy + 36);
-      sparksEl.style.transform = `translateX(${liveDriftX.toFixed(1)}px)`;
+      sparksEl.style.transform = `translateX(${landDriftX.toFixed(1)}px)`;
 
       const hurlAnim = flyBottle.animate(
         [
           { transform: 'translate(-50%, -50%) translate3d(0, 0, 0) scale(1.08) rotate(0deg)', opacity: 1 },
           { transform: 'translate(-50%, -50%) translate3d(-24px, 34px, 0) scale(1.22) rotate(-30deg)', opacity: 1, offset: 0.24 },
           { transform: `translate(-50%, -50%) translate3d(${dx * 0.48}px, ${dy - 148}px, 0) scale(0.86) rotate(185deg)`, opacity: 1, offset: 0.64 },
-          { transform: `translate(-50%, -50%) translate3d(${dx}px, ${dy + 18}px, 0) scale(0.96) rotate(373deg)`, opacity: 0.96, offset: 0.94 },
-          { transform: `translate(-50%, -50%) translate3d(${dx}px, ${dy + 26}px, 0) scale(0.92) rotate(378deg)`, opacity: 0 },
+          { transform: `translate(-50%, -50%) translate3d(${dx}px, ${dy + 18}px, 0) scale(${landScale.toFixed(2)}) rotate(373deg)`, opacity: 0.96, offset: 0.94 },
+          { transform: `translate(-50%, -50%) translate3d(${dx}px, ${dy + 26}px, 0) scale(${(landScale * 0.96).toFixed(2)}) rotate(378deg)`, opacity: 0 },
         ],
         { duration: 680, easing: 'cubic-bezier(.26,.08,.22,1)', fill: 'forwards' },
       );
@@ -765,20 +993,27 @@ export function openDiaryJar(): void {
 
       await hurlAnim.finished;
 
-      actorEl.style.opacity = '1';
-      await actorEl.animate(
-        [
-          { transform: `translate3d(${liveDriftX.toFixed(1)}px, 26px, 0) rotate(24deg)` },
-          { transform: `translate3d(${liveDriftX.toFixed(1)}px, -9px, 0) rotate(8deg)`, offset: 0.55 },
-          { transform: `translate3d(${liveDriftX.toFixed(1)}px, 0px, 0) rotate(10deg)` },
-        ],
-        { duration: 520, easing: 'cubic-bezier(.22,.85,.3,1)', fill: 'forwards' },
-      ).finished;
-      actorEl.getAnimations().forEach((a) => a.cancel());
+      const endNode = actorNodes.find((n) => n.key === targetKey);
+      if (endNode) {
+        endNode.actorEl.style.opacity = '1';
+        const dX = endNode.liveDriftX;
+        const s = endNode.liveScale;
+        await endNode.actorEl.animate(
+          [
+            { transform: `translate3d(${dX.toFixed(1)}px, 26px, 0) rotate(22deg) scale(${s.toFixed(3)})` },
+            { transform: `translate3d(${dX.toFixed(1)}px, -9px, 0) rotate(6deg) scale(${s.toFixed(3)})`, offset: 0.55 },
+            { transform: `translate3d(${dX.toFixed(1)}px, 0px, 0) rotate(8deg) scale(${s.toFixed(3)})` },
+          ],
+          { duration: 520, easing: 'cubic-bezier(.22,.85,.3,1)', fill: 'forwards' },
+        ).finished;
+        endNode.actorEl.getAnimations().forEach((a) => a.cancel());
+      }
     } finally {
-      actorEl.style.opacity = '1';
+      actorNodes.forEach((n) => {
+        n.actorEl.style.opacity = '1';
+      });
       stage.remove();
-      castingAnim = false;
+      castingBottleKey = null;
     }
   };
 
@@ -1005,7 +1240,10 @@ export function openDiaryJar(): void {
     $('[data-go]', body).addEventListener('click', async () => {
       pref = { bottle: chosenBottle, paper: chosenPaper };
       saveAtelierStyle(chosenBottle, chosenPaper);
-      refreshBottleModel(chosenBottle);
+      if (!entries.length) {
+        bottles = partitionIntoSeaBottles([], chosenBottle);
+        renderSeaBottles();
+      }
       await sh.close();
       openVintageWriter(chosenBottle, chosenPaper);
     });
@@ -1189,19 +1427,6 @@ export function openDiaryJar(): void {
 
   // ---------- ADIM 2: Gece Sessizliğinde Uçuşan Ateş Böcekli Vintage Anı Yazma Alanı ----------
   function openVintageWriter(bStyle: BottleStyle, pStyle: PaperStyle) {
-    const b = currentBucket();
-    if (b.mineCount >= BOTTLE_PER_PERSON) {
-      const nextIdx = b.index + 1;
-      if (!bottles.some((x) => x.index === nextIdx)) {
-        manualExtraBottle = true;
-        bottles.push({ index: nextIdx, entries: [], mineCount: 0, partnerCount: 0 });
-      }
-      activeBottleIdx = nextIdx;
-      renderBottleSwitcher();
-      renderBottleScrolls();
-      renderList();
-    }
-
     const selectedMoods = new Set<MemoryMoodId>();
     let attachedPhoto: { bytes: Uint8Array<ArrayBuffer>; mime: string; preview: string } | null = null;
     let attachedVoice: RecordedVoice | null = null;
@@ -1489,6 +1714,7 @@ export function openDiaryJar(): void {
       const primaryDbMood = MEMORY_MOODS.find((m) => m.id === moodArr[0])?.dbMood ?? 'heart';
 
       try {
+        const targetKey = prepareTargetBottleForCast(bStyle);
         const saveP = saveDiaryEntry({
           title: '',
           text,
@@ -1506,10 +1732,10 @@ export function openDiaryJar(): void {
         });
         void sh.close();
         await Promise.all([
-          playCastIntoSea(toDbWho(state.me), bStyle, pStyle, fromRect, text || 'Bir anı…'),
+          playCastIntoSea(toDbWho(state.me), bStyle, pStyle, targetKey, fromRect, text || 'Bir anı…'),
           saveP,
         ]);
-        await reload(true);
+        await reload(targetKey);
       } catch {
         sealBtn.disabled = false;
         toast('Kaydedilemedi, tekrar dene', I.info(14));
@@ -1523,5 +1749,5 @@ export function openDiaryJar(): void {
   });
   writeBtn.addEventListener('click', () => openAtelierPicker());
   window.addEventListener('resize', syncCanvasSize, { passive: true });
-  void reload(true);
+  void reload();
 }

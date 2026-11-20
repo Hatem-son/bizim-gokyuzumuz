@@ -117,6 +117,8 @@ export interface DiaryEntryMeta {
   from: Who;
   entryDate: string;
   mood: DiaryMood;
+  bottleStyle: BottleStyle;
+  paperStyle: PaperStyle;
   createdAt: string;
   mine: boolean;
 }
@@ -178,14 +180,53 @@ function writeLocalRecords(rows: LocalDiaryRecord[]): void {
   store.set(LOCAL_DIARY_KEY, rows);
 }
 
+function isBottleStyle(v: string | undefined): v is BottleStyle {
+  return v === 'emerald' || v === 'crystal' || v === 'shell';
+}
+
+function isPaperStyle(v: string | undefined): v is PaperStyle {
+  return v === 'straw' || v === 'sea' || v === 'night';
+}
+
+function defaultStylesFor(who: Who): { bottleStyle: BottleStyle; paperStyle: PaperStyle } {
+  return who === 'beto'
+    ? { bottleStyle: 'crystal', paperStyle: 'sea' }
+    : { bottleStyle: 'emerald', paperStyle: 'straw' };
+}
+
+function packEntryDate(entryDate: string, bottle: BottleStyle, paper: PaperStyle): string {
+  const cleanDate = entryDate.split('|')[0] || entryDate;
+  return `${cleanDate}|${bottle}|${paper}`;
+}
+
+function unpackEntryDate(raw: string): {
+  entryDate: string;
+  bottleStyle: BottleStyle | null;
+  paperStyle: PaperStyle | null;
+} {
+  const parts = String(raw ?? '').split('|');
+  return {
+    entryDate: parts[0] || String(raw ?? ''),
+    bottleStyle: isBottleStyle(parts[1]) ? parts[1] : null,
+    paperStyle: isPaperStyle(parts[2]) ? parts[2] : null,
+  };
+}
+
 export async function fetchDiaryJar(): Promise<{ entries: DiaryEntryMeta[]; needsSql: boolean }> {
   const meDb = toDbWho(state.me);
   const sb = getSupabase();
   if (!sb) {
-    const local = readLocalRecords().map(({ payload: _p, ...meta }) => ({
-      ...meta,
-      mine: meta.from === meDb,
-    }));
+    const local = readLocalRecords().map(({ payload: _p, ...meta }) => {
+      const def = defaultStylesFor(meta.from);
+      const parsed = unpackEntryDate(meta.entryDate);
+      return {
+        ...meta,
+        entryDate: parsed.entryDate,
+        bottleStyle: meta.bottleStyle ?? parsed.bottleStyle ?? def.bottleStyle,
+        paperStyle: meta.paperStyle ?? parsed.paperStyle ?? def.paperStyle,
+        mine: meta.from === meDb,
+      };
+    });
     return { entries: local, needsSql: false };
   }
 
@@ -200,23 +241,74 @@ export async function fetchDiaryJar(): Promise<{ entries: DiaryEntryMeta[]; need
 
   if (error) {
     if (isMissingTableError(error)) {
-      const local = readLocalRecords().map(({ payload: _p, ...meta }) => ({
-        ...meta,
-        mine: meta.from === meDb,
-      }));
+      const local = readLocalRecords().map(({ payload: _p, ...meta }) => {
+        const def = defaultStylesFor(meta.from);
+        const parsed = unpackEntryDate(meta.entryDate);
+        return {
+          ...meta,
+          entryDate: parsed.entryDate,
+          bottleStyle: meta.bottleStyle ?? parsed.bottleStyle ?? def.bottleStyle,
+          paperStyle: meta.paperStyle ?? parsed.paperStyle ?? def.paperStyle,
+          mine: meta.from === meDb,
+        };
+      });
       return { entries: local, needsSql: true };
     }
     throw error;
   }
 
-  const entries: DiaryEntryMeta[] = (data ?? []).map((row) => ({
-    id: String(row.id),
-    from: (row.from_who === 'beto' ? 'beto' : 'hamham') as Who,
-    entryDate: String(row.entry_date),
-    mood: (row.mood ?? 'heart') as DiaryMood,
-    createdAt: String(row.created_at),
-    mine: row.from_user === uid || row.from_who === meDb,
-  }));
+  const legacyMineIds: string[] = [];
+  const entries: DiaryEntryMeta[] = (data ?? []).map((row) => {
+    const id = String(row.id);
+    const from = (row.from_who === 'beto' ? 'beto' : 'hamham') as Who;
+    const mine = row.from_user === uid || row.from_who === meDb;
+    const parsed = unpackEntryDate(String(row.entry_date));
+    const cached = decryptedCache.get(id);
+    const def = defaultStylesFor(from);
+    if (mine && (!parsed.bottleStyle || !parsed.paperStyle) && !cached) {
+      legacyMineIds.push(id);
+    }
+    return {
+      id,
+      from,
+      entryDate: parsed.entryDate,
+      mood: (row.mood ?? 'heart') as DiaryMood,
+      bottleStyle: parsed.bottleStyle ?? cached?.bottleStyle ?? def.bottleStyle,
+      paperStyle: parsed.paperStyle ?? cached?.paperStyle ?? def.paperStyle,
+      createdAt: String(row.created_at),
+      mine,
+    };
+  });
+
+  if (legacyMineIds.length > 0) {
+    try {
+      const { data: secRows } = await sb
+        .from('diary_secrets')
+        .select('diary_id, payload')
+        .in('diary_id', legacyMineIds);
+      if (secRows?.length) {
+        await Promise.all(
+          secRows.map(async (sr) => {
+            try {
+              const cid = String(sr.diary_id);
+              const content = await openJSON<DiaryEntryContent>(String(sr.payload));
+              content.entryDate = unpackEntryDate(content.entryDate).entryDate;
+              decryptedCache.set(cid, content);
+              const target = entries.find((e) => e.id === cid);
+              if (target) {
+                if (content.bottleStyle) target.bottleStyle = content.bottleStyle;
+                if (content.paperStyle) target.paperStyle = content.paperStyle;
+              }
+            } catch {
+              // ignore individual legacy parse error
+            }
+          }),
+        );
+      }
+    } catch {
+      // ignore optional legacy enrichment failure
+    }
+  }
 
   return { entries, needsSql: false };
 }
@@ -228,6 +320,7 @@ export async function openMyDiaryEntry(id: string): Promise<DiaryEntryContent | 
   const local = readLocalRecords().find((r) => r.id === id);
   if (local) {
     const content = await openJSON<DiaryEntryContent>(local.payload);
+    content.entryDate = unpackEntryDate(content.entryDate).entryDate;
     decryptedCache.set(id, content);
     return content;
   }
@@ -245,6 +338,7 @@ export async function openMyDiaryEntry(id: string): Promise<DiaryEntryContent | 
   if (!data?.payload) return null;
 
   const content = await openJSON<DiaryEntryContent>(String(data.payload));
+  content.entryDate = unpackEntryDate(content.entryDate).entryDate;
   decryptedCache.set(id, content);
   return content;
 }
@@ -253,23 +347,36 @@ export async function saveDiaryEntry(
   input: DiaryEntryContent,
 ): Promise<{ entry: DiaryEntryMeta; needsSql: boolean }> {
   const meDb = toDbWho(state.me);
-  const payload = await sealJSON(input);
+  const def = defaultStylesFor(meDb);
+  const bottleStyle: BottleStyle = input.bottleStyle ?? def.bottleStyle;
+  const paperStyle: PaperStyle = input.paperStyle ?? def.paperStyle;
+  const cleanDate = unpackEntryDate(input.entryDate).entryDate;
+  const normalizedInput: DiaryEntryContent = {
+    ...input,
+    entryDate: cleanDate,
+    bottleStyle,
+    paperStyle,
+  };
+  const payload = await sealJSON(normalizedInput);
   const id = crypto.randomUUID();
   const createdAt = new Date().toISOString();
+  const packedDate = packEntryDate(cleanDate, bottleStyle, paperStyle);
 
   const sb = getSupabase();
   if (!sb) {
     const rec: LocalDiaryRecord = {
       id,
       from: meDb,
-      entryDate: input.entryDate,
+      entryDate: cleanDate,
       mood: input.mood,
+      bottleStyle,
+      paperStyle,
       createdAt,
       mine: true,
       payload,
     };
     writeLocalRecords([rec, ...readLocalRecords()]);
-    decryptedCache.set(id, input);
+    decryptedCache.set(id, normalizedInput);
     const { payload: _p, ...entry } = rec;
     return { entry, needsSql: false };
   }
@@ -284,7 +391,7 @@ export async function saveDiaryEntry(
     id,
     from_user: uid,
     from_who: meDb,
-    entry_date: input.entryDate,
+    entry_date: packedDate,
     mood: input.mood,
     created_at: createdAt,
   });
@@ -294,14 +401,16 @@ export async function saveDiaryEntry(
       const rec: LocalDiaryRecord = {
         id,
         from: meDb,
-        entryDate: input.entryDate,
+        entryDate: cleanDate,
         mood: input.mood,
+        bottleStyle,
+        paperStyle,
         createdAt,
         mine: true,
         payload,
       };
       writeLocalRecords([rec, ...readLocalRecords()]);
-      decryptedCache.set(id, input);
+      decryptedCache.set(id, normalizedInput);
       const { payload: _p, ...entry } = rec;
       return { entry, needsSql: true };
     }
@@ -324,13 +433,15 @@ export async function saveDiaryEntry(
     throw sErr;
   }
 
-  decryptedCache.set(id, input);
+  decryptedCache.set(id, normalizedInput);
   return {
     entry: {
       id,
       from: meDb,
-      entryDate: input.entryDate,
+      entryDate: cleanDate,
       mood: input.mood,
+      bottleStyle,
+      paperStyle,
       createdAt,
       mine: true,
     },
