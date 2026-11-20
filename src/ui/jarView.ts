@@ -1,5 +1,5 @@
-// Denizdeki Şişemiz — Sade, şiirsel ve iki kişiye özel tema (Ham ham: ay mavisi/fildişi, Beto: pembe/ahududu).
-// Açıklama kalabalığı veya sayaç çubukları YOK: yalnızca dalgalarda süzülen şişe, saf vintage mektup kağıdı ve tek seferlik izin isteği.
+// Anı Şişemiz — İleride birlikte açmak üzere anıların biriktiği, dalgalar ve akıntıyla suda serbestçe sağa-sola süzülen şişe.
+// İki tarafa özel tema: Ham ham (ay mavisi / fildişi parşömen), Beto (pembe-ela deniz / ahududu tılsımı / pudra-gül kağıt).
 import { h, $, $$, pushPage, popPage, openSheet, segment, confirmSheet, toast, reduced } from './ui';
 import { I } from './icons';
 import { raspberry } from './art';
@@ -12,67 +12,10 @@ import {
   openMyDiaryEntry,
   saveDiaryEntry,
   deleteMyDiaryEntry,
-  pendingPeekRequests,
-  grantedPeekEntries,
-  getPeekStatus,
-  canSendPeekRequest,
-  markPeekRequestSent,
-  respondToPeekRequest,
   BOTTLE_PER_PERSON,
   BOTTLE_TOTAL,
   type DiaryEntryMeta,
-  type DiaryStickerId,
-  type DiaryPeekReq,
 } from '../lib/diary';
-
-const PEEK_PRESETS = [
-  'Aşkım merak ettim, mektubuna bakabilir miyim? 🥺🤍',
-  'Kalbim seni özledi, bir göz atsam olur mu? 💌✨',
-  'Lütfeeen bu mektubunu benimle paylaşır mısın? 🥰🫶',
-];
-
-const PEEK_EMOJIS = ['🥺', '🤍', '💌', '🥰', '🫶', '✨', '🌸', '🥹'];
-
-const STICKERS: { id: DiaryStickerId; label: string; render: () => string }[] = [
-  {
-    id: 'plead',
-    label: 'Lütfeeen',
-    render: () => `<div class="stk stk-plead">
-      <svg viewBox="0 0 64 64" width="46" height="46"><path d="M32 54S10 40 10 23a12 12 0 0 1 22-6.5A12 12 0 0 1 54 23c0 17-22 31-22 31Z" fill="#ff8db5" stroke="#fff6" stroke-width="1.5"/>
-      <circle cx="24" cy="26" r="3.4" fill="#2b1924"/><circle cx="40" cy="26" r="3.4" fill="#2b1924"/>
-      <circle cx="25.2" cy="24.8" r="1.2" fill="#fff"/><circle cx="41.2" cy="24.8" r="1.2" fill="#fff"/>
-      <path d="M29 33q3 2.5 6 0" fill="none" stroke="#2b1924" stroke-width="1.8" stroke-linecap="round"/></svg>
-      <span class="stk-float">🥺</span></div>`,
-  },
-  {
-    id: 'kiss',
-    label: 'Öpücük',
-    render: () => `<div class="stk stk-kiss">
-      <svg viewBox="0 0 64 64" width="46" height="46"><path d="M32 54S10 40 10 23a12 12 0 0 1 22-6.5A12 12 0 0 1 54 23c0 17-22 31-22 31Z" fill="#ff73a3" stroke="#fff6" stroke-width="1.5"/>
-      <path d="M21 25q3-3 6 0M37 25q3-3 6 0" fill="none" stroke="#2b1924" stroke-width="2" stroke-linecap="round"/>
-      <path d="M30 33q4 2 0 4" fill="none" stroke="#2b1924" stroke-width="2" stroke-linecap="round"/></svg>
-      <span class="stk-float">💋</span></div>`,
-  },
-  {
-    id: 'shy',
-    label: 'Utandım',
-    render: () => `<div class="stk stk-shy">
-      <svg viewBox="0 0 64 64" width="46" height="46"><rect x="10" y="18" width="44" height="30" rx="6" fill="#f7ebd4" stroke="#c8a878" stroke-width="1.6"/>
-      <path d="M11 20l21 15 21-15" fill="none" stroke="#c8a878" stroke-width="1.5"/>
-      <circle cx="32" cy="34" r="6" fill="#e76f96"/></svg>
-      <span class="stk-float">🙈</span></div>`,
-  },
-  {
-    id: 'hug',
-    label: 'Sarılalım',
-    render: () => `<div class="stk stk-hug">
-      <svg viewBox="0 0 64 64" width="46" height="46"><path d="M24 50S8 38 8 25a9 9 0 0 1 16-5.5A9 9 0 0 1 40 25c0 13-16 25-16 25Z" fill="#82aaff" opacity=".92"/>
-      <path d="M40 52S24 40 24 27a9 9 0 0 1 16-5.5A9 9 0 0 1 56 27c0 13-16 25-16 25Z" fill="#ff8db5" opacity=".92"/></svg>
-      <span class="stk-float">🫶</span></div>`,
-  },
-];
-
-const STICKER_MAP = Object.fromEntries(STICKERS.map((s) => [s.id, s])) as Record<DiaryStickerId, (typeof STICKERS)[number]>;
 
 type BottleBucket = {
   index: number;
@@ -136,7 +79,7 @@ function seaBottleSVG(isBeto: boolean): string {
   const gB = isBeto ? 'rgba(255,235,244,0.09)' : 'rgba(235,248,255,0.09)';
   const stroke = isBeto ? 'rgba(255,222,236,0.52)' : 'rgba(220,244,255,0.52)';
   const cord = isBeto ? '#dfb0be' : '#c6d4f2';
-  return `<svg class="btl-svg" viewBox="0 0 180 265" width="168" height="248" aria-hidden="true">
+  return `<svg class="btl-svg" viewBox="0 0 180 265" width="156" height="230" aria-hidden="true">
     <defs>
       <linearGradient id="gkSeaGlass" x1="0" y1="0" x2="1" y2="0">
         <stop offset="0%" stop-color="${gA}"/>
@@ -164,11 +107,11 @@ function seaBottleSVG(isBeto: boolean): string {
     <path d="M42 232 C42 243 55 247 70 247 H110 C125 247 138 243 138 232"
           fill="rgba(255,255,255,0.14)" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
   </svg>
-  ${isBeto ? `<div class="btl-charm">${raspberry(12)}</div>` : ''}`;
+  ${isBeto ? `<div class="btl-charm">${raspberry(11)}</div>` : ''}`;
 }
 
 function seaBottleSheenSVG(): string {
-  return `<svg class="btl-sheen" viewBox="0 0 180 265" width="168" height="248" aria-hidden="true">
+  return `<svg class="btl-sheen" viewBox="0 0 180 265" width="156" height="230" aria-hidden="true">
     <path d="M48 128 V220 C48 230 53 236 60 239" fill="none" stroke="rgba(255,255,255,0.34)" stroke-width="3.2" stroke-linecap="round"/>
     <path d="M79 44 V66 C79 80 56 96 54 118" fill="none" stroke="rgba(255,255,255,0.22)" stroke-width="2" stroke-linecap="round"/>
     <path d="M132 128 V216" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="2" stroke-linecap="round"/>
@@ -195,16 +138,15 @@ export function openDiaryJar(): void {
   let tab: 'mine' | 'partner' = 'mine';
   let activeBottleIdx = 1;
   let castingAnim = false;
+  let liveDriftX = 0;
 
   const el = h(`<div class="screen page jar-page">
     <div class="page-head">
       <button type="button" class="icon-btn" data-back aria-label="Geri">${I.back()}</button>
-      <div class="title" style="font-size:34px;display:flex;align-items:center;gap:8px">Şişemiz ${lilyBloom(26, 12)}</div>
+      <div class="title" style="font-size:34px;display:flex;align-items:center;gap:8px">Anı Şişemiz ${lilyBloom(26, 12)}</div>
       <span class="grow"></span>
       <div class="bottle-dots hide" data-switcher></div>
     </div>
-
-    <div class="jar-req-banner hide" data-req-banner></div>
 
     <div class="bottle-ocean" data-ocean>
       <div class="ocean-moon-glow"></div>
@@ -212,7 +154,7 @@ export function openDiaryJar(): void {
       <canvas class="ocean-cv back" data-cv-back></canvas>
       <div class="bottle-actor" data-actor>
         <div class="bottle-ripple" data-ripple></div>
-        <div class="bottle-body" data-bottle>
+        <div class="bottle-body">
           ${seaBottleSVG(isBeto)}
           <div class="btl-scrolls" data-notes></div>
           ${seaBottleSheenSVG()}
@@ -224,7 +166,7 @@ export function openDiaryJar(): void {
 
     <div class="jar-cta-row">
       <button type="button" class="btn btn-primary btn-block jar-write-btn" data-write>
-        ${isBeto ? `<span class="rb">${raspberry(13)}</span>` : I.pen(17)}<span>Mektup bırak</span>
+        ${isBeto ? `<span class="rb">${raspberry(13)}</span>` : I.pen(17)}<span>Anı bırak</span>
       </button>
     </div>
 
@@ -243,10 +185,9 @@ export function openDiaryJar(): void {
   const writeBtn = $<HTMLButtonElement>('[data-write]', el);
   const switcherEl = $('[data-switcher]', el);
   const entriesEl = $('[data-entries]', el);
-  const reqBanner = $('[data-req-banner]', el);
 
   $('[data-seg-wrap]', el).appendChild(
-    segment(['Benimkiler', pa.name], 0, (i) => {
+    segment(['Benim Anılarım', pa.name], 0, (i) => {
       tab = i === 1 ? 'partner' : 'mine';
       renderList();
     }),
@@ -256,10 +197,10 @@ export function openDiaryJar(): void {
   let bottles: BottleBucket[] = [{ index: 1, entries: [], mineCount: 0, partnerCount: 0 }];
   let manualExtraBottle = false;
 
-  // ---------- Canlı Dalga Çizimi & Şişe Salınımı (kişiye özel su tonu) ----------
+  // ---------- Canlı Dalga Çizimi & Akıntıyla Sağa-Sola Serbest Süzülme ----------
   let waveRaf = 0;
   let wW = 340;
-  let wH = 286;
+  let wH = 294;
   const syncCanvasSize = () => {
     const rect = oceanEl.getBoundingClientRect();
     if (rect.width < 20) return;
@@ -275,14 +216,25 @@ export function openDiaryJar(): void {
   requestAnimationFrame(syncCanvasSize);
 
   const waveHeightAt = (x: number, tSec: number, layer: number): number => {
-    const base = wH * (layer === 0 ? 0.57 : layer === 1 ? 0.63 : 0.67);
-    const a1 = layer === 0 ? 5.2 : layer === 1 ? 7.2 : 8.2;
-    const a2 = layer === 0 ? 2.8 : 4.0;
-    return base + Math.sin(x * 0.019 + tSec * (1.1 + layer * 0.4) + layer) * a1 + Math.cos(x * 0.032 - tSec * (0.8 + layer * 0.2)) * a2;
+    const base = wH * (layer === 0 ? 0.56 : layer === 1 ? 0.62 : 0.67);
+    const a1 = layer === 0 ? 5.5 : layer === 1 ? 7.8 : 9.0;
+    const a2 = layer === 0 ? 3.2 : 4.5;
+    return (
+      base +
+      Math.sin(x * 0.02 + tSec * (1.15 + layer * 0.42) + layer) * a1 +
+      Math.cos(x * 0.034 - tSec * (0.85 + layer * 0.22)) * a2
+    );
   };
 
-  const drawWavePoly = (ctx: CanvasRenderingContext2D, tSec: number, layer: number, topC: string, botC: string, crestC: string) => {
-    const g = ctx.createLinearGradient(0, wH * 0.48, 0, wH);
+  const drawWavePoly = (
+    ctx: CanvasRenderingContext2D,
+    tSec: number,
+    layer: number,
+    topC: string,
+    botC: string,
+    crestC: string,
+  ) => {
+    const g = ctx.createLinearGradient(0, wH * 0.46, 0, wH);
     g.addColorStop(0, topC);
     g.addColorStop(1, botC);
     ctx.fillStyle = g;
@@ -328,15 +280,25 @@ export function openDiaryJar(): void {
         }
       }
       if (!castingAnim) {
-        const driftX = Math.sin(t * 0.62) * 14;
+        // Akıntıyla deniz boyunca geniş sağa-sola gezinme (sabit durmaz!)
+        const maxDrift = Math.max(46, (wW - 144) * 0.46);
+        const ph1 = t * 0.44;
+        const ph2 = t * 0.21 + 1.3;
+        const driftX = Math.sin(ph1) * (maxDrift * 0.72) + Math.sin(ph2) * (maxDrift * 0.28);
+        const driftVx =
+          Math.cos(ph1) * 0.44 * (maxDrift * 0.72) + Math.cos(ph2) * 0.21 * (maxDrift * 0.28);
+        liveDriftX = driftX;
+
         const cx = wW * 0.5 + driftX;
         const wy = waveHeightAt(cx, t, 1);
         const wyNext = waveHeightAt(cx + 8, t, 1);
         const slopeDeg = (Math.atan2(wyNext - wy, 8) * 180) / Math.PI;
-        const tilt = 13 + slopeDeg * 0.85 + Math.sin(t * 1.25) * 3;
-        const bobY = wy - wH * 0.63;
+        const currentLean = driftVx * 0.14;
+        const tilt = 10 + slopeDeg * 0.92 + currentLean + Math.sin(t * 1.35) * 3.4;
+        const bobY = wy - wH * 0.62;
+
         actorEl.style.transform = `translate3d(${driftX.toFixed(1)}px, ${bobY.toFixed(1)}px, 0) rotate(${tilt.toFixed(2)}deg)`;
-        const rScale = 0.92 + 0.14 * Math.sin(t * 2.1);
+        const rScale = 0.9 + 0.16 * Math.sin(t * 2.2);
         rippleEl.style.transform = `translate(-50%, -50%) scale(${rScale.toFixed(2)})`;
       }
     }
@@ -346,38 +308,6 @@ export function openDiaryJar(): void {
 
   const currentBucket = (): BottleBucket =>
     bottles.find((b) => b.index === activeBottleIdx) ?? bottles[bottles.length - 1];
-
-  const renderReqBanner = () => {
-    if (!pendingPeekRequests.length) {
-      reqBanner.classList.add('hide');
-      reqBanner.innerHTML = '';
-      return;
-    }
-    const req = pendingPeekRequests[0];
-    reqBanner.classList.remove('hide');
-    reqBanner.innerHTML = `<div class="jar-req-card glass">
-      <div class="jar-req-top">
-        <span class="jar-req-dot"></span>
-        <span class="jar-req-txt"><b>${pa.name}</b> · <i>“${escapeHtml(req.message)}”</i> ${req.emojis.join('')}</span>
-      </div>
-      <div class="jar-req-btns">
-        <button type="button" class="btn-choice no" data-q-no>Hayır</button>
-        <button type="button" class="btn-choice yes" data-q-yes>Tamam, hadi</button>
-        <button type="button" class="btn-choice detail" data-q-open aria-label="Gör">${I.eye(15)}</button>
-      </div>
-    </div>`;
-    $('[data-q-no]', reqBanner).addEventListener('click', async () => {
-      await respondToPeekRequest(req, false, (p) => core.sendDiaryPacket(p));
-      renderReqBanner();
-      toast('Mektubun sır kaldı 🤫');
-    });
-    $('[data-q-yes]', reqBanner).addEventListener('click', async () => {
-      const ok = await respondToPeekRequest(req, true, (p) => core.sendDiaryPacket(p));
-      renderReqBanner();
-      if (ok) toast(`${pa.name} için açıldı 🤍`, I.heart(14));
-    });
-    $('[data-q-open]', reqBanner).addEventListener('click', () => openIncomingReqSheet(req));
-  };
 
   const renderBottleSwitcher = () => {
     const b = currentBucket();
@@ -410,16 +340,15 @@ export function openDiaryJar(): void {
       const jitterX = (hVal % 11) - 5;
       const jitterY = ((hVal >>> 4) % 7) - 3;
       const rot = ((hVal >>> 8) % 34) - 17;
-      const leftPct = 10 + col * 18.5 + jitterX * 0.5;
-      const bottomPx = 8 + row * 24 + jitterY * 0.6;
-      const granted = !entry.mine && grantedPeekEntries.has(entry.id);
-      const btn = h(`<button type="button" class="btl-scroll ${entry.from} ${entry.mine ? 'mine' : granted ? 'granted' : 'sealed'}"
+      const leftPct = 9 + col * 18.5 + jitterX * 0.5;
+      const bottomPx = 6 + row * 22 + jitterY * 0.6;
+      const btn = h(`<button type="button" class="btl-scroll ${entry.from} ${entry.mine ? 'mine' : 'sealed'}"
         style="left:${leftPct.toFixed(1)}%;bottom:${bottomPx.toFixed(1)}px;--r:${rot}deg"
         aria-label="${entry.mine ? fmtVintageDate(entry.entryDate) : pa.name}">
         ${rolledScrollSVG(entry.from)}
       </button>`);
       btn.addEventListener('click', () => {
-        if (entry.mine || granted) {
+        if (entry.mine) {
           void openVintageReader(entry);
         } else {
           btn.animate(
@@ -431,8 +360,7 @@ export function openDiaryJar(): void {
             ],
             { duration: 340, easing: 'ease-out' },
           );
-          if (canSendPeekRequest(entry.id)) openPeekRequestSheet(entry);
-          else openSealedPartnerSheet(entry);
+          toast(`${pa.of} anısı · İleride birlikte açmak için şişede birikiyor`, I.lock(14), 2600);
         }
       });
       notesEl.appendChild(btn);
@@ -445,38 +373,27 @@ export function openDiaryJar(): void {
     entriesEl.innerHTML = '';
 
     if (!list.length) {
-      entriesEl.innerHTML = `<div class="jar-empty">${tab === 'mine' ? 'Henüz bıraktığın bir mektup yok.' : `${pa.name} henüz mektup bırakmadı.`}</div>`;
+      entriesEl.innerHTML = `<div class="jar-empty">${
+        tab === 'mine' ? 'Şişede henüz bir anın yok.' : `${pa.name} henüz bir anı bırakmadı.`
+      }</div>`;
       return;
     }
 
     for (const entry of list) {
-      const pStatus = getPeekStatus(entry.id);
-      const granted = !entry.mine && pStatus === 'approved' && grantedPeekEntries.has(entry.id);
-
-      if (entry.mine || granted) {
+      if (entry.mine) {
         const card = h(`<button type="button" class="v-mini press">
           <span class="v-mini-seal ${entry.from}">${I.text(15)}</span>
-          <span class="v-mini-body">
-            <b>${fmtVintageDate(entry.entryDate)}</b>
-            ${granted ? `<i>İzinle açıldı 🤍</i>` : ''}
-          </span>
+          <span class="v-mini-body"><b>${fmtVintageDate(entry.entryDate)}</b></span>
           <span class="v-mini-chev">${I.chevron(16)}</span>
         </button>`);
         card.addEventListener('click', () => void openVintageReader(entry));
         entriesEl.appendChild(card);
       } else {
-        const statusBtn =
-          pStatus === 'sent'
-            ? `<span class="v-ask-pill sent">İstek gönderildi</span>`
-            : pStatus === 'denied'
-              ? `<span class="v-ask-pill denied">Sır kaldı</span>`
-              : `<button type="button" class="v-ask-pill press" data-ask>Bakabilir miyim? 🥺</button>`;
         const card = h(`<div class="v-mini sealed-row">
           <span class="v-mini-seal ${entry.from}">${I.lock(14)}</span>
           <span class="v-mini-body"><b>${fmtVintageDate(entry.entryDate)}</b></span>
-          ${statusBtn}
+          <span class="v-ask-pill sent">Şişede saklı</span>
         </div>`);
-        card.querySelector('[data-ask]')?.addEventListener('click', () => openPeekRequestSheet(entry));
         entriesEl.appendChild(card);
       }
     }
@@ -498,7 +415,6 @@ export function openDiaryJar(): void {
       if (jumpToLatestBottle || !bottles.some((b) => b.index === activeBottleIdx)) {
         activeBottleIdx = bottles[bottles.length - 1].index;
       }
-      renderReqBanner();
       renderBottleSwitcher();
       renderBottleScrolls();
       renderList();
@@ -507,16 +423,7 @@ export function openDiaryJar(): void {
     }
   };
 
-  const unsubDiary = core.onDiaryPacket(() => {
-    if (!el.isConnected) {
-      unsubDiary();
-      return;
-    }
-    renderReqBanner();
-    renderBottleScrolls();
-    renderList();
-  });
-
+  // ---------- Anıyı Rulo Yapma -> Şişeye Koyup Tıpalama -> Bir Anda Denize Fırlatma ----------
   const playCastIntoSea = async (
     who: 'hamham' | 'beto',
     fromRect: DOMRect,
@@ -535,7 +442,7 @@ export function openDiaryJar(): void {
       const cx = rootRect.width * 0.5;
       const cy = rootRect.height * 0.46;
 
-      // ---------- AŞAMA 1: Vintage Mektubun Rulo Haline Sarılması ----------
+      // 1) Vintage kağıdın rulo haline sarılması
       const startW = Math.min(320, Math.max(240, fromRect.width));
       const startH = Math.min(340, Math.max(220, fromRect.height));
       const pLeft = fromRect.left - rootRect.left + (fromRect.width - startW) * 0.5;
@@ -579,13 +486,12 @@ export function openDiaryJar(): void {
       ).finished;
       paperClone.remove();
 
-      // Sarılmış rulo + kurdele bağlanma pop'u
       const bigScroll = h(`<div class="cinema-scroll" style="left:${cx}px;top:${cy - 86}px">
         <svg viewBox="0 0 36 86" width="34" height="80">
           <rect x="4" y="3" width="28" height="80" rx="9" fill="${who === 'beto' ? '#faecee' : '#f5e7cb'}" stroke="#ba9c70" stroke-width="1.4"/>
           <ellipse cx="18" cy="7.5" rx="11" ry="3.6" fill="#dec89f"/>
-          <path class="cs-rib" d="M4 42 H32" stroke="${ribbonCol}" stroke-width="5"/>
-          <circle class="cs-seal" cx="18" cy="42" r="6.5" fill="${sealCol}" stroke="#fff7" stroke-width="1"/>
+          <path d="M4 42 H32" stroke="${ribbonCol}" stroke-width="5"/>
+          <circle cx="18" cy="42" r="6.5" fill="${sealCol}" stroke="#fff7" stroke-width="1"/>
         </svg>
       </div>`);
       stage.appendChild(bigScroll);
@@ -598,7 +504,7 @@ export function openDiaryJar(): void {
         { duration: 240, easing: 'cubic-bezier(.2,1.3,.4,1)', fill: 'forwards' },
       ).finished;
 
-      // ---------- AŞAMA 2: Şişenin Açılması, Rulonun İçine Girmesi & Tıpanın Kapanması ----------
+      // 2) Şişenin açılması, rulonun içine girmesi ve tıpanın kapanması
       actorEl.style.opacity = '0';
       const flyBottle = h(`<div class="cinema-bottle" style="left:${cx}px;top:${cy + 36}px">
         ${seaBottleSVG(who === 'beto')}
@@ -620,7 +526,6 @@ export function openDiaryJar(): void {
         { duration: 240, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'forwards' },
       ).finished;
 
-      // Rulo mektup şişenin ağzından içeri kayar
       await bigScroll.animate(
         [
           { transform: 'translate(-50%, -50%) scale(1) rotate(0deg)', opacity: 1 },
@@ -632,7 +537,6 @@ export function openDiaryJar(): void {
       bigScroll.remove();
       innerScroll.classList.remove('hide');
 
-      // Mantar tıpa hızla kapanır + şişe hafif esner
       if (flyCork) {
         await flyCork.animate(
           [
@@ -644,29 +548,25 @@ export function openDiaryJar(): void {
         ).finished;
       }
 
-      // ---------- AŞAMA 3: Gerilip Bir Anda Denize Fırlatılma & Su Sıçraması ----------
+      // 3) Şişenin gerilip bir anda denize fırlatılması & su sıçraması
       const oceanRect = oceanEl.getBoundingClientRect();
-      const targetX = oceanRect.left - rootRect.left + oceanRect.width * 0.5;
+      const targetX = oceanRect.left - rootRect.left + oceanRect.width * 0.5 + liveDriftX;
       const targetY = oceanRect.top - rootRect.top + oceanRect.height * 0.56;
       const dx = targetX - cx;
       const dy = targetY - (cy + 36);
+      sparksEl.style.transform = `translateX(${liveDriftX.toFixed(1)}px)`;
 
       const hurlAnim = flyBottle.animate(
         [
-          // Mevcut konum
           { transform: 'translate(-50%, -50%) translate3d(0, 0, 0) scale(1.08) rotate(0deg)', opacity: 1 },
-          // Geriye gerilme (fırlatma öncesi)
           { transform: 'translate(-50%, -50%) translate3d(-24px, 34px, 0) scale(1.22) rotate(-30deg)', opacity: 1, offset: 0.24 },
-          // Yüksek yay çizerek havada dönerek fırlama!
           { transform: `translate(-50%, -50%) translate3d(${dx * 0.48}px, ${dy - 148}px, 0) scale(0.86) rotate(185deg)`, opacity: 1, offset: 0.64 },
-          // Denize dalış!
           { transform: `translate(-50%, -50%) translate3d(${dx}px, ${dy + 18}px, 0) scale(0.96) rotate(373deg)`, opacity: 0.96, offset: 0.94 },
           { transform: `translate(-50%, -50%) translate3d(${dx}px, ${dy + 26}px, 0) scale(0.92) rotate(378deg)`, opacity: 0 },
         ],
         { duration: 680, easing: 'cubic-bezier(.26,.08,.22,1)', fill: 'forwards' },
       );
 
-      // Tam suya çarpma anında büyük su tacı + damlalar + dalga halkaları
       window.setTimeout(() => {
         const crown = h(`<svg class="sea-crown" viewBox="0 0 120 54" width="116" height="52">
           <path d="M12 48 Q26 16 18 8 Q36 28 46 6 Q60 30 74 5 Q84 28 102 8 Q94 18 108 48 Z"
@@ -712,13 +612,12 @@ export function openDiaryJar(): void {
 
       await hurlAnim.finished;
 
-      // Şişe suyun altından yüzeye çıkıp dalgalara oturur
       actorEl.style.opacity = '1';
       await actorEl.animate(
         [
-          { transform: 'translate3d(0, 26px, 0) rotate(24deg)' },
-          { transform: 'translate3d(0, -9px, 0) rotate(8deg)', offset: 0.55 },
-          { transform: 'translate3d(0, 0px, 0) rotate(13deg)' },
+          { transform: `translate3d(${liveDriftX.toFixed(1)}px, 26px, 0) rotate(24deg)` },
+          { transform: `translate3d(${liveDriftX.toFixed(1)}px, -9px, 0) rotate(8deg)`, offset: 0.55 },
+          { transform: `translate3d(${liveDriftX.toFixed(1)}px, 0px, 0) rotate(10deg)` },
         ],
         { duration: 520, easing: 'cubic-bezier(.22,.85,.3,1)', fill: 'forwards' },
       ).finished;
@@ -730,131 +629,11 @@ export function openDiaryJar(): void {
     }
   };
 
-  function openSealedPartnerSheet(entry: DiaryEntryMeta) {
-    const pStatus = getPeekStatus(entry.id);
-    const body = h(`<div class="gk-peek-modal">
-      <div class="gk-pm-icon ${entry.from}">${I.lock(20)}</div>
-      <h3 class="gk-pm-title">${fmtVintageDate(entry.entryDate)}</h3>
-      <p class="gk-pm-sub">${pStatus === 'sent' ? 'İsteğin gönderildi, yanıt bekleniyor 💌' : 'Bu mektup sır olarak kaldı 🤫'}</p>
-      <div class="gk-pm-actions">
-        <button type="button" class="btn-choice no" data-close>Kapat</button>
-      </div>
-    </div>`);
-    const sh = openSheet(body, { cls: 'gk-glass-sheet' });
-    $('[data-close]', body).addEventListener('click', () => void sh.close());
-  }
-
-  function openPeekRequestSheet(entry: DiaryEntryMeta) {
-    if (!canSendPeekRequest(entry.id)) {
-      openSealedPartnerSheet(entry);
-      return;
-    }
-    let sticker: DiaryStickerId = 'plead';
-    const pickedEmojis = new Set<string>(['🥺', '🤍']);
-    const body = h(`<div class="gk-peek-modal gk-peek-compose">
-      <div class="gk-pm-head">
-        <div class="gk-pm-title">Bakabilir miyim?</div>
-        <button type="button" class="icon-btn" data-close aria-label="Kapat">${I.close(18)}</button>
-      </div>
-
-      <div class="v-stickers" data-stickers>
-        ${STICKERS.map((s) => `<button type="button" class="v-stk-btn ${s.id === sticker ? 'on' : ''}" data-stk="${s.id}">${s.render()}<span>${s.label}</span></button>`).join('')}
-      </div>
-
-      <div class="v-presets" data-presets>
-        ${PEEK_PRESETS.map((p) => `<button type="button" class="v-preset">${p}</button>`).join('')}
-      </div>
-
-      <textarea class="gk-pm-inp" maxlength="220" placeholder="Mesajını yaz…" data-nodrag>${PEEK_PRESETS[0]}</textarea>
-
-      <div class="v-emojis" data-emojis>
-        ${PEEK_EMOJIS.map((em) => `<button type="button" class="v-em ${pickedEmojis.has(em) ? 'on' : ''}" data-em="${em}">${em}</button>`).join('')}
-      </div>
-
-      <div class="gk-pm-actions">
-        <button type="button" class="btn-choice yes" data-send>İstek Gönder 💌</button>
-      </div>
-    </div>`);
-
-    const sh = openSheet(body, { cls: 'gk-glass-sheet' });
-    const msgEl = $<HTMLTextAreaElement>('.gk-pm-inp', body);
-
-    $('[data-close]', body).addEventListener('click', () => void sh.close());
-    $$('[data-stk]', body).forEach((b) =>
-      b.addEventListener('click', () => {
-        sticker = (b as HTMLElement).dataset.stk as DiaryStickerId;
-        $$('[data-stk]', body).forEach((x) => x.classList.toggle('on', x === b));
-      }),
-    );
-    $$('.v-preset', body).forEach((b) =>
-      b.addEventListener('click', () => {
-        msgEl.value = b.textContent || '';
-      }),
-    );
-    $$('[data-em]', body).forEach((b) =>
-      b.addEventListener('click', () => {
-        const em = (b as HTMLElement).dataset.em || '';
-        if (pickedEmojis.has(em)) pickedEmojis.delete(em);
-        else if (pickedEmojis.size < 5) pickedEmojis.add(em);
-        b.classList.toggle('on', pickedEmojis.has(em));
-      }),
-    );
-
-    $('[data-send]', body).addEventListener('click', async () => {
-      if (!canSendPeekRequest(entry.id)) return;
-      const msg = msgEl.value.trim() || PEEK_PRESETS[0];
-      const req: DiaryPeekReq = {
-        t: 'dpeek_req',
-        reqId: crypto.randomUUID(),
-        diaryId: entry.id,
-        entryDate: entry.entryDate,
-        message: msg,
-        emojis: Array.from(pickedEmojis),
-        sticker,
-        at: Date.now(),
-      };
-      markPeekRequestSent(req);
-      core.sendDiaryPacket(req);
-      await sh.close();
-      renderList();
-      toast(`${pa.to} isteğin gönderildi 💌`, I.heart(14));
-    });
-  }
-
-  function openIncomingReqSheet(req: DiaryPeekReq) {
-    const stk = STICKER_MAP[req.sticker] ?? STICKERS[0];
-    const body = h(`<div class="gk-peek-modal">
-      <div class="v-req-sticker">${stk.render()}</div>
-      <div class="gk-pm-badge">${pa.name} · ${fmtVintageDate(req.entryDate)}</div>
-      <p class="gk-pm-quote">“${escapeHtml(req.message)}” ${req.emojis.join(' ')}</p>
-      <div class="gk-pm-actions">
-        <button type="button" class="btn-choice no" data-deny>Hayır</button>
-        <button type="button" class="btn-choice yes" data-allow>Tamam, hadi</button>
-      </div>
-    </div>`);
-    const sh = openSheet(body, { cls: 'gk-glass-sheet' });
-
-    $('[data-deny]', body).addEventListener('click', async () => {
-      await respondToPeekRequest(req, false, (p) => core.sendDiaryPacket(p));
-      renderReqBanner();
-      await sh.close();
-      toast('Mektubun sır kaldı 🤫');
-    });
-
-    $('[data-allow]', body).addEventListener('click', async () => {
-      const ok = await respondToPeekRequest(req, true, (p) => core.sendDiaryPacket(p));
-      renderReqBanner();
-      await sh.close();
-      if (ok) toast(`${pa.name} için açıldı 🤍`, I.heart(14));
-    });
-  }
-
   async function openVintageReader(entry: DiaryEntryMeta) {
     try {
-      const granted = !entry.mine ? grantedPeekEntries.get(entry.id) : null;
-      const content = granted ?? (entry.mine ? await openMyDiaryEntry(entry.id) : null);
+      const content = await openMyDiaryEntry(entry.id);
       if (!content) {
-        toast('Bu mektup kilitli', I.lock(14));
+        toast('Bu anı kilitli', I.lock(14));
         return;
       }
       const authorBeto = entry.from === 'beto';
@@ -864,18 +643,18 @@ export function openDiaryJar(): void {
           <div class="v-lily-mark">${lilyBloom(36, -12)}</div>
           <div class="v-paper-head">
             <span class="v-date-txt">${fmtVintageDate(content.entryDate)}</span>
-            ${entry.mine ? `<button type="button" class="v-del-btn" data-del aria-label="Sil">${I.trash(16)}</button>` : ''}
+            <button type="button" class="v-del-btn" data-del aria-label="Sil">${I.trash(16)}</button>
           </div>
           ${content.title ? `<h3 class="v-title">${escapeHtml(content.title)}</h3>` : ''}
           <div class="v-ruled-text">${escapeHtml(content.text).replace(/\n/g, '<br>')}</div>
           <div class="v-paper-foot">
-            <span class="v-sign">— ${granted ? pa.name : PEOPLE[state.me].name}</span>
+            <span class="v-sign">— ${PEOPLE[state.me].name}</span>
           </div>
         </div>
       </div>`);
       const sh = openSheet(body, { cls: 'v-sheet' });
       body.querySelector('[data-del]')?.addEventListener('click', async () => {
-        if (await confirmSheet('Mektup silinsin mi?', 'Şişedeki bu mektup kalıcı olarak silinir.', 'Sil', true)) {
+        if (await confirmSheet('Anı silinsin mi?', 'Şişedeki bu anı kalıcı olarak silinir.', 'Sil', true)) {
           await deleteMyDiaryEntry(entry.id);
           await sh.close();
           void reload();
@@ -910,7 +689,7 @@ export function openDiaryJar(): void {
           <button type="button" class="v-close-btn" data-close aria-label="Kapat">${I.close(18)}</button>
         </div>
         <div class="v-lines-wrap" data-nodrag>
-          <textarea class="v-textarea" maxlength="2000" placeholder="Bugün neler oldu…"></textarea>
+          <textarea class="v-textarea" maxlength="2000" placeholder="Bugünden bir anı bırak…"></textarea>
         </div>
         <div class="v-writer-foot">
           <button type="button" class="v-seal-btn" data-seal disabled>
@@ -955,7 +734,6 @@ export function openDiaryJar(): void {
 
   $('[data-back]', el).addEventListener('click', () => {
     cancelAnimationFrame(waveRaf);
-    unsubDiary();
     void popPage(core.homeEl);
   });
   writeBtn.addEventListener('click', () => openVintageWriter());

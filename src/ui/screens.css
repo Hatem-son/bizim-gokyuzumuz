@@ -336,11 +336,11 @@ html.kb-open .compose .lockline { display: none; }
 .dock .icon-btn { width: 44px; height: 44px; flex: none; }
 .dock .send { padding: 0 16px 0 14px; }
 
-/* Ana ekrandaki denizde yüzen minyatür şişe */
+/* Ana ekrandaki denizde akıntıyla sağa-sola süzülen minyatür anı şişesi */
 .sea-bottle {
   position: relative; width: 52px; height: 52px; display: grid; place-items: center;
   background: none; border: 0; padding: 0; pointer-events: auto; cursor: pointer;
-  animation: seaBottleFloat 3.8s ease-in-out infinite;
+  animation: seaBottleDrift 13s ease-in-out infinite;
 }
 .sea-bottle .sb-svg {
   position: relative; z-index: 2;
@@ -351,11 +351,13 @@ html.kb-open .compose .lockline { display: none; }
   transform: translateX(-50%); border-radius: 50%;
   border: 1px solid rgba(195, 232, 255, .42);
   background: radial-gradient(ellipse, rgba(175, 225, 255, .22) 0%, rgba(175, 225, 255, 0) 72%);
-  animation: sbRipple 3.8s ease-in-out infinite;
+  animation: sbRipple 3.6s ease-in-out infinite;
 }
-@keyframes seaBottleFloat {
-  0%, 100% { transform: translateY(0) rotate(-4deg); }
-  50% { transform: translateY(-5px) rotate(5deg); }
+@keyframes seaBottleDrift {
+  0%, 100% { transform: translate3d(-34px, 0px, 0) rotate(-6deg); }
+  25% { transform: translate3d(8px, -5px, 0) rotate(5deg); }
+  50% { transform: translate3d(42px, 1px, 0) rotate(7deg); }
+  75% { transform: translate3d(-4px, -4px, 0) rotate(-4deg); }
 }
 @keyframes sbRipple {
   0%, 100% { transform: translateX(-50%) scale(.9); opacity: .45; }
@@ -394,11 +396,11 @@ html.kb-open .compose .lockline { display: none; }
 .ocean-cv.front { z-index: 4; }
 
 .bottle-actor {
-  position: absolute; left: 50%; top: 24px; width: 168px; height: 248px; margin-left: -84px;
+  position: absolute; left: 50%; top: 32px; width: 156px; height: 230px; margin-left: -78px;
   z-index: 3; will-change: transform; transform-origin: 50% 68%;
 }
 .bottle-ripple {
-  position: absolute; left: 50%; top: 66%; width: 142px; height: 22px;
+  position: absolute; left: 50%; top: 66%; width: 134px; height: 20px;
   border-radius: 50%; border: 1.2px solid rgba(205, 236, 255, .34);
   background: radial-gradient(ellipse, rgba(185, 232, 255, .16) 0%, rgba(185, 232, 255, 0) 70%);
   pointer-events: none;
@@ -407,7 +409,7 @@ html.kb-open .compose .lockline { display: none; }
   border-color: rgba(255, 205, 226, .34);
   background: radial-gradient(ellipse, rgba(255, 190, 218, .16) 0%, rgba(255, 190, 218, 0) 70%);
 }
-.bottle-body { position: relative; width: 168px; height: 248px; }
+.bottle-body { position: relative; width: 156px; height: 230px; }
 .btl-svg, .btl-sheen { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .btl-svg { z-index: 1; overflow: visible; }
 .btl-cork { transform-origin: 90px 36px; }

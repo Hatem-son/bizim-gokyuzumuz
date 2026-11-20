@@ -28,13 +28,7 @@ import { buildHome, buildForeground, placeForeground, showLive, sendHeart, partn
 import { openCompose, freeSpot, recordDailyStarSent } from './compose';
 import { openBoard, openWatch, renderDrawing, Stroke, DrawLivePacket } from './draw';
 import { encodeDrawingBytes, decodeDrawingBytes } from '../lib/drawCodec';
-import {
-  recordIncomingDiaryPacket,
-  respondToPeekRequest,
-  resendPendingPeekRequests,
-  loadPersistedGrantedPeeks,
-  type DiaryPeekPacket,
-} from '../lib/diary';
+import type { DiaryPeekPacket } from '../lib/diary';
 // Ayarlar/arşiv/yıldız sayfaları ilk çizimden SONRA, ilk kullanımda yüklenir (ana paket küçülür)
 const lazyPages = () => import('./pages');
 const lazyJar = () => import('./jarView');
@@ -416,12 +410,7 @@ async function joinCollabDirect(sid?: string) {
 }
 
 const pairRealtime = new PairRealtime({
-  onPartnerOnline: (online) => {
-    partnerOnline(online);
-    if (online) {
-      resendPendingPeekRequests((p) => void pairRealtime.sendDiaryPacket(p));
-    }
-  },
+  onPartnerOnline: (online) => partnerOnline(online),
   onPartnerActivity: (act, explicit) => {
     if (!inHome) return;
     if (act === 'idle') {
@@ -573,56 +562,6 @@ Object.assign(core, {
   onOutboxChange: () => void syncOfflineAndOutbox(),
   setMyLiveActivity: (act: 'writing' | 'sending' | 'drawing' | 'photo' | 'voice' | 'idle') =>
     pairRealtime.setMyActivity(act),
-});
-
-pairRealtime.onDiaryPacket((pkt) => {
-  const accepted = recordIncomingDiaryPacket(pkt);
-  if (!accepted) return;
-  const pa = PEOPLE[state.partner];
-  if (pkt.t === 'dpeek_req') {
-    island({
-      avatar: I.heartFill(16),
-      color: pa.color,
-      title: `${pa.name} mektubuna bakmak istiyor 🥺`,
-      sub: `${pkt.message} ${pkt.emojis.join('')}`.trim(),
-      actions: [
-        {
-          label: 'Hayır',
-          primary: false,
-          onClick: () => {
-            void closeIsland();
-            void respondToPeekRequest(pkt, false, (p) => void pairRealtime.sendDiaryPacket(p)).then(() => {
-              toast('Mektubun sır olarak kaldı 🤫');
-            });
-          },
-        },
-        {
-          label: 'Tamam, hadi',
-          primary: true,
-          onClick: () => {
-            void closeIsland();
-            void respondToPeekRequest(pkt, true, (p) => void pairRealtime.sendDiaryPacket(p)).then((ok) => {
-              if (ok) toast(`${pa.name} için mektup açıldı 🤍`, I.heart(14));
-            });
-          },
-        },
-      ],
-      ms: 14000,
-    });
-  } else if (pkt.t === 'dpeek_res') {
-    if (pkt.approved) {
-      island({
-        avatar: I.heartFill(16),
-        color: pa.color,
-        title: `${pa.name} izin verdi 💌`,
-        sub: 'Mektubu okumak için dokun',
-        action: { label: 'Oku', primary: true, onClick: () => openJar() },
-        ms: 10000,
-      });
-    } else {
-      toast(`${pa.name}: ${pkt.replyText || 'Bu mektup sır kaldı 🤫🤍'}`, I.lock(14), 3400);
-    }
-  }
 });
 core.scrollX = X0 - W / 2;
 applyPersona();
@@ -1140,7 +1079,6 @@ async function enterHome(preloaded = false, fadeDelay = 150) {
   // Animasyonun ÜSTÜNE hiçbir şey binmez: selam yazısı, kaydırma ipucu, tek tek kayan sayaç/dock, açılan zambak, yanıp sönen yıldız YOK.
   // Arayüz (sayaç, hava, dock, zambak) kamera yerleşirken TEK parça hâlinde, sade bir solmayla görünür.
   $('#fgWrap').classList.remove('pre');
-  void loadPersistedGrantedPeeks();
   [...document.querySelectorAll('#fgWrap .jar.mine, #fgWrap .sea-bottle')].forEach((j) =>
     (j as HTMLElement).animate([{ opacity: 0 }, { opacity: 1 }], { duration: 900, delay: fadeDelay, easing: 'ease-out', fill: 'backwards' })
   );

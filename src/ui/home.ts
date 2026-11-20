@@ -29,7 +29,7 @@ export function buildHome(): HTMLElement {
     </header>
     <nav class="dock glass" aria-label="Ana menü">
       <button type="button" class="icon-btn" data-arch aria-label="Yıldızlarımız">${I.archive(22)}<span class="badge hide"></span></button>
-      <button type="button" class="icon-btn" data-jar aria-label="Denizdeki şişemiz">${I.jar(22)}</button>
+      <button type="button" class="icon-btn" data-jar aria-label="Anı şişemiz">${I.jar(22)}</button>
       <button type="button" class="btn btn-primary send" data-send>${state.me === 'beto' ? `<span class="rb">${raspberry(12)}</span>` : I.star(18)}<span>Yıldız bırak</span></button>
       <button type="button" class="icon-btn" data-set aria-label="Ayarlar">${I.gear(22)}</button>
     </nav>
@@ -135,7 +135,7 @@ export function buildForeground(P: number, H: number, shoreY: number, x0: number
     x0 + 24,
     shoreY - 38,
     56,
-    `<button type="button" class="sea-bottle" aria-label="Denizdeki şişemiz">
+    `<button type="button" class="sea-bottle" aria-label="Anı şişemiz">
       <span class="sb-ripple"></span>
       <svg class="sb-svg" viewBox="0 0 48 48" width="44" height="44">
         <g transform="rotate(24 24 24)">
