@@ -1,6 +1,6 @@
 import type { Who } from './types';
 
-export const APP_VERSION = '6.0.58';
+export const APP_VERSION = '6.0.59';
 
 /**
  * İki kullanıcının Supabase Authentication e-posta adresleri (korunan kullanıcı ayarı).
