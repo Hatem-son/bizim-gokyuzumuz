@@ -5,6 +5,17 @@ import { state, toDbWho } from '../ui/state';
 import type { Who } from '../types';
 
 export type DiaryMood = 'sun' | 'coffee' | 'moon' | 'rain' | 'heart' | 'spark';
+export type BottleStyle = 'emerald' | 'crystal' | 'shell';
+export type PaperStyle = 'straw' | 'sea' | 'night';
+export type MemoryMoodId =
+  | 'peace'
+  | 'love'
+  | 'miss'
+  | 'happy'
+  | 'night'
+  | 'calm'
+  | 'emotional'
+  | 'hopeful';
 
 export const BOTTLE_PER_PERSON = 10;
 export const BOTTLE_TOTAL = 20;
@@ -22,7 +33,29 @@ export interface DiaryEntryContent {
   title: string;
   text: string;
   mood: DiaryMood;
+  moods?: MemoryMoodId[];
+  bottleStyle?: BottleStyle;
+  paperStyle?: PaperStyle;
+  photoB64?: string;
+  photoMime?: string;
+  voiceB64?: string;
+  voiceMime?: string;
+  voiceDur?: number;
+  voicePeaks?: number[];
   entryDate: string;
+}
+
+const STYLE_PREF_KEY = 'gokyuzu.diary.stylePref.v1';
+
+export function getSavedAtelierStyle(): { bottle: BottleStyle; paper: PaperStyle } {
+  return store.get<{ bottle: BottleStyle; paper: PaperStyle }>(STYLE_PREF_KEY, {
+    bottle: 'emerald',
+    paper: 'sea',
+  });
+}
+
+export function saveAtelierStyle(bottle: BottleStyle, paper: PaperStyle): void {
+  store.set(STYLE_PREF_KEY, { bottle, paper });
 }
 
 export type DiaryPeekPacket = { t: 'diary_noop' };
