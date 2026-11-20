@@ -32,3 +32,4 @@ del_storage as (
 )
 delete from public.stars
 where id in (select id from to_delete);
+

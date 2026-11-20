@@ -40,6 +40,8 @@ export const I = {
   fog: (s = 16) => S('<path d="M4 9h16M6 13h12M4 17h16"/>', s),
   bolt: (s = 16) => S('<path d="M13 3 5.5 13.5H12L11 21l7.5-10.5H12Z"/>', s),
   info: (s = 20) => S('<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/>', s),
+  search: (s = 18) => S('<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.2 4.2"/>', s),
+  check: (s = 16) => S('<path d="m5 12.5 4.2 4.2L19 7"/>', s),
   spark: (s = 20) => S('<path d="M12 4v4M12 16v4M4 12h4M16 12h4"/>', s),
   jar: (s = 22) => S('<path d="M10 3h4M9.5 3v3L7 9.5v6.2a2.3 2.3 0 0 0 2.3 2.3h5.4a2.3 2.3 0 0 0 2.3-2.3V9.5L14.5 6V3"/><path d="M3 19.5c2-1.2 4-1.2 6 0s4 1.2 6 0 4-1.2 6 0"/>', s),
 };

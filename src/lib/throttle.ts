@@ -60,3 +60,4 @@ export function waitMessage(ms: number): string {
   if (s >= 90) return `Çok fazla hatalı deneme. ${Math.ceil(s / 60)} dakika sonra tekrar dene.`;
   return `Biraz bekle: ${s} sn sonra tekrar dene.`;
 }
+

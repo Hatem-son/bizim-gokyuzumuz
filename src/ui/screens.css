@@ -700,45 +700,222 @@ html.kb-open .compose .lockline { display: none; }
   padding: 2px 2px 6px;
 }
 
-/* 2 Satırlı Temiz Çoklu Ruh Hali Izgarası (Kesilme Yok!) */
-.v-mood-sec { margin-bottom: 10px; }
-.v-sec-lbl {
-  font: 600 11px/1.2 var(--sans); opacity: .68; margin-bottom: 6px;
+/* İçeriden Açılan Detaylı Ruh Hali Giriş Kartı (Yazma & Okuma Kağıdı Üzerinde) */
+.v-mood-entry {
+  width: 100%; text-align: left; margin-bottom: 12px; padding: 10px 12px;
+  border-radius: 14px; display: flex; align-items: center; gap: 10px;
+  background: rgba(0, 0, 0, .045); border: 1px dashed rgba(120, 82, 48, .28);
+  color: inherit; cursor: pointer; transition: background .18s, border-color .18s, transform .15s;
 }
-.v-sec-lbl i { font-weight: 400; font-style: italic; }
-.v-mood-grid {
-  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px;
+.v-mood-entry.filled {
+  flex-direction: column; align-items: stretch; gap: 7px;
+  border-style: solid; border-color: rgba(120, 82, 48, .22);
+  background: rgba(255, 255, 255, .34);
 }
-.v-mood-chip {
-  height: 32px; padding: 0 6px; border-radius: 10px;
-  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
-  background: rgba(0, 0, 0, .045); border: 1px solid rgba(120, 82, 48, .18);
-  color: inherit; font: 600 11.5px/1 var(--sans); white-space: nowrap;
-  transition: background .18s, border-color .18s, transform .15s, color .18s;
+.v-paper.paper-night .v-mood-entry {
+  background: rgba(255, 255, 255, .055); border-color: rgba(255, 214, 156, .26);
 }
-.v-mood-chip span { font-size: 12.5px; line-height: 1; }
-.v-mood-chip b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
-.v-mood-chip:active { transform: scale(.96); }
-.v-mood-chip.on {
-  background: rgba(216, 79, 128, .16); border-color: #cf4e7e; color: #8c2249;
-  box-shadow: 0 2px 8px rgba(216, 79, 128, .14);
+.v-paper.paper-night .v-mood-entry.filled {
+  background: rgba(255, 255, 255, .075); border-color: rgba(255, 214, 156, .28);
 }
-.v-paper.paper-night .v-mood-chip {
-  background: rgba(255, 255, 255, .055); border-color: rgba(255, 214, 156, .18);
+.vme-orb {
+  width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; flex: none;
+  font-size: 17px; background: rgba(216, 79, 128, .12); border: 1px solid rgba(216, 79, 128, .24);
 }
-.v-paper.paper-night .v-mood-chip.on {
-  background: rgba(255, 158, 192, .22); border-color: #ff9ec0; color: #ffe3ee;
+.v-paper.paper-night .vme-orb {
+  background: rgba(255, 158, 192, .14); border-color: rgba(255, 158, 192, .3);
 }
+.vme-tx { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.vme-tx b { font: 600 13px/1.2 var(--sans); }
+.vme-tx i { font: 400 11.5px/1.25 var(--sans); opacity: .72; font-style: normal; }
+.vme-cta {
+  flex: none; height: 28px; padding: 0 10px 0 11px; border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 2px;
+  background: rgba(216, 79, 128, .15); border: 1px solid rgba(216, 79, 128, .3);
+  font: 600 11.5px/1 var(--sans); color: #8c2249;
+}
+.v-paper.paper-night .vme-cta {
+  background: rgba(255, 158, 192, .18); border-color: rgba(255, 158, 192, .35); color: #ffe0ec;
+}
+.vme-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.vme-kicker { font: 600 10.5px/1 var(--sans); letter-spacing: .06em; text-transform: uppercase; opacity: .66; }
+.vme-edit {
+  display: inline-flex; align-items: center; gap: 2px;
+  font: 600 11.5px/1 var(--sans); color: #a5345d;
+}
+.v-paper.paper-night .vme-edit { color: #ffadc9; }
+.vme-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.vme-pill {
+  display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px;
+  font: 600 11.5px/1.1 var(--sans);
+  background: rgba(216, 79, 128, .13); border: 1px solid rgba(216, 79, 128, .28);
+}
+.vme-pill b { font-weight: 600; }
+.vme-pill.tone-good { background: rgba(188, 134, 42, .14); border-color: rgba(188, 134, 42, .3); }
+.vme-pill.tone-sad { background: rgba(74, 98, 138, .15); border-color: rgba(74, 98, 138, .32); }
+.vme-pill.tone-storm { background: rgba(180, 68, 68, .14); border-color: rgba(180, 68, 68, .3); }
+.vme-pill.tone-night { background: rgba(106, 82, 150, .14); border-color: rgba(106, 82, 150, .3); }
+.v-paper.paper-night .vme-pill { color: #f8ecd6; }
+.v-paper.paper-night .vme-pill.tone-love { background: rgba(255, 145, 184, .18); border-color: rgba(255, 145, 184, .36); }
+.v-paper.paper-night .vme-pill.tone-good { background: rgba(245, 202, 118, .16); border-color: rgba(245, 202, 118, .34); }
+.v-paper.paper-night .vme-pill.tone-sad { background: rgba(132, 168, 224, .18); border-color: rgba(132, 168, 224, .36); }
+.v-paper.paper-night .vme-pill.tone-storm { background: rgba(242, 128, 128, .18); border-color: rgba(242, 128, 128, .36); }
+.v-paper.paper-night .vme-pill.tone-night { background: rgba(178, 152, 238, .18); border-color: rgba(178, 152, 238, .36); }
 
-.v-mood-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+/* Okuyucu Ekranında Detaylı Ruh Hali Kartları */
+.v-reader-moods {
+  display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px;
+}
+.v-rmood-card {
+  display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 12px;
+  background: rgba(216, 79, 128, .1); border: 1px solid rgba(216, 79, 128, .24);
+}
+.v-rmood-card.tone-good { background: rgba(188, 134, 42, .11); border-color: rgba(188, 134, 42, .26); }
+.v-rmood-card.tone-sad { background: rgba(74, 98, 138, .12); border-color: rgba(74, 98, 138, .28); }
+.v-rmood-card.tone-storm { background: rgba(180, 68, 68, .11); border-color: rgba(180, 68, 68, .26); }
+.v-rmood-card.tone-night { background: rgba(106, 82, 150, .11); border-color: rgba(106, 82, 150, .26); }
+.v-paper.paper-night .v-rmood-card { background: rgba(255, 255, 255, .07); border-color: rgba(255, 214, 156, .22); }
+.rm-ico { font-size: 18px; line-height: 1; flex: none; }
+.rm-txt { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.rm-txt b { font: 600 12.5px/1.2 var(--sans); }
+.rm-txt i { font: 400 11px/1.25 var(--sans); opacity: .76; font-style: normal; }
+
 .v-mbadge {
   display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 999px;
   background: rgba(216, 79, 128, .13); border: 1px solid rgba(216, 79, 128, .28);
   font: 600 11.5px/1 var(--sans);
 }
-.v-paper.paper-night .v-mbadge {
-  background: rgba(255, 158, 192, .16); border-color: rgba(255, 158, 192, .34); color: #ffe0ec;
+
+/* ---------- Üst Katman: Detaylı Ruh Hali Seçim Modalı (İyi, Kötü, Üzgün, Gergin, Yorgun…) ---------- */
+.backdrop.mood-back { z-index: 58; background: rgba(4, 6, 16, .66); }
+.sheet.mood-sheet {
+  z-index: 59; max-height: calc(100% - var(--safe-t) - 14px);
+  padding: 10px 16px calc(var(--safe-b) + 14px); overflow: hidden;
 }
+.mood-picker {
+  display: flex; flex-direction: column; min-height: 0; max-height: 82vh; gap: 10px; color: var(--text);
+}
+.mp-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; flex: 0 0 auto; }
+.mp-head-tx { flex: 1; min-width: 0; }
+.mp-title-row { display: flex; align-items: center; gap: 7px; }
+.mp-title { margin: 0; font: italic 600 26px/1.1 var(--serif); color: var(--text); }
+.mp-sub { margin: 4px 0 0; font: 400 12.5px/1.35 var(--sans); color: var(--text-2); }
+.mp-close { margin-top: -4px; margin-right: -6px; color: var(--text-2); }
+
+.mp-search-wrap {
+  position: relative; display: flex; align-items: center; flex: 0 0 auto;
+  height: 40px; padding: 0 12px; border-radius: 13px;
+  background: rgba(255, 255, 255, .06); border: 1px solid var(--glass-line);
+}
+.mp-search-wrap:focus-within { border-color: var(--glass-hi); background: rgba(255, 255, 255, .09); }
+.mp-s-ic { color: var(--text-3); margin-right: 8px; display: inline-flex; font-size: 13px; }
+.mp-search {
+  flex: 1; min-width: 0; border: 0; outline: none; background: transparent;
+  font: 500 13.5px/1 var(--sans); color: var(--text);
+}
+.mp-search::placeholder { color: var(--text-3); }
+.mp-q-clr {
+  width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+  background: rgba(255, 255, 255, .1); color: var(--text-2); flex: none;
+}
+
+.mp-cats {
+  display: flex; gap: 6px; overflow-x: auto; padding: 1px 1px 3px; flex: 0 0 auto;
+  scrollbar-width: none; touch-action: pan-x;
+}
+.mp-cats::-webkit-scrollbar { display: none; }
+.mp-cat {
+  flex: none; height: 34px; padding: 0 12px; border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 5px;
+  background: rgba(255, 255, 255, .055); border: 1px solid var(--glass-line);
+  color: var(--text-2); font: 600 12px/1 var(--sans); white-space: nowrap;
+  transition: background .18s, border-color .18s, color .18s, transform .15s;
+}
+.mp-cat:active { transform: scale(.96); }
+.mp-cat b { font-weight: 600; }
+.mp-cat.on {
+  background: var(--chip-on); color: var(--btn-ink); border-color: transparent;
+}
+
+.mp-list {
+  flex: 1 1 auto; min-height: 180px; overflow-y: auto; overflow-x: hidden;
+  -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y;
+  display: flex; flex-direction: column; gap: 12px; padding: 2px 2px 6px;
+}
+.mp-group { display: flex; flex-direction: column; gap: 7px; }
+.mp-group-hd {
+  font: 700 11px/1.2 var(--sans); letter-spacing: .08em; text-transform: uppercase;
+  color: var(--eyebrow, var(--text-2)); padding: 2px 2px 0;
+}
+.mp-group-items { display: flex; flex-direction: column; gap: 7px; }
+.mp-card {
+  width: 100%; text-align: left; display: flex; align-items: center; gap: 11px;
+  padding: 10px 12px; border-radius: 16px;
+  background: rgba(255, 255, 255, .045); border: 1px solid var(--glass-line);
+  color: var(--text); transition: background .18s, border-color .18s, transform .15s;
+}
+.mp-card:active { transform: scale(.985); }
+.mp-ico {
+  width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; flex: none;
+  font-size: 20px; background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .08);
+}
+.mp-card.tone-love .mp-ico { background: rgba(255, 142, 184, .14); border-color: rgba(255, 142, 184, .26); }
+.mp-card.tone-good .mp-ico { background: rgba(246, 206, 120, .14); border-color: rgba(246, 206, 120, .26); }
+.mp-card.tone-sad .mp-ico { background: rgba(120, 162, 228, .15); border-color: rgba(120, 162, 228, .28); }
+.mp-card.tone-storm .mp-ico { background: rgba(242, 122, 122, .15); border-color: rgba(242, 122, 122, .28); }
+.mp-card.tone-night .mp-ico { background: rgba(176, 148, 240, .15); border-color: rgba(176, 148, 240, .28); }
+
+.mp-tx { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.mp-tx b { font: 600 13.5px/1.2 var(--sans); color: var(--text); }
+.mp-tx i { font: 400 12px/1.3 var(--sans); color: var(--text-2); font-style: normal; }
+
+.mp-chk {
+  width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; flex: none;
+  border: 1.5px solid rgba(255, 255, 255, .22); color: transparent;
+  transition: background .18s, border-color .18s, color .18s;
+}
+.mp-card.on {
+  border-color: var(--accent); background: rgba(255, 255, 255, .09);
+}
+.mp-card.tone-sad.on { border-color: #8bb4f7; background: rgba(120, 162, 228, .14); }
+.mp-card.tone-storm.on { border-color: #f49090; background: rgba(242, 122, 122, .14); }
+.mp-card.tone-night.on { border-color: #bea4fa; background: rgba(176, 148, 240, .14); }
+.mp-card.on .mp-chk {
+  background: var(--accent); border-color: var(--accent); color: var(--btn-ink);
+}
+.mp-card.tone-sad.on .mp-chk { background: #8bb4f7; border-color: #8bb4f7; color: #0c1830; }
+.mp-card.tone-storm.on .mp-chk { background: #f49090; border-color: #f49090; color: #2d0b0b; }
+.mp-card.tone-night.on .mp-chk { background: #bea4fa; border-color: #bea4fa; color: #190e36; }
+
+.mp-empty {
+  text-align: center; padding: 28px 16px; color: var(--text-2);
+  font: italic 500 17px/1.35 var(--serif);
+}
+
+.mp-foot {
+  display: flex; flex-direction: column; gap: 8px; padding-top: 8px;
+  border-top: 1px solid var(--glass-line); flex: 0 0 auto;
+}
+.mp-picked-bar {
+  display: flex; align-items: center; gap: 8px;
+}
+.mp-picked-chips {
+  display: flex; gap: 6px; overflow-x: auto; flex: 1; min-width: 0; padding-bottom: 2px;
+  scrollbar-width: none; touch-action: pan-x;
+}
+.mp-picked-chips::-webkit-scrollbar { display: none; }
+.mp-mini-chip {
+  flex: none; height: 28px; padding: 0 9px; border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 4px;
+  background: rgba(255, 255, 255, .1); border: 1px solid var(--glass-hi);
+  font: 600 11.5px/1 var(--sans); color: var(--text); white-space: nowrap;
+}
+.mp-mini-chip b { font-weight: 600; }
+.mp-mini-chip i { font-style: normal; opacity: .7; margin-left: 2px; font-size: 13px; }
+.mp-clr-all {
+  flex: none; font: 600 11.5px/1 var(--sans); color: var(--text-2); padding: 4px 6px;
+}
+.mp-done-btn { height: 48px; }
 
 .v-textarea {
   width: 100%; min-height: 120px; border: 0; outline: none; resize: none; overflow: hidden;
@@ -948,10 +1125,10 @@ html.kb-open .compose .lockline { display: none; }
 
 html.kb-open .sheet.v-sheet { padding-top: 14px; padding-bottom: 8px; }
 html.kb-open .v-paper { padding: 14px 14px 10px; max-height: calc(100vh - var(--kb, 260px) - var(--safe-t) - 22px); }
-html.kb-open .v-mood-sec { margin-bottom: 6px; }
-html.kb-open .v-sec-lbl { display: none; }
-html.kb-open .v-mood-chip { height: 28px; font-size: 11px; }
+html.kb-open .v-mood-entry { margin-bottom: 8px; padding: 7px 10px; }
+html.kb-open .v-mood-entry .vme-tx i { display: none; }
 html.kb-open .v-textarea { min-height: 84px; }
+html.kb-open .sheet.mood-sheet .mood-picker { max-height: calc(100vh - var(--kb, 260px) - var(--safe-t) - 24px); }
 
 /* Şişe & Kağıt Seçimi Atölyesi */
 .atelier-sheet {

@@ -18,25 +18,16 @@ import {
   saveAtelierStyle,
   BOTTLE_PER_PERSON,
   BOTTLE_TOTAL,
+  MOOD_CATEGORIES,
+  MEMORY_MOODS,
+  MOOD_BY_ID,
   type DiaryEntryMeta,
-  type DiaryMood,
   type BottleStyle,
   type PaperStyle,
+  type MoodTone,
   type MemoryMoodId,
+  type MemoryMoodDef,
 } from '../lib/diary';
-
-const MEMORY_MOODS: { id: MemoryMoodId; icon: string; label: string; dbMood: DiaryMood }[] = [
-  { id: 'peace', icon: '🤍', label: 'Huzurlu', dbMood: 'heart' },
-  { id: 'love', icon: '🥰', label: 'Aşık', dbMood: 'heart' },
-  { id: 'miss', icon: '🥹', label: 'Özlem', dbMood: 'moon' },
-  { id: 'happy', icon: '✨', label: 'Mutlu', dbMood: 'sun' },
-  { id: 'night', icon: '🌙', label: 'Gece', dbMood: 'moon' },
-  { id: 'calm', icon: '☕', label: 'Sakin', dbMood: 'coffee' },
-  { id: 'emotional', icon: '🥺', label: 'Duygusal', dbMood: 'rain' },
-  { id: 'hopeful', icon: '🌸', label: 'Umutlu', dbMood: 'spark' },
-];
-
-const MOOD_MAP = Object.fromEntries(MEMORY_MOODS.map((m) => [m.id, `${m.icon} ${m.label}`])) as Record<MemoryMoodId, string>;
 
 const BOTTLE_STYLES: { id: BottleStyle; name: string; sub: string }[] = [
   { id: 'emerald', name: 'Eski Yeşil Cam', sub: 'Antika deniz şişesi' },
@@ -834,8 +825,15 @@ export function openDiaryJar(): void {
 
           ${
             moods.length
-              ? `<div class="v-mood-badges">${moods
-                  .map((m) => `<span class="v-mbadge">${MOOD_MAP[m] ?? m}</span>`)
+              ? `<div class="v-reader-moods">${moods
+                  .map((m) => {
+                    const def = MOOD_BY_ID.get(m);
+                    if (!def) return `<span class="v-mbadge">${escapeHtml(String(m))}</span>`;
+                    return `<div class="v-rmood-card tone-${def.cat}">
+                      <span class="rm-ico">${def.icon}</span>
+                      <span class="rm-txt"><b>${escapeHtml(def.label)}</b><i>${escapeHtml(def.desc)}</i></span>
+                    </div>`;
+                  })
                   .join('')}</div>`
               : ''
           }
@@ -1013,6 +1011,182 @@ export function openDiaryJar(): void {
     });
   }
 
+  // ---------- Detaylı Ruh Hali Seçim Ekranı (İçeriden Seçim · İyi, Kötü, Kırgın, Gergin, Gece…) ----------
+  function openMoodPickerSheet(selectedMoods: Set<MemoryMoodId>, onChanged: () => void) {
+    let activeCat: 'all' | MoodTone = 'all';
+    let query = '';
+
+    const modal = h(`<div class="mood-picker">
+      <div class="mp-head">
+        <div class="mp-head-tx">
+          <div class="mp-title-row">${pinkRibbonSVG(28)}<h3 class="mp-title">Ruh Halini Seç</h3></div>
+          <p class="mp-sub">İyi, kötü, kırgın ya da yorgun… içinden geçen her hissi birden fazla seçebilirsin.</p>
+        </div>
+        <button type="button" class="icon-btn mp-close" data-mp-close aria-label="Kapat">${I.close(18)}</button>
+      </div>
+
+      <div class="mp-search-wrap" data-nodrag>
+        <span class="mp-s-ic">${I.search(15)}</span>
+        <input type="text" class="mp-search" placeholder="His ara… (kırgın, kötü, yorgun, aşık, huzurlu)" maxlength="40" data-mp-q>
+        <button type="button" class="mp-q-clr hide" data-mp-qclr aria-label="Temizle">${I.close(13)}</button>
+      </div>
+
+      <div class="mp-cats" data-mp-cats data-nodrag>
+        ${MOOD_CATEGORIES.map(
+          (c) =>
+            `<button type="button" class="mp-cat ${c.id === activeCat ? 'on' : ''}" data-cat="${c.id}"><span>${c.icon}</span><b>${c.label}</b></button>`,
+        ).join('')}
+      </div>
+
+      <div class="mp-list" data-mp-list data-scroll data-nodrag></div>
+
+      <div class="mp-foot" data-nodrag>
+        <div class="mp-picked-bar hide" data-mp-picked></div>
+        <button type="button" class="btn btn-primary btn-block mp-done-btn" data-mp-done>Tamam</button>
+      </div>
+    </div>`);
+
+    const sh = openSheet(modal, {
+      cls: 'gk-glass-sheet mood-sheet',
+      backCls: 'mood-back',
+      onClose: () => onChanged(),
+    });
+
+    const listEl = $('[data-mp-list]', modal);
+    const qInp = $<HTMLInputElement>('[data-mp-q]', modal);
+    const qClr = $('[data-mp-qclr]', modal);
+    const pickedEl = $('[data-mp-picked]', modal);
+    const doneBtn = $<HTMLButtonElement>('[data-mp-done]', modal);
+
+    const renderFooter = () => {
+      const arr = Array.from(selectedMoods)
+        .map((id) => MOOD_BY_ID.get(id))
+        .filter((x): x is MemoryMoodDef => Boolean(x));
+
+      if (!arr.length) {
+        pickedEl.classList.add('hide');
+        pickedEl.innerHTML = '';
+        doneBtn.textContent = 'Seçmeden dön';
+      } else {
+        pickedEl.classList.remove('hide');
+        pickedEl.innerHTML = `
+          <div class="mp-picked-chips">
+            ${arr
+              .map(
+                (m) =>
+                  `<button type="button" class="mp-mini-chip tone-${m.cat}" data-rm-m="${m.id}"><span>${m.icon}</span><b>${escapeHtml(m.label)}</b><i>×</i></button>`,
+              )
+              .join('')}
+          </div>
+          <button type="button" class="mp-clr-all" data-clr-all>Temizle</button>
+        `;
+        $$('[data-rm-m]', pickedEl).forEach((b) =>
+          b.addEventListener('click', () => {
+            const id = (b as HTMLElement).dataset.rmM as MemoryMoodId;
+            selectedMoods.delete(id);
+            onChanged();
+            renderListItems();
+            renderFooter();
+          }),
+        );
+        $('[data-clr-all]', pickedEl).addEventListener('click', () => {
+          selectedMoods.clear();
+          onChanged();
+          renderListItems();
+          renderFooter();
+        });
+        doneBtn.textContent = `Seçimi uygula (${arr.length} ruh hali)`;
+      }
+    };
+
+    const cardHTML = (m: MemoryMoodDef): string => {
+      const isOn = selectedMoods.has(m.id);
+      return `<button type="button" class="mp-card tone-${m.cat} ${isOn ? 'on' : ''}" data-pick-m="${m.id}">
+        <span class="mp-ico">${m.icon}</span>
+        <span class="mp-tx">
+          <b>${escapeHtml(m.label)}</b>
+          <i>${escapeHtml(m.desc)}</i>
+        </span>
+        <span class="mp-chk">${isOn ? I.check(13) : ''}</span>
+      </button>`;
+    };
+
+    const renderListItems = () => {
+      const q = query.trim().toLocaleLowerCase('tr-TR');
+      const filtered = MEMORY_MOODS.filter((m) => {
+        if (activeCat !== 'all' && m.cat !== activeCat) return false;
+        if (!q) return true;
+        return (
+          m.label.toLocaleLowerCase('tr-TR').includes(q) ||
+          m.desc.toLocaleLowerCase('tr-TR').includes(q)
+        );
+      });
+
+      if (!filtered.length) {
+        listEl.innerHTML = `<div class="mp-empty">Aradığın ifadeye uygun bir ruh hali bulunamadı.</div>`;
+        return;
+      }
+
+      if (activeCat === 'all' && !q) {
+        const groups = MOOD_CATEGORIES.filter((c) => c.id !== 'all');
+        listEl.innerHTML = groups
+          .map((g) => {
+            const items = filtered.filter((m) => m.cat === g.id);
+            if (!items.length) return '';
+            return `<div class="mp-group">
+              <div class="mp-group-hd">${g.title}</div>
+              <div class="mp-group-items">${items.map(cardHTML).join('')}</div>
+            </div>`;
+          })
+          .join('');
+      } else {
+        listEl.innerHTML = `<div class="mp-group-items">${filtered.map(cardHTML).join('')}</div>`;
+      }
+
+      $$('[data-pick-m]', listEl).forEach((btn) =>
+        btn.addEventListener('click', () => {
+          const id = (btn as HTMLElement).dataset.pickM as MemoryMoodId;
+          if (selectedMoods.has(id)) selectedMoods.delete(id);
+          else selectedMoods.add(id);
+          btn.classList.toggle('on', selectedMoods.has(id));
+          const chk = $('.mp-chk', btn);
+          chk.innerHTML = selectedMoods.has(id) ? I.check(13) : '';
+          onChanged();
+          renderFooter();
+        }),
+      );
+    };
+
+    $$('[data-cat]', modal).forEach((btn) =>
+      btn.addEventListener('click', () => {
+        activeCat = ((btn as HTMLElement).dataset.cat as 'all' | MoodTone) || 'all';
+        $$('[data-cat]', modal).forEach((x) => x.classList.toggle('on', x === btn));
+        listEl.scrollTop = 0;
+        renderListItems();
+      }),
+    );
+
+    qInp.addEventListener('input', () => {
+      query = qInp.value;
+      qClr.classList.toggle('hide', !query.length);
+      listEl.scrollTop = 0;
+      renderListItems();
+    });
+
+    qClr.addEventListener('click', () => {
+      query = '';
+      qInp.value = '';
+      qClr.classList.add('hide');
+      renderListItems();
+    });
+
+    $('[data-mp-close]', modal).addEventListener('click', () => void sh.close());
+    doneBtn.addEventListener('click', () => void sh.close());
+
+    renderListItems();
+    renderFooter();
+  }
+
   // ---------- ADIM 2: Gece Sessizliğinde Uçuşan Ateş Böcekli Vintage Anı Yazma Alanı ----------
   function openVintageWriter(bStyle: BottleStyle, pStyle: PaperStyle) {
     const b = currentBucket();
@@ -1028,7 +1202,7 @@ export function openDiaryJar(): void {
       renderList();
     }
 
-    const selectedMoods = new Set<MemoryMoodId>(['peace']);
+    const selectedMoods = new Set<MemoryMoodId>();
     let attachedPhoto: { bytes: Uint8Array<ArrayBuffer>; mime: string; preview: string } | null = null;
     let attachedVoice: RecordedVoice | null = null;
     let recorder: VoiceRecorder | null = null;
@@ -1049,15 +1223,7 @@ export function openDiaryJar(): void {
         </div>
 
         <div class="v-scroll-body" data-nodrag>
-          <div class="v-mood-sec">
-            <div class="v-sec-lbl">Ruh halin <i>· birden fazla seçebilirsin</i></div>
-            <div class="v-mood-grid" data-moods>
-              ${MEMORY_MOODS.map(
-                (m) =>
-                  `<button type="button" class="v-mood-chip ${selectedMoods.has(m.id) ? 'on' : ''}" data-m="${m.id}"><span>${m.icon}</span><b>${m.label}</b></button>`,
-              ).join('')}
-            </div>
-          </div>
+          <button type="button" class="v-mood-entry press" data-open-moods></button>
 
           <textarea class="v-textarea" maxlength="2000" placeholder="Bugünden bir anı bırak…"></textarea>
 
@@ -1096,33 +1262,62 @@ export function openDiaryJar(): void {
 
     const sh = openSheet(body, { cls: 'v-sheet firefly-sheet', onClose: cleanupWriter });
     const ta = $<HTMLTextAreaElement>('.v-textarea', body);
+    const moodEntryBtn = $<HTMLButtonElement>('[data-open-moods]', body);
     const sealBtn = $<HTMLButtonElement>('[data-seal]', body);
     const scrapTray = $('[data-scrap]', body);
     const photoInp = $<HTMLInputElement>('[data-photo-inp]', body);
     const voiceBtn = $<HTMLButtonElement>('[data-voice-btn]', body);
     const voiceLbl = $('[data-voice-lbl]', body);
 
+    const renderMoodTrigger = () => {
+      const chosen = Array.from(selectedMoods)
+        .map((id) => MOOD_BY_ID.get(id))
+        .filter((x): x is MemoryMoodDef => Boolean(x));
+
+      if (!chosen.length) {
+        moodEntryBtn.classList.remove('filled');
+        moodEntryBtn.innerHTML = `
+          <span class="vme-orb">🎭</span>
+          <span class="vme-tx">
+            <b>Ruh halin nasıl?</b>
+            <i>İyi, kötü, kırgın, yorgun, aşık… dokun ve içeriden seç</i>
+          </span>
+          <span class="vme-cta">Seç ${I.chevron(14)}</span>
+        `;
+      } else {
+        moodEntryBtn.classList.add('filled');
+        moodEntryBtn.innerHTML = `
+          <div class="vme-top">
+            <span class="vme-kicker">Seçilen ruh halleri (${chosen.length})</span>
+            <span class="vme-edit">Düzenle ${I.chevron(13)}</span>
+          </div>
+          <div class="vme-pills">
+            ${chosen
+              .map(
+                (m) =>
+                  `<span class="vme-pill tone-${m.cat}"><span>${m.icon}</span><b>${escapeHtml(m.label)}</b></span>`,
+              )
+              .join('')}
+          </div>
+        `;
+      }
+    };
+    renderMoodTrigger();
+
+    moodEntryBtn.addEventListener('click', () => {
+      ta.blur();
+      openMoodPickerSheet(selectedMoods, renderMoodTrigger);
+    });
+
     const syncTextareaHeight = () => {
       ta.style.height = 'auto';
-      ta.style.height = `${Math.max(118, ta.scrollHeight)}px`;
+      ta.style.height = `${Math.max(124, ta.scrollHeight)}px`;
     };
 
     const checkValid = () => {
       const ok = Boolean(ta.value.trim()) || Boolean(attachedPhoto) || Boolean(attachedVoice);
       sealBtn.disabled = !ok || Boolean(recorder);
     };
-
-    $$('[data-m]', body).forEach((btn) =>
-      btn.addEventListener('click', () => {
-        const id = (btn as HTMLElement).dataset.m as MemoryMoodId;
-        if (selectedMoods.has(id)) {
-          if (selectedMoods.size > 1) selectedMoods.delete(id);
-        } else {
-          selectedMoods.add(id);
-        }
-        btn.classList.toggle('on', selectedMoods.has(id));
-      }),
-    );
 
     const renderScrapTray = () => {
       scrapTray.innerHTML = '';

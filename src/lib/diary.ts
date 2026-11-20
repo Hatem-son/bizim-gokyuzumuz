@@ -7,15 +7,107 @@ import type { Who } from '../types';
 export type DiaryMood = 'sun' | 'coffee' | 'moon' | 'rain' | 'heart' | 'spark';
 export type BottleStyle = 'emerald' | 'crystal' | 'shell';
 export type PaperStyle = 'straw' | 'sea' | 'night';
+export type MoodTone = 'love' | 'good' | 'sad' | 'storm' | 'night';
+
 export type MemoryMoodId =
-  | 'peace'
   | 'love'
   | 'miss'
+  | 'romantic'
+  | 'butterflies'
+  | 'grateful'
+  | 'clingy'
   | 'happy'
-  | 'night'
+  | 'joyful'
+  | 'peace'
   | 'calm'
+  | 'hopeful'
+  | 'proud'
+  | 'sad'
+  | 'bad'
+  | 'broken'
+  | 'crying'
+  | 'lonely'
+  | 'hopeless'
+  | 'regret'
+  | 'angry'
+  | 'annoyed'
+  | 'resentful'
+  | 'anxious'
+  | 'overthinking'
+  | 'jealous'
+  | 'exhausted'
+  | 'burnout'
+  | 'sick'
+  | 'bored'
   | 'emotional'
-  | 'hopeful';
+  | 'night'
+  | 'nostalgic'
+  | 'numb';
+
+export interface MemoryMoodDef {
+  id: MemoryMoodId;
+  cat: MoodTone;
+  icon: string;
+  label: string;
+  desc: string;
+  dbMood: DiaryMood;
+}
+
+export const MOOD_CATEGORIES: { id: 'all' | MoodTone; icon: string; label: string; title: string }[] = [
+  { id: 'all', icon: '✦', label: 'Tümü', title: 'Tüm Ruh Halleri' },
+  { id: 'love', icon: '💖', label: 'Aşk & Özlem', title: '💖 Aşk & Özlem' },
+  { id: 'good', icon: '✨', label: 'İyi & Aydınlık', title: '✨ İyi & Aydınlık' },
+  { id: 'sad', icon: '🌧️', label: 'Kötü & Üzgün', title: '🌧️ Kötü, Üzgün & Kırgın' },
+  { id: 'storm', icon: '⚡', label: 'Gergin & Kaygılı', title: '⚡ Gergin, Kızgın & Kaygılı' },
+  { id: 'night', icon: '🌙', label: 'Yorgun & Gece', title: '🌙 Yorgun, Dalgın & Gece' },
+];
+
+export const MEMORY_MOODS: MemoryMoodDef[] = [
+  // Aşk & Özlem
+  { id: 'love', cat: 'love', icon: '🥰', label: 'Aşık', desc: 'Kalbim seninle dolup taşıyor', dbMood: 'heart' },
+  { id: 'miss', cat: 'love', icon: '🥹', label: 'Özlem dolu', desc: 'Yanımda olmanı çok istiyorum', dbMood: 'moon' },
+  { id: 'romantic', cat: 'love', icon: '🌹', label: 'Romantik', desc: 'İçimde tatlı ve sıcak bir his var', dbMood: 'heart' },
+  { id: 'butterflies', cat: 'love', icon: '🦋', label: 'Heyecanlı', desc: 'Kalbim pır pır, içim kıpır kıpır', dbMood: 'spark' },
+  { id: 'grateful', cat: 'love', icon: '🤍', label: 'Şükür dolu', desc: 'İyi ki hayatımdasın dediğim bir an', dbMood: 'heart' },
+  { id: 'clingy', cat: 'love', icon: '🫂', label: 'Sarılmaya muhtaç', desc: 'Sadece kollarında dinlenmek istiyorum', dbMood: 'heart' },
+
+  // İyi & Aydınlık
+  { id: 'happy', cat: 'good', icon: '✨', label: 'Mutlu', desc: 'Keyfim yerinde, yüzüm gülüyor', dbMood: 'sun' },
+  { id: 'joyful', cat: 'good', icon: '🌸', label: 'Neşeli & Enerjik', desc: 'Hayat dolu ve çok canlı hissediyorum', dbMood: 'sun' },
+  { id: 'peace', cat: 'good', icon: '🕊️', label: 'Huzurlu', desc: 'İçim dingin, her şey yerli yerinde', dbMood: 'heart' },
+  { id: 'calm', cat: 'good', icon: '☕', label: 'Sakin & Dingin', desc: 'Telaşsız, kendi halimde ve rahatım', dbMood: 'coffee' },
+  { id: 'hopeful', cat: 'good', icon: '🌈', label: 'Umutlu', desc: 'Yarınlara dair içimde güzel bir ışık var', dbMood: 'spark' },
+  { id: 'proud', cat: 'good', icon: '🌟', label: 'Güçlü & Motive', desc: 'Kendimle gurur duyuyorum, kararlıyım', dbMood: 'sun' },
+
+  // Kötü, Üzgün & Kırgın
+  { id: 'bad', cat: 'sad', icon: '🖤', label: 'Kötü hissediyorum', desc: 'Üstümde tarif edilmez bir ağırlık var', dbMood: 'rain' },
+  { id: 'sad', cat: 'sad', icon: '😔', label: 'Üzgün & Moral bozuk', desc: 'İçimde sebepli sebepsiz bir hüzün var', dbMood: 'rain' },
+  { id: 'broken', cat: 'sad', icon: '💔', label: 'Kırgın & İncinmiş', desc: 'Kalbim biraz burkuldu, çok hassasım', dbMood: 'rain' },
+  { id: 'crying', cat: 'sad', icon: '😢', label: 'Ağlamaklı / Ağladım', desc: 'Gözyaşlarımı tutmakta zorlandığım bir an', dbMood: 'rain' },
+  { id: 'lonely', cat: 'sad', icon: '🥀', label: 'Yalnız & Kimsesiz', desc: 'Kalabalık içinde bile yapayalnız gibiyim', dbMood: 'moon' },
+  { id: 'hopeless', cat: 'sad', icon: '🌑', label: 'Karamsar & Çaresiz', desc: 'Hiçbir şey yoluna girmeyecekmiş gibi', dbMood: 'rain' },
+  { id: 'regret', cat: 'sad', icon: '😞', label: 'Pişman & Buruk', desc: 'Keşke farklı olsaydı dediğim bir sızı', dbMood: 'rain' },
+
+  // Gergin, Kızgın & Kaygılı
+  { id: 'angry', cat: 'storm', icon: '😠', label: 'Sinirli & Öfkeli', desc: 'Çok doluyum, sabrım taşmak üzere', dbMood: 'rain' },
+  { id: 'annoyed', cat: 'storm', icon: '😒', label: 'Huysuz & Tahammülsüz', desc: 'En ufak şey bile batıyor, gerginim', dbMood: 'rain' },
+  { id: 'resentful', cat: 'storm', icon: '😤', label: 'Dargın & Sitemkar', desc: 'İçime attığım şeyler boğazımda düğüm', dbMood: 'rain' },
+  { id: 'anxious', cat: 'storm', icon: '😰', label: 'Kaygılı & Stresli', desc: 'İçim daralıyor, kötü bir şey olacakmış gibi', dbMood: 'rain' },
+  { id: 'overthinking', cat: 'storm', icon: '🌀', label: 'Kafası çok dolu', desc: 'Düşünceler susmuyor, zihnim çok yoruldu', dbMood: 'moon' },
+  { id: 'jealous', cat: 'storm', icon: '😾', label: 'Kıskanç & Huzursuz', desc: 'İçimi kemiren o tanıdık huzursuzluk', dbMood: 'moon' },
+
+  // Yorgun, Dalgın & Gece
+  { id: 'exhausted', cat: 'night', icon: '😩', label: 'Çok yorgun & Tükenmiş', desc: 'Hem ruhum hem bedenim dinlenmek istiyor', dbMood: 'coffee' },
+  { id: 'burnout', cat: 'night', icon: '🪫', label: 'Bıkkın & İsteksiz', desc: 'Elimi hiçbir şeye sürmek istemiyorum', dbMood: 'rain' },
+  { id: 'sick', cat: 'night', icon: '🤒', label: 'Hasta & Halsiz', desc: 'Vücudum kırgın, şefkate ihtiyacım var', dbMood: 'rain' },
+  { id: 'bored', cat: 'night', icon: '🥱', label: 'Sıkılmış & Boş', desc: 'Zaman akmıyor, her şey çok tekdüze', dbMood: 'coffee' },
+  { id: 'emotional', cat: 'night', icon: '🥺', label: 'Duygusal & Alıngan', desc: 'Dokunsalar ağlayacak kadar narinim', dbMood: 'rain' },
+  { id: 'night', cat: 'night', icon: '🌙', label: 'Gece sessizliği', desc: 'Gece çöktü, iç sesimle baş başayım', dbMood: 'moon' },
+  { id: 'nostalgic', cat: 'night', icon: '🎞️', label: 'Geçmişe dalmış', desc: 'Eski anılar gözümün önünden geçiyor', dbMood: 'moon' },
+  { id: 'numb', cat: 'night', icon: '🌫️', label: 'Hissiz & Donuk', desc: 'Ne mutlu ne üzgün, sadece boşluktayım', dbMood: 'moon' },
+];
+
+export const MOOD_BY_ID = new Map<string, MemoryMoodDef>(MEMORY_MOODS.map((m) => [m.id, m]));
 
 export const BOTTLE_PER_PERSON = 10;
 export const BOTTLE_TOTAL = 20;
