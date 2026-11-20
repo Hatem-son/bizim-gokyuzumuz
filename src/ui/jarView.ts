@@ -1,5 +1,5 @@
-// Anı Şişemiz — Mum / Gece Ateş Böceği Atmosferi, Şişe & Kağıt Atölyesi, Çoklu Ruh Hali,
-// Bantlı Vintage Fotoğraf + Ses Kaydı, Pembe Saten Kurdele ve Akıntıyla Süzülen Şişe.
+// Anı Şişemiz — Gece Sessizliğinde Uçuşan Ateş Böcekleri, Şişe & Kağıt Atölyesi,
+// Kesilmeyen 2 Satırlı Çoklu Ruh Hali, Bantlı Vintage Fotoğraf Karesi + Dönen Makaralı Kaset Ses Hatırası ve Pembe Kurdele.
 import { h, $, $$, pushPage, popPage, openSheet, segment, confirmSheet, toast, reduced } from './ui';
 import { I } from './icons';
 import { raspberry } from './art';
@@ -25,18 +25,18 @@ import {
   type MemoryMoodId,
 } from '../lib/diary';
 
-const MEMORY_MOODS: { id: MemoryMoodId; label: string; dbMood: DiaryMood }[] = [
-  { id: 'peace', label: 'Huzurlu', dbMood: 'heart' },
-  { id: 'love', label: 'Aşık', dbMood: 'heart' },
-  { id: 'miss', label: 'Özlem dolu', dbMood: 'moon' },
-  { id: 'happy', label: 'Mutlu', dbMood: 'sun' },
-  { id: 'night', label: 'Gece düşüncesi', dbMood: 'moon' },
-  { id: 'calm', label: 'Sakin', dbMood: 'coffee' },
-  { id: 'emotional', label: 'Duygusal', dbMood: 'rain' },
-  { id: 'hopeful', label: 'Umutlu', dbMood: 'spark' },
+const MEMORY_MOODS: { id: MemoryMoodId; icon: string; label: string; dbMood: DiaryMood }[] = [
+  { id: 'peace', icon: '🤍', label: 'Huzurlu', dbMood: 'heart' },
+  { id: 'love', icon: '🥰', label: 'Aşık', dbMood: 'heart' },
+  { id: 'miss', icon: '🥹', label: 'Özlem', dbMood: 'moon' },
+  { id: 'happy', icon: '✨', label: 'Mutlu', dbMood: 'sun' },
+  { id: 'night', icon: '🌙', label: 'Gece', dbMood: 'moon' },
+  { id: 'calm', icon: '☕', label: 'Sakin', dbMood: 'coffee' },
+  { id: 'emotional', icon: '🥺', label: 'Duygusal', dbMood: 'rain' },
+  { id: 'hopeful', icon: '🌸', label: 'Umutlu', dbMood: 'spark' },
 ];
 
-const MOOD_LABELS = Object.fromEntries(MEMORY_MOODS.map((m) => [m.id, m.label])) as Record<MemoryMoodId, string>;
+const MOOD_MAP = Object.fromEntries(MEMORY_MOODS.map((m) => [m.id, `${m.icon} ${m.label}`])) as Record<MemoryMoodId, string>;
 
 const BOTTLE_STYLES: { id: BottleStyle; name: string; sub: string }[] = [
   { id: 'emerald', name: 'Eski Yeşil Cam', sub: 'Antika deniz şişesi' },
@@ -85,11 +85,6 @@ function todayIso(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function isLateNightHour(): boolean {
-  const h = new Date().getHours();
-  return h >= 19 || h < 6;
-}
-
 function fmtVintageDate(iso: string): string {
   const [y, m, d] = iso.split('-').map(Number);
   if (!y || !m || !d) return iso;
@@ -131,7 +126,7 @@ async function compressMemoryPhoto(file: File): Promise<{ bytes: Uint8Array<Arra
   }
 }
 
-/** Zarif İpek Pembe Kurdele Fiyongu (şişe boynu, polaroid ve vintage mektup süsü) */
+/** Zarif İpek Pembe Kurdele Fiyongu */
 let bowUid = 0;
 function pinkRibbonSVG(size = 36, cls = ''): string {
   const id = `pkb${++bowUid}`;
@@ -147,18 +142,22 @@ function pinkRibbonSVG(size = 36, cls = ''): string {
         <stop offset="100%" stop-color="#b93867"/>
       </linearGradient>
     </defs>
-    <!-- Akan kurdele uçları -->
     <path d="M29 24 C24 35 18 44 13 52 L21 49 L25 54 C28 44 30 34 31 25 Z" fill="url(#${id}b)"/>
     <path d="M35 24 C40 35 46 44 51 52 L43 49 L39 54 C36 44 34 34 33 25 Z" fill="url(#${id}b)"/>
-    <!-- Sol ve sağ saten fiyonk kanatları -->
     <path d="M31 22 C22 8 6 9 6 21 C6 32 21 33 31 24 Z" fill="url(#${id}a)" stroke="#b93867" stroke-width="0.8" stroke-opacity=".35"/>
     <path d="M33 22 C42 8 58 9 58 21 C58 32 43 33 33 24 Z" fill="url(#${id}a)" stroke="#b93867" stroke-width="0.8" stroke-opacity=".35"/>
-    <!-- İpek kıvrım gölgeleri -->
     <path d="M15 20 Q23 22 29 23" stroke="#b93867" stroke-width="1.1" stroke-linecap="round" opacity=".45"/>
     <path d="M49 20 Q41 22 35 23" stroke="#b93867" stroke-width="1.1" stroke-linecap="round" opacity=".45"/>
-    <!-- Orta düğüm -->
     <rect x="27.5" y="17.5" width="9" height="10" rx="4" fill="url(#${id}a)" stroke="#b93867" stroke-width="0.9" stroke-opacity=".4"/>
     <ellipse cx="30.5" cy="20" rx="2" ry="1.1" fill="#fff" opacity=".6"/>
+  </svg>`;
+}
+
+function cassetteReelSVG(): string {
+  return `<svg class="cas-reel" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6" opacity=".65"/>
+    <circle cx="12" cy="12" r="3" fill="currentColor" opacity=".8"/>
+    <path d="M12 3v3M12 18v3M3 12h3M18 12h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
   </svg>`;
 }
 
@@ -267,29 +266,29 @@ function vintageCornerSVG(cls: string): string {
 }
 
 function waxSealIcon(): string {
-  return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+  return `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
     <path d="M12 2.5l2.2 1.6 2.7-.3 1.1 2.5 2.5 1.1-.3 2.7 1.6 2.2-1.6 2.2.3 2.7-2.5 1.1-1.1 2.5-2.7-.3-2.2 1.6-2.2-1.6-2.7.3-1.1-2.5-2.5-1.1.3-2.7L2.5 12l1.6-2.2-.3-2.7 2.5-1.1 1.1-2.5 2.7.3Z" fill="currentColor" opacity=".94"/>
     <path d="M12 15.2s-3-1.8-3-4a1.7 1.7 0 0 1 3-1.1 1.7 1.7 0 0 1 3 1.1c0 2.2-3 4-3 4Z" fill="#fbf3e6"/>
   </svg>`;
 }
 
-function candleIcon(): string {
-  return `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-    <path d="M12 3c1.8 2.2 2.6 3.8 2.6 5.2a2.6 2.6 0 1 1-5.2 0C9.4 6.8 10.2 5.2 12 3Z"/>
-    <rect x="8" y="11" width="8" height="10" rx="2"/>
-  </svg>`;
-}
-
-function firefliesHTML(count = 9): string {
-  const items: string[] = [];
+/** Gece Sessizliği: Ekran Boyunca Tatlı Eğrilerle Uçuşan Canlı Ateş Böcekleri */
+function nightFirefliesHTML(count = 16): string {
+  const flies: string[] = [];
+  const paths = ['ff-path-a', 'ff-path-b', 'ff-path-c'];
   for (let i = 0; i < count; i++) {
-    const left = 8 + ((i * 37) % 84);
-    const top = 6 + ((i * 29) % 82);
-    const delay = -((i * 1.3) % 6).toFixed(1);
-    const dur = (4.2 + (i % 4) * 0.9).toFixed(1);
-    items.push(`<i style="left:${left}%;top:${top}%;animation-delay:${delay}s;animation-duration:${dur}s"></i>`);
+    const left = 4 + ((i * 23) % 92);
+    const top = 4 + ((i * 31) % 88);
+    const sz = i % 3 === 0 ? 7 : i % 2 === 0 ? 5.5 : 4;
+    const delay = -((i * 1.15) % 8).toFixed(2);
+    const dur = (6.2 + (i % 5) * 1.3).toFixed(1);
+    const pCls = paths[i % paths.length];
+    const warmRose = i % 4 === 0;
+    flies.push(
+      `<span class="night-ff ${pCls} ${warmRose ? 'rose' : ''}" style="left:${left}%;top:${top}%;--sz:${sz}px;animation-delay:${delay}s;animation-duration:${dur}s"><i></i></span>`,
+    );
   }
-  return `<div class="candle-fireflies" aria-hidden="true">${items.join('')}</div>`;
+  return `<div class="night-fireflies" aria-hidden="true">${flies.join('')}</div>`;
 }
 
 export function openDiaryJar(): void {
@@ -369,7 +368,6 @@ export function openDiaryJar(): void {
   let bottles: BottleBucket[] = [{ index: 1, entries: [], mineCount: 0, partnerCount: 0 }];
   let manualExtraBottle = false;
 
-  // ---------- Canlı Dalga Çizimi & Akıntıyla Sağa-Sola Süzülme ----------
   let waveRaf = 0;
   let wW = 340;
   let wH = 294;
@@ -593,7 +591,6 @@ export function openDiaryJar(): void {
     }
   };
 
-  // ---------- Anıyı Sarma -> Seçilen Şişeye Koyma -> Bir Anda Denize Fırlatma ----------
   const playCastIntoSea = async (
     who: 'hamham' | 'beto',
     bStyle: BottleStyle,
@@ -794,7 +791,7 @@ export function openDiaryJar(): void {
     }
   };
 
-  // ---------- Vintage Anı Okuyucu (Fotoğraf, Ses Plağı, Çoklu Ruh Hali & Kağıt Dokusu) ----------
+  // ---------- Vintage Anı Okuyucu ----------
   async function openVintageReader(entry: DiaryEntryMeta) {
     let audioUrl: string | null = null;
     let photoUrl: string | null = null;
@@ -822,14 +819,14 @@ export function openDiaryJar(): void {
 
       const peaks = content.voicePeaks?.length
         ? content.voicePeaks
-        : Array.from({ length: 24 }, (_, i) => 0.25 + 0.55 * Math.abs(Math.sin(i * 0.7)));
+        : Array.from({ length: 20 }, (_, i) => 0.25 + 0.55 * Math.abs(Math.sin(i * 0.7)));
 
-      const body = h(`<div class="v-sheet-wrap candle-on">
-        ${firefliesHTML(7)}
+      const body = h(`<div class="v-sheet-wrap">
+        ${nightFirefliesHTML(14)}
         <div class="v-paper v-reader paper-${pStyle}">
           ${vintageCornerSVG('tl')}${vintageCornerSVG('tr')}${vintageCornerSVG('bl')}${vintageCornerSVG('br')}
           <div class="v-top-bow">${pinkRibbonSVG(40)}</div>
-          <div class="v-lily-mark">${lilyBloom(34, -12)}</div>
+          <div class="v-lily-mark">${lilyBloom(32, -12)}</div>
           <div class="v-paper-head">
             <span class="v-date-txt">${fmtVintageDate(content.entryDate)}</span>
             <button type="button" class="v-del-btn" data-del aria-label="Sil">${I.trash(16)}</button>
@@ -838,31 +835,43 @@ export function openDiaryJar(): void {
           ${
             moods.length
               ? `<div class="v-mood-badges">${moods
-                  .map((m) => `<span class="v-mbadge">${MOOD_LABELS[m] ?? m}</span>`)
+                  .map((m) => `<span class="v-mbadge">${MOOD_MAP[m] ?? m}</span>`)
                   .join('')}</div>`
-              : ''
-          }
-
-          ${
-            photoUrl
-              ? `<figure class="v-polaroid">
-                  <span class="v-tape left"></span><span class="v-tape right"></span>
-                  <img src="${photoUrl}" alt="">
-                  <span class="v-pol-bow">${pinkRibbonSVG(26)}</span>
-                </figure>`
               : ''
           }
 
           ${content.text ? `<div class="v-ruled-text">${escapeHtml(content.text).replace(/\n/g, '<br>')}</div>` : ''}
 
           ${
-            audioUrl
-              ? `<div class="v-tape-player" data-player>
-                  <button type="button" class="v-play-btn" data-play aria-label="Dinle">${I.play(16)}</button>
-                  <div class="v-tape-bars" data-bars>
-                    ${peaks.map((p) => `<i style="height:${Math.round(8 + p * 20)}px"></i>`).join('')}
-                  </div>
-                  <span class="v-tape-dur" data-dur>${fmtSec(content.voiceDur ?? 0)}</span>
+            photoUrl || audioUrl
+              ? `<div class="v-scrap-tray reader-tray">
+                  ${
+                    photoUrl
+                      ? `<figure class="v-photo-stamp reader-photo">
+                          <span class="v-washi left"></span><span class="v-washi right"></span>
+                          <div class="v-ps-frame"><img src="${photoUrl}" alt=""></div>
+                          <figcaption class="v-ps-cap">${pinkRibbonSVG(22)}<span>hatıra karesi</span></figcaption>
+                        </figure>`
+                      : ''
+                  }
+                  ${
+                    audioUrl
+                      ? `<div class="v-cassette" data-cassette>
+                          <div class="cas-top">
+                            ${cassetteReelSVG()}
+                            <span class="cas-lbl">SES HATIRASI</span>
+                            ${cassetteReelSVG()}
+                          </div>
+                          <div class="cas-bot">
+                            <button type="button" class="cas-play" data-play aria-label="Dinle">${I.play(14)}</button>
+                            <div class="cas-bars" data-bars>
+                              ${peaks.map((p) => `<i style="height:${Math.round(7 + p * 16)}px"></i>`).join('')}
+                            </div>
+                            <span class="cas-dur" data-dur>${fmtSec(content.voiceDur ?? 0)}</span>
+                          </div>
+                        </div>`
+                      : ''
+                  }
                 </div>`
               : ''
           }
@@ -884,9 +893,10 @@ export function openDiaryJar(): void {
         if (audioUrl) URL.revokeObjectURL(audioUrl);
       };
 
-      const sh = openSheet(body, { cls: 'v-sheet candle-sheet', onClose: cleanupMedia });
+      const sh = openSheet(body, { cls: 'v-sheet firefly-sheet', onClose: cleanupMedia });
 
       if (audioUrl) {
+        const casEl = $('[data-cassette]', body);
         const playBtn = $('[data-play]', body);
         const durEl = $('[data-dur]', body);
         const barEls = $$('[data-bars] i', body);
@@ -897,7 +907,8 @@ export function openDiaryJar(): void {
           if (!audioEl) return;
           if (audioEl.paused) {
             void audioEl.play();
-            playBtn.innerHTML = I.pause(16);
+            casEl.classList.add('spinning');
+            playBtn.innerHTML = I.pause(14);
             clearInterval(waveTimer);
             waveTimer = window.setInterval(() => {
               if (!audioEl) return;
@@ -909,13 +920,15 @@ export function openDiaryJar(): void {
             }, 90);
           } else {
             audioEl.pause();
-            playBtn.innerHTML = I.play(16);
+            casEl.classList.remove('spinning');
+            playBtn.innerHTML = I.play(14);
             clearInterval(waveTimer);
           }
         });
         audioEl.addEventListener('ended', () => {
           clearInterval(waveTimer);
-          playBtn.innerHTML = I.play(16);
+          casEl.classList.remove('spinning');
+          playBtn.innerHTML = I.play(14);
           barEls.forEach((b) => b.classList.remove('on'));
           durEl.textContent = fmtSec(content.voiceDur ?? 0);
         });
@@ -935,13 +948,13 @@ export function openDiaryJar(): void {
     }
   }
 
-  // ---------- ADIM 1: Yazmaya Başlamadan Önce Şişe & Kağıt Dokusu Atölyesi ----------
+  // ---------- ADIM 1: Şişe & Kağıt Seçimi Atölyesi ----------
   function openAtelierPicker() {
     let chosenBottle: BottleStyle = pref.bottle;
     let chosenPaper: PaperStyle = pref.paper;
 
     const body = h(`<div class="atelier-sheet">
-      ${firefliesHTML(8)}
+      ${nightFirefliesHTML(12)}
       <div class="atelier-head">
         <div class="atelier-bow">${pinkRibbonSVG(34)}</div>
         <div class="atelier-title">Anı Atölyesi</div>
@@ -974,7 +987,7 @@ export function openDiaryJar(): void {
       </button>
     </div>`);
 
-    const sh = openSheet(body, { cls: 'gk-glass-sheet candle-sheet' });
+    const sh = openSheet(body, { cls: 'gk-glass-sheet firefly-sheet' });
     $('[data-close]', body).addEventListener('click', () => void sh.close());
 
     $$('[data-btl]', body).forEach((btn) =>
@@ -1000,8 +1013,8 @@ export function openDiaryJar(): void {
     });
   }
 
-  // ---------- ADIM 2: Mum / Ateş Böceği Atmosferli Vintage Anı Yazma Alanı ----------
-  function openVintageWriter(bStyle: BottleStyle, initialPaper: PaperStyle) {
+  // ---------- ADIM 2: Gece Sessizliğinde Uçuşan Ateş Böcekli Vintage Anı Yazma Alanı ----------
+  function openVintageWriter(bStyle: BottleStyle, pStyle: PaperStyle) {
     const b = currentBucket();
     if (b.mineCount >= BOTTLE_PER_PERSON) {
       const nextIdx = b.index + 1;
@@ -1015,9 +1028,7 @@ export function openDiaryJar(): void {
       renderList();
     }
 
-    const pStyle: PaperStyle = initialPaper;
     const selectedMoods = new Set<MemoryMoodId>(['peace']);
-    let candleMode: boolean = isLateNightHour() || pStyle === 'night' || Boolean(1);
     let attachedPhoto: { bytes: Uint8Array<ArrayBuffer>; mime: string; preview: string } | null = null;
     let attachedVoice: RecordedVoice | null = null;
     let recorder: VoiceRecorder | null = null;
@@ -1025,51 +1036,43 @@ export function openDiaryJar(): void {
     let previewAudio: HTMLAudioElement | null = null;
 
     const dateIso = todayIso();
-    const body = h(`<div class="v-sheet-wrap ${candleMode ? 'candle-on' : ''}" data-wrap>
-      <div class="candle-aura" aria-hidden="true"></div>
-      ${firefliesHTML(10)}
+    const body = h(`<div class="v-sheet-wrap">
+      ${nightFirefliesHTML(16)}
       <div class="v-paper v-writer paper-${pStyle}">
         ${vintageCornerSVG('tl')}${vintageCornerSVG('tr')}${vintageCornerSVG('bl')}${vintageCornerSVG('br')}
         <div class="v-top-bow">${pinkRibbonSVG(40)}</div>
-        <div class="v-lily-mark">${lilyBloom(34, -12)}</div>
+        <div class="v-lily-mark">${lilyBloom(30, -12)}</div>
 
         <div class="v-paper-head">
           <span class="v-date-txt">${fmtVintageDate(dateIso)}</span>
-          <div class="v-head-r">
-            <button type="button" class="v-candle-btn ${candleMode ? 'on' : ''}" data-candle aria-label="Mum ışığı modu" title="Mum atmosferi">
-              ${candleIcon()}<span>Mum</span>
-            </button>
-            <button type="button" class="v-close-btn" data-close aria-label="Kapat">${I.close(18)}</button>
-          </div>
+          <button type="button" class="v-close-btn" data-close aria-label="Kapat">${I.close(18)}</button>
         </div>
 
-        <div class="v-mood-sec" data-nodrag>
-          <div class="v-sec-lbl">Ruh halin nasıl? <i>(birden fazla seçebilirsin)</i></div>
-          <div class="v-moods" data-moods>
-            ${MEMORY_MOODS.map(
-              (m) =>
-                `<button type="button" class="v-mood ${selectedMoods.has(m.id) ? 'on' : ''}" data-m="${m.id}">${m.label}</button>`,
-            ).join('')}
+        <div class="v-scroll-body" data-nodrag>
+          <div class="v-mood-sec">
+            <div class="v-sec-lbl">Ruh halin <i>· birden fazla seçebilirsin</i></div>
+            <div class="v-mood-grid" data-moods>
+              ${MEMORY_MOODS.map(
+                (m) =>
+                  `<button type="button" class="v-mood-chip ${selectedMoods.has(m.id) ? 'on' : ''}" data-m="${m.id}"><span>${m.icon}</span><b>${m.label}</b></button>`,
+              ).join('')}
+            </div>
           </div>
-        </div>
 
-        <div class="v-lines-wrap" data-nodrag>
-          <div data-photo-slot></div>
           <textarea class="v-textarea" maxlength="2000" placeholder="Bugünden bir anı bırak…"></textarea>
-          <div data-voice-slot></div>
+
+          <div class="v-scrap-tray hide" data-scrap></div>
         </div>
 
-        <div class="v-media-bar" data-nodrag>
-          <label class="v-attach-btn press">
-            ${I.camera(16)}<span>Fotoğraf yapıştır</span>
+        <div class="v-writer-foot" data-nodrag>
+          <label class="v-tool-pill press" aria-label="Fotoğraf yapıştır">
+            ${I.camera(16)}<span>Fotoğraf</span>
             <input type="file" accept="image/*" hidden data-photo-inp>
           </label>
-          <button type="button" class="v-attach-btn press" data-voice-btn>
-            ${I.mic(16)}<span data-voice-lbl>Ses kaydı ekle</span>
+          <button type="button" class="v-tool-pill press" data-voice-btn>
+            ${I.mic(16)}<span data-voice-lbl>Ses</span>
           </button>
-        </div>
-
-        <div class="v-writer-foot">
+          <span class="grow"></span>
           <button type="button" class="v-seal-btn" data-seal disabled>
             ${waxSealIcon()}<span>Denize bırak</span>
           </button>
@@ -1091,27 +1094,23 @@ export function openDiaryJar(): void {
       }
     };
 
-    const sh = openSheet(body, { cls: 'v-sheet candle-sheet', onClose: cleanupWriter });
-    const wrapEl = $('[data-wrap]', body);
+    const sh = openSheet(body, { cls: 'v-sheet firefly-sheet', onClose: cleanupWriter });
     const ta = $<HTMLTextAreaElement>('.v-textarea', body);
     const sealBtn = $<HTMLButtonElement>('[data-seal]', body);
-    const candleBtn = $('[data-candle]', body);
-    const photoSlot = $('[data-photo-slot]', body);
-    const voiceSlot = $('[data-voice-slot]', body);
+    const scrapTray = $('[data-scrap]', body);
     const photoInp = $<HTMLInputElement>('[data-photo-inp]', body);
     const voiceBtn = $<HTMLButtonElement>('[data-voice-btn]', body);
     const voiceLbl = $('[data-voice-lbl]', body);
+
+    const syncTextareaHeight = () => {
+      ta.style.height = 'auto';
+      ta.style.height = `${Math.max(118, ta.scrollHeight)}px`;
+    };
 
     const checkValid = () => {
       const ok = Boolean(ta.value.trim()) || Boolean(attachedPhoto) || Boolean(attachedVoice);
       sealBtn.disabled = !ok || Boolean(recorder);
     };
-
-    candleBtn.addEventListener('click', () => {
-      candleMode = !candleMode;
-      candleBtn.classList.toggle('on', candleMode);
-      wrapEl.classList.toggle('candle-on', candleMode);
-    });
 
     $$('[data-m]', body).forEach((btn) =>
       btn.addEventListener('click', () => {
@@ -1125,23 +1124,98 @@ export function openDiaryJar(): void {
       }),
     );
 
-    const renderPhotoPreview = () => {
-      photoSlot.innerHTML = '';
-      if (!attachedPhoto) return;
-      const fig = h(`<figure class="v-polaroid">
-        <span class="v-tape left"></span><span class="v-tape right"></span>
-        <img src="${attachedPhoto.preview}" alt="">
-        <span class="v-pol-bow">${pinkRibbonSVG(26)}</span>
-        <button type="button" class="v-pol-rm" aria-label="Fotoğrafı kaldır">${I.close(14)}</button>
-      </figure>`);
-      $('.v-pol-rm', fig).addEventListener('click', () => {
-        if (attachedPhoto) URL.revokeObjectURL(attachedPhoto.preview);
-        attachedPhoto = null;
-        photoInp.value = '';
-        renderPhotoPreview();
-        checkValid();
-      });
-      photoSlot.appendChild(fig);
+    const renderScrapTray = () => {
+      scrapTray.innerHTML = '';
+      if (!attachedPhoto && !recorder && !attachedVoice) {
+        scrapTray.classList.add('hide');
+        return;
+      }
+      scrapTray.classList.remove('hide');
+
+      if (attachedPhoto) {
+        const fig = h(`<figure class="v-photo-stamp">
+          <span class="v-washi left"></span><span class="v-washi right"></span>
+          <div class="v-ps-frame">
+            <img src="${attachedPhoto.preview}" alt="">
+            <button type="button" class="v-ps-rm" aria-label="Fotoğrafı kaldır">${I.close(13)}</button>
+          </div>
+          <figcaption class="v-ps-cap">${pinkRibbonSVG(20)}<span>hatıra karesi</span></figcaption>
+        </figure>`);
+        $('.v-ps-rm', fig).addEventListener('click', () => {
+          if (attachedPhoto) URL.revokeObjectURL(attachedPhoto.preview);
+          attachedPhoto = null;
+          photoInp.value = '';
+          renderScrapTray();
+          checkValid();
+        });
+        scrapTray.appendChild(fig);
+      }
+
+      if (recorder) {
+        const recCard = h(`<div class="v-cassette spinning recording">
+          <div class="cas-top">
+            ${cassetteReelSVG()}
+            <span class="cas-lbl">KAYDEDİLİYOR</span>
+            ${cassetteReelSVG()}
+          </div>
+          <div class="cas-bot">
+            <span class="cas-rec-dot"></span>
+            <span class="cas-dur" data-rt>0:00</span>
+            <span class="grow"></span>
+            <button type="button" class="cas-stop" data-stop>Bitir</button>
+          </div>
+        </div>`);
+        $('[data-stop]', recCard).addEventListener('click', () => void finishRecording());
+        scrapTray.appendChild(recCard);
+      } else if (attachedVoice) {
+        const v = attachedVoice;
+        const peaks = v.peaks?.length ? v.peaks.slice(0, 16) : Array.from({ length: 16 }, () => 0.48);
+        const casCard = h(`<div class="v-cassette">
+          <div class="cas-top">
+            ${cassetteReelSVG()}
+            <span class="cas-lbl">SES HATIRASI</span>
+            ${cassetteReelSVG()}
+            <button type="button" class="cas-rm" data-vrm aria-label="Sesi kaldır">${I.close(13)}</button>
+          </div>
+          <div class="cas-bot">
+            <button type="button" class="cas-play" data-vplay aria-label="Dinle">${I.play(13)}</button>
+            <div class="cas-bars">${peaks.map((p) => `<i style="height:${Math.round(6 + p * 15)}px"></i>`).join('')}</div>
+            <span class="cas-dur">${fmtSec(v.dur)}</span>
+          </div>
+        </div>`);
+        const playB = $('[data-vplay]', casCard);
+        playB.addEventListener('click', () => {
+          if (!previewAudio) {
+            previewAudio = new Audio(v.previewUrl);
+            previewAudio.addEventListener('ended', () => {
+              casCard.classList.remove('spinning');
+              playB.innerHTML = I.play(13);
+            });
+          }
+          if (previewAudio.paused) {
+            void previewAudio.play();
+            casCard.classList.add('spinning');
+            playB.innerHTML = I.pause(13);
+          } else {
+            previewAudio.pause();
+            casCard.classList.remove('spinning');
+            playB.innerHTML = I.play(13);
+          }
+        });
+        $('[data-vrm]', casCard).addEventListener('click', () => {
+          if (previewAudio) {
+            previewAudio.pause();
+            previewAudio.src = '';
+            previewAudio = null;
+          }
+          URL.revokeObjectURL(v.previewUrl);
+          attachedVoice = null;
+          voiceLbl.textContent = 'Ses';
+          renderScrapTray();
+          checkValid();
+        });
+        scrapTray.appendChild(casCard);
+      }
     };
 
     photoInp.addEventListener('change', async () => {
@@ -1150,64 +1224,13 @@ export function openDiaryJar(): void {
       try {
         if (attachedPhoto) URL.revokeObjectURL(attachedPhoto.preview);
         attachedPhoto = await compressMemoryPhoto(f);
-        renderPhotoPreview();
+        renderScrapTray();
         checkValid();
+        scrapTray.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       } catch {
         toast('Fotoğraf okunamadı', I.info(14));
       }
     });
-
-    const renderVoicePreview = () => {
-      voiceSlot.innerHTML = '';
-      if (recorder) {
-        const strip = h(`<div class="v-tape-player recording">
-          <span class="v-rec-dot"></span>
-          <span class="v-rec-txt">Kaydediliyor… <b data-rt>0:00</b></span>
-          <button type="button" class="v-stop-btn" data-stop>Bitir</button>
-        </div>`);
-        $('[data-stop]', strip).addEventListener('click', () => void finishRecording());
-        voiceSlot.appendChild(strip);
-        return;
-      }
-      if (!attachedVoice) return;
-      const v = attachedVoice;
-      const peaks = v.peaks?.length ? v.peaks.slice(0, 22) : Array.from({ length: 22 }, () => 0.45);
-      const strip = h(`<div class="v-tape-player">
-        <button type="button" class="v-play-btn" data-vplay aria-label="Dinle">${I.play(15)}</button>
-        <div class="v-tape-bars">${peaks.map((p) => `<i style="height:${Math.round(8 + p * 18)}px"></i>`).join('')}</div>
-        <span class="v-tape-dur">${fmtSec(v.dur)}</span>
-        <button type="button" class="v-pol-rm inline" data-vrm aria-label="Sesi kaldır">${I.close(14)}</button>
-      </div>`);
-      const playB = $('[data-vplay]', strip);
-      playB.addEventListener('click', () => {
-        if (!previewAudio) {
-          previewAudio = new Audio(v.previewUrl);
-          previewAudio.addEventListener('ended', () => {
-            playB.innerHTML = I.play(15);
-          });
-        }
-        if (previewAudio.paused) {
-          void previewAudio.play();
-          playB.innerHTML = I.pause(15);
-        } else {
-          previewAudio.pause();
-          playB.innerHTML = I.play(15);
-        }
-      });
-      $('[data-vrm]', strip).addEventListener('click', () => {
-        if (previewAudio) {
-          previewAudio.pause();
-          previewAudio.src = '';
-          previewAudio = null;
-        }
-        URL.revokeObjectURL(v.previewUrl);
-        attachedVoice = null;
-        voiceLbl.textContent = 'Ses kaydı ekle';
-        renderVoicePreview();
-        checkValid();
-      });
-      voiceSlot.appendChild(strip);
-    };
 
     const finishRecording = async () => {
       if (!recorder) return;
@@ -1218,11 +1241,11 @@ export function openDiaryJar(): void {
       try {
         if (attachedVoice) URL.revokeObjectURL(attachedVoice.previewUrl);
         attachedVoice = await r.stop();
-        voiceLbl.textContent = 'Sesi yenile';
+        voiceLbl.textContent = 'Yenile';
       } catch (err) {
         toast((err as Error)?.message || 'Ses kaydedilemedi', I.info(14));
       }
-      renderVoicePreview();
+      renderScrapTray();
       checkValid();
     };
 
@@ -1236,14 +1259,15 @@ export function openDiaryJar(): void {
         await r.start();
         recorder = r;
         voiceBtn.classList.add('on');
-        voiceLbl.textContent = 'Kaydı bitir';
-        renderVoicePreview();
+        voiceLbl.textContent = 'Bitir';
+        renderScrapTray();
         checkValid();
+        scrapTray.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         clearInterval(recTimer);
         recTimer = window.setInterval(() => {
           if (!recorder) return;
           const elSec = recorder.elapsedSec();
-          const rt = voiceSlot.querySelector('[data-rt]');
+          const rt = scrapTray.querySelector('[data-rt]');
           if (rt) rt.textContent = fmtSec(elSec);
           if (elSec >= 90) void finishRecording();
         }, 250);
@@ -1253,7 +1277,10 @@ export function openDiaryJar(): void {
     });
 
     $('[data-close]', body).addEventListener('click', () => void sh.close());
-    ta.addEventListener('input', checkValid);
+    ta.addEventListener('input', () => {
+      syncTextareaHeight();
+      checkValid();
+    });
 
     sealBtn.addEventListener('click', async () => {
       const text = ta.value.trim();
@@ -1279,7 +1306,7 @@ export function openDiaryJar(): void {
           voiceB64: attachedVoice ? toBase64(attachedVoice.bytes) : undefined,
           voiceMime: attachedVoice?.mime,
           voiceDur: attachedVoice?.dur,
-          voicePeaks: attachedVoice?.peaks?.slice(0, 24),
+          voicePeaks: attachedVoice?.peaks?.slice(0, 20),
           entryDate: dateIso,
         });
         void sh.close();

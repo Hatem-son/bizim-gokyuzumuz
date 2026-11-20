@@ -34,7 +34,7 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
   });
 
   try {
-    const reg = await navigator.serviceWorker.register('/sw.js?v=62', {
+    const reg = await navigator.serviceWorker.register('/sw.js?v=63', {
       scope: '/',
       updateViaCache: 'none',
     });

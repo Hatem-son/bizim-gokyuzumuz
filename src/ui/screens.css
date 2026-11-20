@@ -608,124 +608,367 @@ html.kb-open .compose .lockline { display: none; }
 .v-em.on { background: var(--line-fill); border-color: var(--accent); transform: scale(1.06); }
 .v-req-sticker { transform: scale(1.2); margin: 2px 0 4px; }
 
-/* Sade Vintage Mektup Kağıdı (Ham ham: fildişi/altın parşömen, Beto: pudra-gül vintage kağıt) */
+/* Vintage Anı Sayfası, Şişe & Kağıt Atölyesi, Gece Ateş Böcekleri, Bantlı Fotoğraf & Kaset Ses Hatırası */
 .sheet.v-sheet {
-  background: transparent; border: 0; box-shadow: none; padding: 8px 12px calc(var(--safe-b) + 12px);
-  max-height: calc(100% - var(--safe-t) - 8px);
+  background: transparent; border: 0; box-shadow: none; padding: 18px 12px calc(var(--safe-b) + 10px);
+  max-height: calc(100% - var(--safe-t) - 6px); overflow: visible;
 }
-.sheet.v-sheet .grab { background: rgba(255,255,255,.28); margin-bottom: 8px; }
-.v-sheet-wrap { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
+.sheet.firefly-sheet { overflow: visible; }
+.sheet.v-sheet .grab { display: none; }
+.v-sheet-wrap { position: relative; display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
+
+/* Gece Sessizliği: Ekran Boyunca Uçuşan Tatlı Ateş Böcekleri */
+.night-fireflies {
+  position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden;
+}
+.night-ff {
+  position: absolute; width: var(--sz, 6px); height: var(--sz, 6px);
+  will-change: transform, opacity;
+}
+.night-ff i {
+  display: block; width: 100%; height: 100%; border-radius: 50%;
+  background: radial-gradient(circle, #fffff5 0%, #ffe678 48%, rgba(255, 214, 90, 0) 100%);
+  box-shadow: 0 0 10px 2px rgba(255, 228, 115, .85), 0 0 22px 4px rgba(215, 245, 110, .35);
+  animation: ffBlink 2.6s ease-in-out infinite alternate;
+}
+.night-ff.rose i {
+  background: radial-gradient(circle, #fff8fb 0%, #ff9ec2 50%, rgba(255, 158, 194, 0) 100%);
+  box-shadow: 0 0 10px 2px rgba(255, 168, 202, .85), 0 0 20px 4px rgba(255, 140, 185, .32);
+}
+.ff-path-a { animation: ffFlyA 7s ease-in-out infinite; }
+.ff-path-b { animation: ffFlyB 8.5s ease-in-out infinite; }
+.ff-path-c { animation: ffFlyC 9.5s ease-in-out infinite; }
+@keyframes ffBlink {
+  0% { opacity: .22; transform: scale(.72); }
+  100% { opacity: 1; transform: scale(1.22); }
+}
+@keyframes ffFlyA {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  25% { transform: translate3d(26px, -22px, 0); }
+  55% { transform: translate3d(-18px, -44px, 0); }
+  80% { transform: translate3d(16px, -14px, 0); }
+}
+@keyframes ffFlyB {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  30% { transform: translate3d(-30px, -18px, 0); }
+  65% { transform: translate3d(22px, -38px, 0); }
+}
+@keyframes ffFlyC {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  35% { transform: translate3d(18px, 24px, 0); }
+  70% { transform: translate3d(-26px, -20px, 0); }
+}
+
 .v-paper {
-  position: relative; display: flex; flex-direction: column; min-height: 0;
-  border-radius: 18px; padding: 22px 22px 18px 24px;
+  position: relative; z-index: 2; display: flex; flex-direction: column; min-height: 0; max-height: 82vh;
+  border-radius: 20px; padding: 20px 18px 14px;
   color: #3a2919;
   background: linear-gradient(180deg, #f8f0df 0%, #f0e3c8 58%, #e8d5b3 100%);
   border: 1px solid #ceb488;
-  box-shadow: 0 22px 54px rgba(0,0,0,.55), inset 0 0 36px rgba(139, 98, 57, .15);
+  box-shadow: 0 22px 54px rgba(0,0,0,.6), inset 0 0 36px rgba(139, 98, 57, .15);
   animation: vPaperOpen .36s cubic-bezier(.2,.8,.2,1);
-}
-.v-paper.persona-beto {
-  color: #3f222d;
-  background: linear-gradient(180deg, #fcf3f5 0%, #f5e5ea 58%, #edd6de 100%);
-  border-color: #dab2c0;
-  box-shadow: 0 22px 54px rgba(0,0,0,.55), inset 0 0 36px rgba(168, 92, 118, .13);
 }
 @keyframes vPaperOpen {
   from { opacity: 0; transform: translateY(14px) scale(.95); }
   to { opacity: 1; transform: none; }
 }
+.v-top-bow {
+  position: absolute; left: 50%; top: -15px; transform: translateX(-50%); z-index: 6;
+  pointer-events: none; filter: drop-shadow(0 4px 8px rgba(0,0,0,.25));
+}
 .v-corner { position: absolute; color: #8c6a43; pointer-events: none; }
-.v-paper.persona-beto .v-corner { color: #a86c82; }
 .v-corner.tl { top: 8px; left: 8px; }
 .v-corner.tr { top: 8px; right: 8px; transform: scaleX(-1); }
 .v-corner.bl { bottom: 8px; left: 8px; transform: scaleY(-1); }
 .v-corner.br { bottom: 8px; right: 8px; transform: scale(-1); }
-.v-lily-mark { position: absolute; right: 14px; bottom: 44px; opacity: .55; pointer-events: none; }
+.v-lily-mark { position: absolute; right: 48px; top: 12px; opacity: .34; pointer-events: none; }
 
-.v-paper-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.v-paper-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-bottom: 8px; flex: 0 0 auto;
+}
 .v-date-txt { font: italic 600 17px/1.1 var(--serif); color: #7a5835; }
-.v-paper.persona-beto .v-date-txt { color: #8f5068; }
 .v-close-btn {
-  width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
-  color: inherit; opacity: .65; background: rgba(0, 0, 0, .05);
+  width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
+  color: inherit; opacity: .68; background: rgba(0, 0, 0, .06);
 }
-.v-lines-wrap {
-  flex: 1 1 auto; min-height: 208px; max-height: 340px; overflow-y: auto;
+
+/* Birleşik Kaydırılabilir Gövde (Fotoğraf/Bant/Ses Asla Kesilmez!) */
+.v-scroll-body {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
   -webkit-overflow-scrolling: touch; touch-action: pan-y;
+  padding: 2px 2px 6px;
 }
+
+/* 2 Satırlı Temiz Çoklu Ruh Hali Izgarası (Kesilme Yok!) */
+.v-mood-sec { margin-bottom: 10px; }
+.v-sec-lbl {
+  font: 600 11px/1.2 var(--sans); opacity: .68; margin-bottom: 6px;
+}
+.v-sec-lbl i { font-weight: 400; font-style: italic; }
+.v-mood-grid {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px;
+}
+.v-mood-chip {
+  height: 32px; padding: 0 6px; border-radius: 10px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  background: rgba(0, 0, 0, .045); border: 1px solid rgba(120, 82, 48, .18);
+  color: inherit; font: 600 11.5px/1 var(--sans); white-space: nowrap;
+  transition: background .18s, border-color .18s, transform .15s, color .18s;
+}
+.v-mood-chip span { font-size: 12.5px; line-height: 1; }
+.v-mood-chip b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.v-mood-chip:active { transform: scale(.96); }
+.v-mood-chip.on {
+  background: rgba(216, 79, 128, .16); border-color: #cf4e7e; color: #8c2249;
+  box-shadow: 0 2px 8px rgba(216, 79, 128, .14);
+}
+.v-paper.paper-night .v-mood-chip {
+  background: rgba(255, 255, 255, .055); border-color: rgba(255, 214, 156, .18);
+}
+.v-paper.paper-night .v-mood-chip.on {
+  background: rgba(255, 158, 192, .22); border-color: #ff9ec0; color: #ffe3ee;
+}
+
+.v-mood-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.v-mbadge {
+  display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 999px;
+  background: rgba(216, 79, 128, .13); border: 1px solid rgba(216, 79, 128, .28);
+  font: 600 11.5px/1 var(--sans);
+}
+.v-paper.paper-night .v-mbadge {
+  background: rgba(255, 158, 192, .16); border-color: rgba(255, 158, 192, .34); color: #ffe0ec;
+}
+
 .v-textarea {
-  width: 100%; min-height: 210px; border: 0; outline: none; resize: none;
-  background: repeating-linear-gradient(180deg, transparent 0, transparent 29px, rgba(120, 88, 56, .15) 29px, rgba(120, 88, 56, .15) 30px);
-  font: italic 500 20px/30px var(--serif); color: inherit; caret-color: #8f3d38;
+  width: 100%; min-height: 120px; border: 0; outline: none; resize: none; overflow: hidden;
+  font: italic 500 20px/30px var(--serif); color: inherit; caret-color: #b8436b;
   padding: 0; margin: 0; touch-action: pan-y !important;
 }
-.v-paper.persona-beto .v-textarea {
-  background: repeating-linear-gradient(180deg, transparent 0, transparent 29px, rgba(165, 95, 120, .15) 29px, rgba(165, 95, 120, .15) 30px);
-  caret-color: #b8436b;
+.v-textarea::placeholder { color: currentColor; opacity: .42; }
+
+/* 3 Kağıt Dokusu & Uyumlu Yazı Tipi */
+/* 1) Saman Kağıdı — Daktilo Hissi */
+.v-paper.paper-straw, .cinema-paper.paper-straw {
+  color: #382614;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(145, 102, 52, .08) 0 1px, transparent 1.5px) 0 0 / 18px 18px,
+    linear-gradient(180deg, #efe0be 0%, #e5cfa4 56%, #dbc08e 100%);
+  border: 1px solid #c4a46e;
+  box-shadow: 0 22px 54px rgba(0,0,0,.6), inset 0 0 42px rgba(128, 86, 38, .2);
 }
-.v-textarea::placeholder { color: currentColor; opacity: .4; }
+.v-paper.paper-straw .v-textarea,
+.v-paper.paper-straw .v-ruled-text,
+.cinema-paper.paper-straw .cp-txt {
+  font: 500 15px/28px ui-monospace, "Courier New", Courier, monospace;
+  letter-spacing: .01em;
+  background: repeating-linear-gradient(180deg, transparent 0, transparent 27px, rgba(112, 78, 40, .15) 27px, rgba(112, 78, 40, .15) 28px);
+}
+.v-paper.paper-straw .v-seal-btn {
+  background: linear-gradient(135deg, #8e3b52, #6b283b); color: #fdf4ea;
+  box-shadow: 0 6px 16px rgba(110, 40, 60, .32);
+}
+
+/* 2) Islak Kenarlı Mektup Kağıdı — El Yazısı Hissi */
+.v-paper.paper-sea, .cinema-paper.paper-sea {
+  color: #3d222e;
+  background:
+    radial-gradient(ellipse at 0% 50%, rgba(175, 198, 215, .18), transparent 36%),
+    radial-gradient(ellipse at 100% 20%, rgba(235, 185, 202, .2), transparent 38%),
+    linear-gradient(180deg, #fcf6f5 0%, #f4e8eb 58%, #ebd9df 100%);
+  border: 1.5px solid #dabbc5;
+  border-radius: 22px 16px 24px 18px;
+  box-shadow: 0 22px 54px rgba(0,0,0,.6), inset 0 0 38px rgba(155, 112, 128, .16);
+}
+.v-paper.paper-sea .v-date-txt { color: #8f5068; }
+.v-paper.paper-sea .v-corner { color: #a86c82; }
+.v-paper.paper-sea .v-textarea,
+.v-paper.paper-sea .v-ruled-text,
+.cinema-paper.paper-sea .cp-txt {
+  font: italic 500 21px/30px var(--serif);
+  background: repeating-linear-gradient(180deg, transparent 0, transparent 29px, rgba(165, 102, 125, .14) 29px, rgba(165, 102, 125, .14) 30px);
+}
+.v-paper.paper-sea .v-seal-btn {
+  background: linear-gradient(135deg, #cc5682, #a83862); color: #fff7fa;
+  box-shadow: 0 6px 16px rgba(184, 67, 107, .32);
+}
+
+/* 3) Gece Mavisi Kart — Altın Gece Mürekkebi */
+.v-paper.paper-night, .cinema-paper.paper-night {
+  color: #f6e8cb;
+  background:
+    radial-gradient(circle at 80% 18%, rgba(255, 215, 140, .12), transparent 42%),
+    linear-gradient(180deg, #111a38 0%, #172449 58%, #0e1630 100%);
+  border: 1px solid rgba(255, 214, 156, .28);
+  box-shadow: 0 24px 58px rgba(0,0,0,.7), inset 0 0 34px rgba(255, 198, 120, .08);
+}
+.v-paper.paper-night .v-corner { color: #e8c488; }
+.v-paper.paper-night .v-date-txt { color: #f0cfa0; }
+.v-paper.paper-night .v-close-btn { color: #f6e8cb; background: rgba(255,255,255,.08); opacity: .85; }
+.v-paper.paper-night .v-textarea,
+.v-paper.paper-night .v-ruled-text,
+.cinema-paper.paper-night .cp-txt {
+  color: #f7ebd2; caret-color: #ff9ec0;
+  font: italic 500 20.5px/30px var(--serif);
+  background: repeating-linear-gradient(180deg, transparent 0, transparent 29px, rgba(255, 222, 173, .12) 29px, rgba(255, 222, 173, .12) 30px);
+}
+.v-paper.paper-night .v-seal-btn {
+  background: linear-gradient(135deg, #f39ab9, #c84b76); color: #fff8fb;
+  box-shadow: 0 6px 18px rgba(200, 75, 118, .38);
+}
+
+/* ---------- Vintage Hatıra Tepsisi: Bantlı Polaroid Fotoğraf & Makaralı Ses Kaseti ---------- */
+.v-scrap-tray {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 14px;
+  padding: 14px 8px 6px; margin-top: 6px;
+}
+.v-photo-stamp {
+  position: relative; width: 132px; margin: 4px 4px; padding: 6px 6px 8px;
+  background: #fffcf6; border-radius: 6px; border: 1px solid rgba(180, 150, 115, .32);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .22);
+  transform: rotate(-2deg); flex: none;
+}
+.v-photo-stamp.reader-photo { width: 196px; padding: 8px 8px 10px; }
+.v-ps-frame {
+  position: relative; width: 100%; aspect-ratio: 1 / 1; border-radius: 3px; overflow: hidden;
+  background: #efe7d8;
+}
+.v-ps-frame img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+  filter: sepia(.1) contrast(1.03);
+}
+.v-ps-rm {
+  position: absolute; right: 5px; top: 5px; width: 24px; height: 24px; border-radius: 50%;
+  background: rgba(24, 16, 22, .72); color: #fff; display: grid; place-items: center;
+  backdrop-filter: blur(4px);
+}
+.v-ps-cap {
+  display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 5px;
+  font: italic 600 12.5px/1 var(--serif); color: #7c5264;
+}
+/* Pembe-krem desenli kağıt bantlar (kesilmeyecek payla yerleştirilmiş) */
+.v-washi {
+  position: absolute; top: -7px; width: 38px; height: 13px; border-radius: 2px; z-index: 3;
+  background: repeating-linear-gradient(45deg, rgba(255, 178, 204, .78) 0 4px, rgba(255, 226, 236, .78) 4px 8px);
+  border: 1px solid rgba(215, 130, 160, .32);
+  box-shadow: 0 2px 4px rgba(0,0,0,.1);
+}
+.v-washi.left { left: -8px; transform: rotate(-24deg); }
+.v-washi.right { right: -8px; transform: rotate(22deg); }
+
+/* Dönen Makaralı Vintage Ses Kaseti Kartı */
+.v-cassette {
+  position: relative; flex: 1 1 175px; max-width: 240px; padding: 9px 11px;
+  border-radius: 14px; background: linear-gradient(180deg, #faf3e6 0%, #efe1c8 100%);
+  border: 1px solid rgba(155, 118, 78, .36); color: #4a3220;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .16), inset 0 1px 0 rgba(255,255,255,.7);
+}
+.v-paper.paper-night .v-cassette {
+  background: linear-gradient(180deg, #1d2b54 0%, #152042 100%);
+  border-color: rgba(255, 214, 156, .3); color: #f6e7ca;
+  box-shadow: 0 8px 20px rgba(0,0,0,.35);
+}
+.cas-top {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  padding: 4px 8px; border-radius: 8px; margin-bottom: 8px;
+  background: rgba(0, 0, 0, .06); border: 1px solid rgba(120, 82, 48, .15);
+}
+.v-paper.paper-night .cas-top { background: rgba(0, 0, 0, .24); border-color: rgba(255,255,255,.1); }
+.cas-lbl {
+  font: 700 9.5px/1 var(--sans); letter-spacing: .12em; opacity: .75;
+}
+.v-cassette.spinning .cas-reel {
+  animation: casSpin 2.2s linear infinite;
+}
+@keyframes casSpin { to { transform: rotate(360deg); } }
+.cas-rm {
+  width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center;
+  background: rgba(0,0,0,.1); color: inherit;
+}
+.cas-bot { display: flex; align-items: center; gap: 8px; }
+.cas-play {
+  width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; flex: none;
+  background: #c84b76; color: #fff; box-shadow: 0 3px 8px rgba(200, 75, 118, .3);
+}
+.cas-bars { display: flex; align-items: center; gap: 2px; height: 22px; flex: 1; min-width: 0; overflow: hidden; }
+.cas-bars i {
+  flex: 1; min-width: 2px; border-radius: 2px; background: currentColor; opacity: .3; transition: opacity .15s;
+}
+.cas-bars i.on { opacity: .95; color: #c84b76; }
+.cas-dur { font: 600 11.5px/1 var(--sans); font-variant-numeric: tabular-nums; opacity: .82; flex: none; }
+.cas-rec-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: #e04668; flex: none;
+  animation: breathe 1s infinite;
+}
+.cas-stop {
+  height: 26px; padding: 0 11px; border-radius: 999px; background: #e04668; color: #fff;
+  font: 600 11.5px/1 var(--sans);
+}
+
+/* Tek Satır Kompakt Alt Araç + Gönder Çubuğu */
 .v-writer-foot {
-  display: flex; align-items: center; justify-content: flex-end;
-  margin-top: 12px; padding-top: 10px;
+  display: flex; align-items: center; gap: 7px;
+  margin-top: 8px; padding-top: 10px;
+  border-top: 1px dashed rgba(120, 82, 48, .2);
   flex: 0 0 auto;
 }
-.v-seal-btn {
-  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 18px;
-  border-radius: 999px; background: #3c5ba8; color: #f8f3e8;
-  font: 600 13.5px/1 var(--sans); box-shadow: 0 6px 16px rgba(60, 91, 168, .32);
+.v-paper.paper-night .v-writer-foot { border-top-color: rgba(255, 214, 156, .2); }
+.v-tool-pill {
+  height: 38px; padding: 0 11px; border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 5px;
+  background: rgba(0, 0, 0, .055); border: 1px solid rgba(120, 82, 48, .2);
+  font: 600 12px/1 var(--sans); color: inherit; cursor: pointer; flex: none;
 }
-.v-paper.persona-beto .v-seal-btn {
-  background: #b8436b; color: #fff6f9;
-  box-shadow: 0 6px 16px rgba(184, 67, 107, .32);
+.v-paper.paper-night .v-tool-pill {
+  background: rgba(255, 255, 255, .07); border-color: rgba(255, 214, 156, .22);
+}
+.v-tool-pill.on {
+  background: rgba(224, 70, 104, .16); border-color: #e04668; color: #b92b4c;
+}
+.v-paper.paper-night .v-tool-pill.on { color: #ffadcc; }
+.v-seal-btn {
+  display: inline-flex; align-items: center; gap: 7px; height: 42px; padding: 0 16px;
+  border-radius: 999px; background: #8e3b52; color: #fdf4ea;
+  font: 600 13px/1 var(--sans); flex: none;
 }
 .v-seal-btn:disabled { opacity: .4; box-shadow: none; }
 
-.v-reader { max-height: 76vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-.v-title { margin: 2px 0 10px; font: italic 700 24px/1.2 var(--serif); }
+.v-reader { max-height: 78vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .v-ruled-text {
-  min-height: 180px;
-  background: repeating-linear-gradient(180deg, transparent 0, transparent 29px, rgba(120, 88, 56, .14) 29px, rgba(120, 88, 56, .14) 30px);
-  font: italic 500 20px/30px var(--serif); word-break: break-word;
-}
-.v-paper.persona-beto .v-ruled-text {
-  background: repeating-linear-gradient(180deg, transparent 0, transparent 29px, rgba(165, 95, 120, .14) 29px, rgba(165, 95, 120, .14) 30px);
+  min-height: 120px; word-break: break-word;
 }
 .v-paper-foot {
-  display: flex; align-items: center; justify-content: flex-end; margin-top: 16px;
+  display: flex; align-items: center; justify-content: flex-end; margin-top: 14px;
 }
 .v-sign { font: italic 600 19px/1 var(--serif); opacity: .78; }
 .v-del-btn {
-  width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
+  width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
   color: #9a3e38; background: rgba(154, 62, 56, .08);
 }
 
-html.kb-open .v-paper { padding-top: 16px; padding-bottom: 12px; }
-html.kb-open .v-lines-wrap { min-height: 120px; max-height: 180px; }
-html.kb-open .v-textarea { min-height: 120px; }
+html.kb-open .sheet.v-sheet { padding-top: 14px; padding-bottom: 8px; }
+html.kb-open .v-paper { padding: 14px 14px 10px; max-height: calc(100vh - var(--kb, 260px) - var(--safe-t) - 22px); }
+html.kb-open .v-mood-sec { margin-bottom: 6px; }
+html.kb-open .v-sec-lbl { display: none; }
+html.kb-open .v-mood-chip { height: 28px; font-size: 11px; }
+html.kb-open .v-textarea { min-height: 84px; }
 
-/* ---------- Şişe & Kağıt Seçimi Atölyesi + Mum/Ateş Böceği Atmosferi + Vintage Medya ---------- */
-.sheet.candle-sheet {
-  overflow: visible;
-}
+/* Şişe & Kağıt Seçimi Atölyesi */
 .atelier-sheet {
-  position: relative; display: flex; flex-direction: column; gap: 12px;
-  padding: 6px 2px 4px; color: var(--text); overflow: hidden;
+  position: relative; z-index: 2; display: flex; flex-direction: column; gap: 12px;
+  padding: 6px 2px 4px; color: var(--text);
 }
-.atelier-head {
-  display: flex; align-items: center; gap: 8px;
-}
+.atelier-head { display: flex; align-items: center; gap: 8px; }
 .atelier-bow { display: inline-flex; filter: drop-shadow(0 3px 8px rgba(255, 143, 182, .35)); }
 .atelier-title { font: italic 600 28px/1.1 var(--serif); flex: 1; }
 .atelier-lbl {
   font: 600 11px/1 var(--sans); letter-spacing: .08em; text-transform: uppercase;
   color: var(--eyebrow, var(--text-2)); margin-top: 2px;
 }
-.atelier-bottles {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
-}
+.atelier-bottles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .at-btl-card {
   display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px;
-  padding: 10px 6px 10px; border-radius: 18px;
+  padding: 10px 6px; border-radius: 18px;
   background: rgba(255, 255, 255, .045); border: 1.5px solid var(--glass-line);
   color: var(--text); transition: transform .2s var(--e-out), border-color .2s, background .2s;
 }
@@ -733,9 +976,7 @@ html.kb-open .v-textarea { min-height: 120px; }
   border-color: #ff9ec0; background: rgba(255, 158, 192, .13);
   transform: translateY(-2px); box-shadow: 0 10px 24px rgba(0,0,0,.28);
 }
-.at-btl-prev {
-  position: relative; width: 68px; height: 100px; display: grid; place-items: center;
-}
+.at-btl-prev { position: relative; width: 68px; height: 100px; display: grid; place-items: center; }
 .at-btl-prev .btl-bow { top: 12px; transform: scale(.68); }
 .at-btl-prev .btl-charm { display: none; }
 .at-btl-card b { font: 600 12px/1.2 var(--sans); }
@@ -761,225 +1002,6 @@ html.kb-open .v-textarea { min-height: 120px; }
 .at-pap-tx b { font: 600 13.5px/1.2 var(--sans); }
 .at-pap-tx i { font: 400 11.5px/1.2 var(--sans); opacity: .78; font-style: normal; }
 .atelier-go { height: 48px; margin-top: 2px; }
-
-/* Mum / Gece Modu Atmosferi & Ateş Böcekleri */
-.v-sheet-wrap { position: relative; }
-.candle-aura {
-  position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: 0;
-  background:
-    radial-gradient(circle at 50% 18%, rgba(255, 184, 92, .22), rgba(255, 140, 56, .06) 46%, rgba(6, 8, 18, .78) 85%);
-  transition: opacity .45s ease;
-}
-.v-sheet-wrap.candle-on .candle-aura {
-  opacity: 1; animation: candleBreath 4.2s ease-in-out infinite;
-}
-@keyframes candleBreath {
-  0%, 100% { filter: brightness(1); }
-  50% { filter: brightness(1.08); }
-}
-.candle-fireflies { position: absolute; inset: -18px; pointer-events: none; z-index: 6; overflow: hidden; }
-.candle-fireflies i {
-  position: absolute; width: 5px; height: 5px; border-radius: 50%;
-  background: radial-gradient(circle, #fffef4 0%, #ffd97d 52%, rgba(255, 195, 85, 0) 100%);
-  box-shadow: 0 0 10px rgba(255, 212, 112, .85);
-  animation: fireflyDrift 4.8s ease-in-out infinite;
-}
-@keyframes fireflyDrift {
-  0%, 100% { opacity: .12; transform: translate3d(0, 6px, 0) scale(.65); }
-  45% { opacity: .95; transform: translate3d(10px, -12px, 0) scale(1.2); }
-  75% { opacity: .55; transform: translate3d(-8px, -20px, 0) scale(.9); }
-}
-
-/* 3 Kağıt Dokusu & Uyumlu Yazı Tipi */
-.v-top-bow {
-  position: absolute; left: 50%; top: -15px; transform: translateX(-50%); z-index: 5;
-  pointer-events: none; filter: drop-shadow(0 4px 8px rgba(0,0,0,.25));
-}
-
-/* 1) Saman Kağıdı — Daktilo Hissi */
-.v-paper.paper-straw, .cinema-paper.paper-straw {
-  color: #382614;
-  background:
-    radial-gradient(circle at 20% 30%, rgba(145, 102, 52, .08) 0 1px, transparent 1.5px) 0 0 / 18px 18px,
-    linear-gradient(180deg, #efe0be 0%, #e5cfa4 56%, #dbc08e 100%);
-  border: 1px solid #c4a46e;
-  box-shadow: 0 22px 54px rgba(0,0,0,.55), inset 0 0 42px rgba(128, 86, 38, .22);
-}
-.v-paper.paper-straw .v-textarea,
-.v-paper.paper-straw .v-ruled-text,
-.cinema-paper.paper-straw .cp-txt {
-  font: 500 15.5px/30px ui-monospace, "Courier New", Courier, monospace;
-  letter-spacing: .01em;
-  background: repeating-linear-gradient(180deg, transparent 0, transparent 29px, rgba(112, 78, 40, .16) 29px, rgba(112, 78, 40, .16) 30px);
-}
-
-/* 2) Islak Kenarlı Mektup Kağıdı — El Yazısı Hissi */
-.v-paper.paper-sea, .cinema-paper.paper-sea {
-  color: #3d222e;
-  background:
-    radial-gradient(ellipse at 0% 50%, rgba(175, 198, 215, .18), transparent 36%),
-    radial-gradient(ellipse at 100% 20%, rgba(235, 185, 202, .2), transparent 38%),
-    linear-gradient(180deg, #fcf6f5 0%, #f4e8eb 58%, #ebd9df 100%);
-  border: 1.5px solid #dabbc5;
-  border-radius: 22px 16px 24px 18px;
-  box-shadow: 0 22px 54px rgba(0,0,0,.55), inset 0 0 38px rgba(155, 112, 128, .18);
-}
-.v-paper.paper-sea .v-textarea,
-.v-paper.paper-sea .v-ruled-text,
-.cinema-paper.paper-sea .cp-txt {
-  font: italic 500 21.5px/30px var(--serif);
-  background: repeating-linear-gradient(180deg, transparent 0, transparent 29px, rgba(165, 102, 125, .15) 29px, rgba(165, 102, 125, .15) 30px);
-}
-
-/* 3) Gece Mavisi Kart — Sıcak Gece Mürekkebi */
-.v-paper.paper-night, .cinema-paper.paper-night {
-  color: #f6e8cb;
-  background:
-    radial-gradient(circle at 80% 18%, rgba(255, 215, 140, .12), transparent 42%),
-    linear-gradient(180deg, #111a38 0%, #172449 58%, #0e1630 100%);
-  border: 1px solid rgba(255, 214, 156, .28);
-  box-shadow: 0 24px 58px rgba(0,0,0,.68), inset 0 0 34px rgba(255, 198, 120, .08);
-}
-.v-paper.paper-night .v-corner { color: #e8c488; }
-.v-paper.paper-night .v-date-txt { color: #f0cfa0; }
-.v-paper.paper-night .v-close-btn { color: #f6e8cb; background: rgba(255,255,255,.08); opacity: .85; }
-.v-paper.paper-night .v-textarea,
-.v-paper.paper-night .v-ruled-text,
-.cinema-paper.paper-night .cp-txt {
-  color: #f7ebd2; caret-color: #ff9ec0;
-  font: italic 500 20.5px/30px var(--serif);
-  background: repeating-linear-gradient(180deg, transparent 0, transparent 29px, rgba(255, 222, 173, .12) 29px, rgba(255, 222, 173, .12) 30px);
-}
-.v-paper.paper-night .v-seal-btn {
-  background: linear-gradient(135deg, #f39ab9, #c84b76); color: #fff8fb;
-  box-shadow: 0 6px 18px rgba(200, 75, 118, .38);
-}
-
-/* Mum Işığı Açıkken Sıcak Kehribar Dokunuşu */
-.v-sheet-wrap.candle-on .v-paper.paper-straw,
-.v-sheet-wrap.candle-on .v-paper.paper-sea {
-  box-shadow: 0 22px 56px rgba(0,0,0,.62), 0 0 36px rgba(255, 182, 92, .18), inset 0 0 44px rgba(196, 128, 52, .22);
-}
-
-.v-head-r { display: inline-flex; align-items: center; gap: 6px; }
-.v-candle-btn {
-  display: inline-flex; align-items: center; gap: 4px; height: 30px; padding: 0 10px;
-  border-radius: 999px; font: 600 11.5px/1 var(--sans);
-  background: rgba(0,0,0,.06); color: inherit; opacity: .72;
-}
-.v-paper.paper-night .v-candle-btn { background: rgba(255,255,255,.08); }
-.v-candle-btn.on {
-  background: rgba(255, 176, 76, .24); color: #8c4a0e; opacity: 1;
-}
-.v-paper.paper-night .v-candle-btn.on {
-  background: rgba(255, 196, 108, .22); color: #ffdca0;
-}
-
-/* Çoklu Ruh Hali Seçici */
-.v-mood-sec { margin-bottom: 10px; flex: 0 0 auto; }
-.v-sec-lbl {
-  font: 600 11px/1.2 var(--sans); opacity: .72; margin-bottom: 6px;
-}
-.v-sec-lbl i { font-weight: 400; font-style: italic; opacity: .85; }
-.v-moods {
-  display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px;
-  scrollbar-width: none; touch-action: pan-x;
-}
-.v-moods::-webkit-scrollbar { display: none; }
-.v-mood {
-  flex: none; height: 31px; padding: 0 11px; border-radius: 999px;
-  border: 1px solid currentColor; opacity: .58; background: transparent;
-  font: 600 12px/1 var(--sans); color: inherit; transition: opacity .18s, background .18s, transform .18s;
-}
-.v-mood.on {
-  opacity: 1; background: rgba(216, 79, 128, .16); border-color: #d84f80; color: #982650;
-  transform: translateY(-1px);
-}
-.v-paper.paper-night .v-mood.on {
-  background: rgba(255, 158, 192, .22); border-color: #ff9ec0; color: #ffd9e7;
-}
-.v-mood-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-.v-mbadge {
-  display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px;
-  background: rgba(216, 79, 128, .13); border: 1px solid rgba(216, 79, 128, .3);
-  font: 600 11.5px/1 var(--sans);
-}
-.v-paper.paper-night .v-mbadge {
-  background: rgba(255, 158, 192, .16); border-color: rgba(255, 158, 192, .36); color: #ffe0ec;
-}
-
-/* Bantla Yapıştırılmış Vintage Polaroid Fotoğraf + Pembe Kurdele */
-.v-polaroid {
-  position: relative; width: 176px; margin: 8px auto 14px; padding: 8px 8px 22px;
-  background: #fbf7ef; border-radius: 4px;
-  box-shadow: 0 10px 24px rgba(0,0,0,.26);
-  transform: rotate(-2deg);
-}
-.v-polaroid img {
-  width: 100%; aspect-ratio: 4 / 4; object-fit: cover; border-radius: 2px; display: block;
-  filter: sepia(.12) contrast(1.03);
-}
-.v-tape {
-  position: absolute; top: -8px; width: 46px; height: 16px;
-  background: rgba(244, 226, 186, .76); border: 1px solid rgba(185, 156, 108, .35);
-  box-shadow: 0 2px 5px rgba(0,0,0,.12);
-}
-.v-tape.left { left: -10px; transform: rotate(-22deg); }
-.v-tape.right { right: -10px; transform: rotate(20deg); }
-.v-pol-bow { position: absolute; left: 50%; bottom: -9px; transform: translateX(-50%); pointer-events: none; }
-.v-pol-rm {
-  position: absolute; right: -8px; top: -8px; width: 26px; height: 26px; border-radius: 50%;
-  background: #2a1d24; color: #fff; display: grid; place-items: center;
-  box-shadow: 0 4px 10px rgba(0,0,0,.3);
-}
-.v-pol-rm.inline { position: static; flex: none; background: rgba(0,0,0,.12); color: inherit; box-shadow: none; }
-.v-paper.paper-night .v-pol-rm.inline { background: rgba(255,255,255,.12); }
-
-/* Vintage Kaset / Ses Kaydı Şeridi */
-.v-tape-player {
-  display: flex; align-items: center; gap: 10px; margin: 10px 0 6px; padding: 9px 12px;
-  border-radius: 14px; background: rgba(0,0,0,.06); border: 1px dashed rgba(120, 82, 48, .28);
-}
-.v-paper.paper-night .v-tape-player {
-  background: rgba(255,255,255,.07); border-color: rgba(255, 214, 156, .28);
-}
-.v-play-btn {
-  width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; flex: none;
-  background: #b8436b; color: #fff;
-}
-.v-tape-bars { display: flex; align-items: center; gap: 2.5px; height: 28px; flex: 1; min-width: 0; overflow: hidden; }
-.v-tape-bars i {
-  flex: 1; min-width: 2px; border-radius: 2px; background: currentColor; opacity: .32; transition: opacity .15s;
-}
-.v-tape-bars i.on { opacity: .92; color: #d84f80; }
-.v-tape-dur { font: 600 12px/1 var(--sans); font-variant-numeric: tabular-nums; opacity: .78; flex: none; }
-.v-rec-dot {
-  width: 9px; height: 9px; border-radius: 50%; background: #e04668; flex: none;
-  animation: breathe 1.1s infinite;
-}
-.v-rec-txt { font: 600 12.5px/1 var(--sans); flex: 1; }
-.v-stop-btn {
-  height: 30px; padding: 0 12px; border-radius: 999px; background: #e04668; color: #fff;
-  font: 600 12px/1 var(--sans);
-}
-
-/* Alt Medya Ekleme Çubuğu */
-.v-media-bar {
-  display: flex; gap: 8px; margin-top: 10px; padding-top: 8px;
-  border-top: 1px dashed rgba(120, 82, 48, .2); flex: 0 0 auto;
-}
-.v-paper.paper-night .v-media-bar { border-top-color: rgba(255, 214, 156, .2); }
-.v-attach-btn {
-  flex: 1; min-height: 38px; padding: 0 10px; border-radius: 12px;
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  background: rgba(0,0,0,.055); border: 1px solid rgba(120, 82, 48, .18);
-  font: 600 12px/1 var(--sans); color: inherit; cursor: pointer;
-}
-.v-paper.paper-night .v-attach-btn {
-  background: rgba(255,255,255,.07); border-color: rgba(255, 214, 156, .22);
-}
-.v-attach-btn.on { background: rgba(224, 70, 104, .18); border-color: #e04668; color: #b92b4c; }
-.v-paper.paper-night .v-attach-btn.on { color: #ffadcc; }
 
 /* ---------- Mektubu Sarma -> Şişeye Koyma -> Denize Fırlatma Sinematiği ---------- */
 .cast-cinema {
