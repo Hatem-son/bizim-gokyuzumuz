@@ -57,6 +57,7 @@
 .text-pane { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; overflow: hidden; }
 .quick { display: flex; gap: 8px; overflow-x: auto; margin: 0 -20px 10px; padding: 0 20px 2px; scrollbar-width: none; touch-action: pan-x; flex: 0 0 auto; }
 .quick::-webkit-scrollbar { display: none; }
+.quick .chip { flex: 0 0 146px; min-width: 146px; min-height: 44px; height: 44px; padding: 0 12px; justify-content: center; text-align: center; font-size: 14px; white-space: nowrap; }
 .write-wrap {
   display: flex; flex-direction: column; width: 100%; min-height: 0; flex: 1 1 auto; overflow: hidden;
   border-radius: var(--r-m); background: rgba(255, 255, 255, .045); border: 1px solid var(--glass-line);
@@ -86,7 +87,7 @@ html.kb-open .compose .avatar { width: 32px; height: 32px; }
 html.kb-open .compose [data-seg] { display: none; }
 html.kb-open .compose .c-body { margin-top: 4px; }
 html.kb-open .compose .quick { margin-bottom: 8px; }
-html.kb-open .compose .quick .chip { min-height: 36px; height: 36px; padding: 0 12px; font-size: 12.5px; }
+html.kb-open .compose .quick .chip { flex: 0 0 146px; min-width: 146px; min-height: 42px; height: 42px; padding: 0 12px; font-size: 14px; }
 html.kb-open .compose .c-foot { margin-top: 8px; }
 html.kb-open .compose .c-foot .chip, html.kb-open .compose .c-foot .send { min-height: 44px; height: 44px; }
 html.kb-open .compose .lockline { display: none; }

@@ -722,7 +722,10 @@ engine.add((now, dt, s) => {
   if (ocean.frame(now, sx, s.daylight, reduceMotion)) engine.busy(200);
   if (fx.frame(now, dt)) engine.busy(200);
   if (now > nextMeteor) {
-    if (s.starVis[1] > 0.6 && engine.weather.cloud < 0.4) fx.decorative(now);
+    if (s.starVis[1] > 0.6 && engine.weather.cloud < 0.4) {
+      fx.decorative(now);
+      engine.busy(1100);
+    }
     nextMeteor = now + 40_000 + Math.random() * 60_000;
   }
 

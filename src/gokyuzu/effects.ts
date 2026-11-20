@@ -53,15 +53,15 @@ export class Effects {
     this.list.push({ a: target, b: target, t0: o.now - 1150, dur: 1150, incoming: true, tint: o.tint, dim: 1, settle: o.onSettle, landed: false, hist: [] });
   }
 
-  /** Dekoratif meteor (gece, açık hava; 45–120 sn'de bir). */
+  /** Dekoratif meteor (gece, açık hava; 40–100 sn'de bir). */
   decorative(now: number) {
     const W = this.view.w, H = this.view.h;
-    const a = { x: W * (0.1 + this.r() * 0.8), y: H * (0.04 + this.r() * 0.25) };
+    const a = { x: W * (0.12 + this.r() * 0.76), y: H * (0.05 + this.r() * 0.24) };
     const dir = this.r() < 0.5 ? -1 : 1;
-    const len = 110 + this.r() * 140;
-    const ang = (18 + this.r() * 30) * (Math.PI / 180);
+    const len = 130 + this.r() * 140;
+    const ang = (18 + this.r() * 28) * (Math.PI / 180);
     const b = { x: a.x + Math.cos(ang) * len * dir, y: a.y + Math.sin(ang) * len };
-    this.list.push({ a, b, t0: now, dur: 420 + this.r() * 380, incoming: false, tint: '#e9fff3', dim: 1, landed: false, hist: [] });
+    this.list.push({ a, b, t0: now, dur: 650 + this.r() * 350, incoming: false, tint: '#e9fff3', dim: 1, landed: false, hist: [] });
   }
 
   frame(now: number, _dt: number): boolean {
@@ -72,7 +72,7 @@ export class Effects {
     for (const m of this.list) m.incoming ? this.drawIncoming(m, now) : this.drawMeteor(m, now);
     c.globalCompositeOperation = 'source-over';
     c.globalAlpha = 1;
-    this.list = this.list.filter((m) => now - m.t0 < m.dur + (m.incoming ? 1300 : 500));
+    this.list = this.list.filter((m) => now - m.t0 < m.dur + (m.incoming ? 1300 : 60));
     return true;
   }
 
@@ -116,25 +116,33 @@ export class Effects {
 
   private drawMeteor(m: Meteor, now: number) {
     const c = this.ctx;
-    const t = (now - m.t0) / m.dur;
-    if (t <= 1) {
-      const p = { x: lerp(m.a.x, m.b.x, t), y: lerp(m.a.y, m.b.y, t) };
-      // parlaklık eğrisi: belirir, ortada parlar, söner
-      const br = Math.sin(Math.PI * clamp(t)) ** 0.7;
-      this.trail(m, p, 90, br, '#f2fff8');
-      c.globalAlpha = br;
-      c.drawImage(glow('#d8ffe8', 10), p.x - 10, p.y - 10, 20, 20);
-    } else {
-      // kalıcı iz (train): çok soluk, kısa süre
-      const k = 1 - (now - m.t0 - m.dur) / 500;
-      c.globalAlpha = 0.12 * k;
-      c.strokeStyle = '#dfe8ff';
-      c.lineWidth = 1;
+    const t = clamp((now - m.t0) / m.dur);
+    if (t >= 1) return;
+    const headT = ease.outCubic(t);
+    const tailT = Math.max(0, headT - lerp(0.36, 0.06, t));
+    const p = { x: lerp(m.a.x, m.b.x, headT), y: lerp(m.a.y, m.b.y, headT) };
+    const q = { x: lerp(m.a.x, m.b.x, tailT), y: lerp(m.a.y, m.b.y, tailT) };
+    const br = Math.sin(Math.PI * t) ** 0.65;
+    const dx = p.x - q.x, dy = p.y - q.y;
+    const len = Math.hypot(dx, dy);
+    if (len > 1) {
+      const nx = -dy / len, ny = dx / len;
+      const g = c.createLinearGradient(p.x, p.y, q.x, q.y);
+      g.addColorStop(0, rgba('#ffffff', 0.95 * br));
+      g.addColorStop(0.28, rgba('#d8ffe8', 0.45 * br));
+      g.addColorStop(1, rgba('#d8ffe8', 0));
+      c.globalAlpha = 1;
+      c.fillStyle = g;
       c.beginPath();
-      c.moveTo(lerp(m.a.x, m.b.x, 0.35), lerp(m.a.y, m.b.y, 0.35));
-      c.lineTo(lerp(m.a.x, m.b.x, 0.85), lerp(m.a.y, m.b.y, 0.85));
-      c.stroke();
+      c.moveTo(p.x + nx * 1.4, p.y + ny * 1.4);
+      c.lineTo(q.x + nx * 0.15, q.y + ny * 0.15);
+      c.lineTo(q.x - nx * 0.15, q.y - ny * 0.15);
+      c.lineTo(p.x - nx * 1.4, p.y - ny * 1.4);
+      c.closePath();
+      c.fill();
     }
+    c.globalAlpha = br;
+    c.drawImage(glow('#e6fff2', 12), p.x - 10, p.y - 10, 20, 20);
   }
 
   private drawIncoming(m: Meteor, now: number) {

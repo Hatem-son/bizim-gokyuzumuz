@@ -23,12 +23,12 @@ const E = 'cubic-bezier(.22,.8,.24,1)';
 
 export function runAuth(app: HTMLElement, onDone: () => void) {
   const el = h(`<div class="auth">
-    <div class="brand"><div class="display">Bizim Gökyüzümüz</div><div class="sub" data-sub>İkimizin gökyüzü</div></div>
+    <div class="brand"><div class="sub" data-sub>İkimizin gökyüzü</div></div>
     <div class="stage" data-stage></div></div>`);
   app.appendChild(el);
   const stage = $('[data-stage]', el);
   const sub = $('[data-sub]', el);
-  [$('.display', el), sub].forEach((x, i) =>
+  [sub].forEach((x, i) =>
     x.animate([{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], {
       duration: 900,
       delay: 200 + i * 180,
@@ -206,8 +206,8 @@ export const faceAuth = {
  *  Okuyamazsa/iptal edilirse doğrudan ŞİFRE sayfası açılır (giriş akışı değil). */
 export function runLock(app: HTMLElement, onDone: () => void) {
   const el = h(`<div class="auth lock" style="justify-content:center">
-    <div class="center" style="margin-top:-60px"><div class="display" style="font-size:42px">Bizim Gökyüzümüz</div>
-    <div style="font:italic 500 19px var(--serif);color:var(--text-2);margin-top:10px">${greeting()}</div></div>
+    <div class="center" style="margin-top:-60px">
+    <div style="font:italic 500 22px var(--serif);color:var(--text-2)">${greeting()}</div></div>
     <div style="position:absolute;left:24px;right:24px;bottom:calc(var(--safe-b) + 28px)" class="center">
       <button type="button" class="faceid glass press" data-f aria-label="Face ID ile aç">${I.face(36)}</button>
       <div class="small" data-st>Face ID</div>
@@ -272,7 +272,7 @@ export function runLock(app: HTMLElement, onDone: () => void) {
 /** Kilitten şifreyle giriş: SADECE şifre sayfası. Kişi zaten bilinir; "Kimsin?" ve gizli kelime YOK. */
 export function runPasswordUnlock(app: HTMLElement, onDone: () => void) {
   const el = h(`<div class="auth pwlock">
-    <div class="brand"><div class="display">Bizim Gökyüzümüz</div><div class="sub">${greeting()}</div></div>
+    <div class="brand"><div class="sub">${greeting()}</div></div>
     <div class="stage"><form novalidate>
       <div class="eyebrow" style="margin:0 4px 10px">Şifren</div>
       <div class="field"><input type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false" enterkeyhint="go" placeholder="Şifren">
