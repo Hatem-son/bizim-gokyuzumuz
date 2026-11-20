@@ -692,3 +692,53 @@ html.kb-open .v-paper { padding-top: 16px; padding-bottom: 12px; }
 html.kb-open .v-lines-wrap { min-height: 120px; max-height: 180px; }
 html.kb-open .v-textarea { min-height: 120px; }
 
+/* ---------- Mektubu Sarma -> Şişeye Koyma -> Denize Fırlatma Sinematiği ---------- */
+.cast-cinema {
+  position: fixed; inset: 0; z-index: 95; pointer-events: none; overflow: hidden;
+  background: radial-gradient(circle at 50% 45%, rgba(6, 10, 26, .42), rgba(4, 6, 16, .18));
+}
+.cinema-paper {
+  position: absolute; border-radius: 16px; padding: 22px; overflow: hidden;
+  background: linear-gradient(180deg, #f8f0df 0%, #ead6b3 100%);
+  border: 1px solid #ceb488; color: #3a2919;
+  box-shadow: 0 22px 48px rgba(0,0,0,.5);
+  transform-origin: 50% 0%; will-change: transform, clip-path, opacity;
+}
+.cinema-paper.persona-beto {
+  background: linear-gradient(180deg, #fcf3f5 0%, #edd6de 100%);
+  border-color: #dab2c0; color: #3f222d;
+}
+.cinema-paper .cp-txt {
+  font: italic 500 18px/26px var(--serif); opacity: .78;
+  background: repeating-linear-gradient(180deg, transparent 0, transparent 25px, rgba(120, 88, 56, .14) 25px, rgba(120, 88, 56, .14) 26px);
+}
+.cinema-paper .cp-roller {
+  position: absolute; left: -4px; right: -4px; height: 24px; border-radius: 999px;
+  background: linear-gradient(180deg, #fffaf0 0%, #e4cfa8 55%, #bfa071 100%);
+  box-shadow: 0 -4px 12px rgba(0,0,0,.22), 0 6px 14px rgba(0,0,0,.28);
+}
+.cinema-paper.persona-beto .cp-roller {
+  background: linear-gradient(180deg, #fff7f9 0%, #eed2dc 55%, #cfa2b2 100%);
+}
+.cinema-scroll {
+  position: absolute; z-index: 3; filter: drop-shadow(0 12px 24px rgba(0,0,0,.45));
+  will-change: transform, opacity;
+}
+.cinema-bottle {
+  position: absolute; width: 168px; height: 248px; z-index: 2;
+  filter: drop-shadow(0 20px 38px rgba(0,0,0,.55));
+  will-change: transform, opacity;
+}
+.cinema-inner-scroll {
+  position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%) rotate(8deg) scale(1.25);
+  z-index: 2;
+}
+.sea-crown {
+  position: absolute; left: 0; top: 0; pointer-events: none;
+  filter: drop-shadow(0 0 12px rgba(190, 232, 255, .45));
+}
+.sea-ring {
+  position: absolute; left: 0; top: 4px; width: 92px; height: 20px; border-radius: 50%;
+  border: 1.6px solid rgba(215, 244, 255, .65); pointer-events: none;
+}
+

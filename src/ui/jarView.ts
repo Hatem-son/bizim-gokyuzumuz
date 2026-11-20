@@ -237,7 +237,6 @@ export function openDiaryJar(): void {
   const cvBack = $<HTMLCanvasElement>('[data-cv-back]', el);
   const cvFront = $<HTMLCanvasElement>('[data-cv-front]', el);
   const actorEl = $('[data-actor]', el);
-  const bottleEl = $('[data-bottle]', el);
   const rippleEl = $('[data-ripple]', el);
   const notesEl = $('[data-notes]', el);
   const sparksEl = $('[data-sparks]', el);
@@ -518,72 +517,215 @@ export function openDiaryJar(): void {
     renderList();
   });
 
-  const playCastIntoSea = async (who: 'hamham' | 'beto') => {
+  const playCastIntoSea = async (
+    who: 'hamham' | 'beto',
+    fromRect: DOMRect,
+    snippetText: string,
+  ) => {
     if (reduced()) return;
     castingAnim = true;
+    const root = document.getElementById('app') || document.body;
+    const ribbonCol = who === 'beto' ? '#f0749e' : '#739dff';
+    const sealCol = who === 'beto' ? '#c84b76' : '#436cd4';
+    const stage = h(`<div class="cast-cinema" aria-hidden="true"></div>`);
+    root.appendChild(stage);
+
     try {
-      const cork = $('.btl-cork', bottleEl) as HTMLElement | null;
-      await actorEl.animate(
-        [
-          { transform: actorEl.style.transform || 'none' },
-          { transform: 'translate3d(0, -34px, 0) rotate(0deg)' },
-        ],
-        { duration: 280, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'forwards' },
-      ).finished;
+      const rootRect = root.getBoundingClientRect();
+      const cx = rootRect.width * 0.5;
+      const cy = rootRect.height * 0.46;
 
-      cork?.animate(
+      // ---------- AŞAMA 1: Vintage Mektubun Rulo Haline Sarılması ----------
+      const startW = Math.min(320, Math.max(240, fromRect.width));
+      const startH = Math.min(340, Math.max(220, fromRect.height));
+      const pLeft = fromRect.left - rootRect.left + (fromRect.width - startW) * 0.5;
+      const pTop = fromRect.top - rootRect.top + (fromRect.height - startH) * 0.5;
+
+      const paperClone = h(`<div class="cinema-paper ${who === 'beto' ? 'persona-beto' : 'persona-ham'}"
+        style="left:${pLeft}px;top:${pTop}px;width:${startW}px;height:${startH}px">
+        <div class="cp-txt">${escapeHtml(snippetText.slice(0, 140))}</div>
+        <div class="cp-roller"></div>
+      </div>`);
+      stage.appendChild(paperClone);
+
+      const roller = $('.cp-roller', paperClone);
+      roller.animate(
         [
-          { transform: 'translate(0, 0) rotate(0deg)' },
-          { transform: 'translate(-18px, -26px) rotate(-28deg)', offset: 0.28 },
-          { transform: 'translate(-18px, -26px) rotate(-28deg)', offset: 0.76 },
-          { transform: 'translate(0, 0) rotate(0deg)' },
+          { top: '94%', opacity: 0.4, transform: 'scaleY(0.7)' },
+          { top: '50%', opacity: 1, transform: 'scaleY(1.15)', offset: 0.5 },
+          { top: '2%', opacity: 1, transform: 'scaleY(1.25)' },
         ],
-        { duration: 840, easing: 'cubic-bezier(.2,.8,.2,1)' },
+        { duration: 540, easing: 'cubic-bezier(.32,.08,.24,1)', fill: 'forwards' },
       );
 
-      const scrollDrop = h(`<div class="btl-drop-scroll">${rolledScrollSVG(who)}</div>`);
-      bottleEl.appendChild(scrollDrop);
-      await scrollDrop.animate(
+      await paperClone.animate(
         [
-          { opacity: 0, transform: 'translate(-50%, -56px) scale(1.15) rotate(-8deg)' },
-          { opacity: 1, transform: 'translate(-50%, -14px) scale(1) rotate(0deg)', offset: 0.34 },
-          { opacity: 1, transform: 'translate(-50%, 118px) scale(0.95) rotate(4deg)', offset: 0.84 },
-          { opacity: 0, transform: 'translate(-50%, 138px) scale(0.9) rotate(-3deg)' },
+          {
+            transform: 'translate3d(0,0,0) scale(1, 1)',
+            clipPath: 'inset(0% 0% 0% 0% round 16px)',
+          },
+          {
+            transform: `translate3d(${(cx - (pLeft + startW * 0.5)) * 0.6}px, ${(cy - 70 - (pTop + startH * 0.5)) * 0.6}px, 0) scale(0.62, 0.42)`,
+            clipPath: 'inset(0% 14% 48% 14% round 18px)',
+            offset: 0.68,
+          },
+          {
+            transform: `translate3d(${cx - (pLeft + startW * 0.5)}px, ${cy - 86 - (pTop + startH * 0.5)}px, 0) scale(0.14, 0.24)`,
+            clipPath: 'inset(0% 34% 72% 34% round 24px)',
+            opacity: 0,
+          },
         ],
-        { duration: 660, delay: 100, easing: 'cubic-bezier(.22,.82,.28,1)', fill: 'forwards' },
+        { duration: 560, easing: 'cubic-bezier(.3,.06,.2,1)', fill: 'forwards' },
       ).finished;
-      scrollDrop.remove();
+      paperClone.remove();
 
-      const castAnim = actorEl.animate(
+      // Sarılmış rulo + kurdele bağlanma pop'u
+      const bigScroll = h(`<div class="cinema-scroll" style="left:${cx}px;top:${cy - 86}px">
+        <svg viewBox="0 0 36 86" width="34" height="80">
+          <rect x="4" y="3" width="28" height="80" rx="9" fill="${who === 'beto' ? '#faecee' : '#f5e7cb'}" stroke="#ba9c70" stroke-width="1.4"/>
+          <ellipse cx="18" cy="7.5" rx="11" ry="3.6" fill="#dec89f"/>
+          <path class="cs-rib" d="M4 42 H32" stroke="${ribbonCol}" stroke-width="5"/>
+          <circle class="cs-seal" cx="18" cy="42" r="6.5" fill="${sealCol}" stroke="#fff7" stroke-width="1"/>
+        </svg>
+      </div>`);
+      stage.appendChild(bigScroll);
+      await bigScroll.animate(
         [
-          { transform: 'translate3d(0, -34px, 0) rotate(0deg)' },
-          { transform: 'translate3d(0, -58px, 0) rotate(-14deg)', offset: 0.32 },
-          { transform: 'translate3d(0, 22px, 0) rotate(22deg)', offset: 0.72 },
-          { transform: 'translate3d(0, 0px, 0) rotate(13deg)' },
+          { transform: 'translate(-50%, -50%) scale(0.65) rotate(-10deg)', opacity: 0.4 },
+          { transform: 'translate(-50%, -50%) scale(1.14) rotate(4deg)', opacity: 1, offset: 0.65 },
+          { transform: 'translate(-50%, -50%) scale(1) rotate(0deg)', opacity: 1 },
         ],
-        { duration: 660, easing: 'cubic-bezier(.22,.8,.26,1)', fill: 'forwards' },
+        { duration: 240, easing: 'cubic-bezier(.2,1.3,.4,1)', fill: 'forwards' },
+      ).finished;
+
+      // ---------- AŞAMA 2: Şişenin Açılması, Rulonun İçine Girmesi & Tıpanın Kapanması ----------
+      actorEl.style.opacity = '0';
+      const flyBottle = h(`<div class="cinema-bottle" style="left:${cx}px;top:${cy + 36}px">
+        ${seaBottleSVG(who === 'beto')}
+        <div class="cinema-inner-scroll hide">${rolledScrollSVG(who)}</div>
+        ${seaBottleSheenSVG()}
+      </div>`);
+      stage.appendChild(flyBottle);
+      const flyCork = $('.btl-cork', flyBottle) as HTMLElement | null;
+      const innerScroll = $('.cinema-inner-scroll', flyBottle);
+
+      if (flyCork) {
+        flyCork.style.transform = 'translate(-24px, -28px) rotate(-32deg)';
+      }
+      await flyBottle.animate(
+        [
+          { transform: 'translate(-50%, 30px) scale(0.84)', opacity: 0 },
+          { transform: 'translate(-50%, -50%) scale(1.08)', opacity: 1 },
+        ],
+        { duration: 240, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'forwards' },
+      ).finished;
+
+      // Rulo mektup şişenin ağzından içeri kayar
+      await bigScroll.animate(
+        [
+          { transform: 'translate(-50%, -50%) scale(1) rotate(0deg)', opacity: 1 },
+          { transform: 'translate(-50%, 18px) scale(0.66) rotate(2deg)', opacity: 1, offset: 0.55 },
+          { transform: 'translate(-50%, 92px) scale(0.5) rotate(-4deg)', opacity: 0 },
+        ],
+        { duration: 420, easing: 'cubic-bezier(.32,.04,.24,1)', fill: 'forwards' },
+      ).finished;
+      bigScroll.remove();
+      innerScroll.classList.remove('hide');
+
+      // Mantar tıpa hızla kapanır + şişe hafif esner
+      if (flyCork) {
+        await flyCork.animate(
+          [
+            { transform: 'translate(-24px, -28px) rotate(-32deg)' },
+            { transform: 'translate(0, 2px) rotate(0deg)', offset: 0.72 },
+            { transform: 'translate(0, 0) rotate(0deg)' },
+          ],
+          { duration: 220, easing: 'cubic-bezier(.2,1.35,.4,1)', fill: 'forwards' },
+        ).finished;
+      }
+
+      // ---------- AŞAMA 3: Gerilip Bir Anda Denize Fırlatılma & Su Sıçraması ----------
+      const oceanRect = oceanEl.getBoundingClientRect();
+      const targetX = oceanRect.left - rootRect.left + oceanRect.width * 0.5;
+      const targetY = oceanRect.top - rootRect.top + oceanRect.height * 0.56;
+      const dx = targetX - cx;
+      const dy = targetY - (cy + 36);
+
+      const hurlAnim = flyBottle.animate(
+        [
+          // Mevcut konum
+          { transform: 'translate(-50%, -50%) translate3d(0, 0, 0) scale(1.08) rotate(0deg)', opacity: 1 },
+          // Geriye gerilme (fırlatma öncesi)
+          { transform: 'translate(-50%, -50%) translate3d(-24px, 34px, 0) scale(1.22) rotate(-30deg)', opacity: 1, offset: 0.24 },
+          // Yüksek yay çizerek havada dönerek fırlama!
+          { transform: `translate(-50%, -50%) translate3d(${dx * 0.48}px, ${dy - 148}px, 0) scale(0.86) rotate(185deg)`, opacity: 1, offset: 0.64 },
+          // Denize dalış!
+          { transform: `translate(-50%, -50%) translate3d(${dx}px, ${dy + 18}px, 0) scale(0.96) rotate(373deg)`, opacity: 0.96, offset: 0.94 },
+          { transform: `translate(-50%, -50%) translate3d(${dx}px, ${dy + 26}px, 0) scale(0.92) rotate(378deg)`, opacity: 0 },
+        ],
+        { duration: 680, easing: 'cubic-bezier(.26,.08,.22,1)', fill: 'forwards' },
       );
 
+      // Tam suya çarpma anında büyük su tacı + damlalar + dalga halkaları
       window.setTimeout(() => {
-        for (let i = 0; i < 10; i++) {
+        const crown = h(`<svg class="sea-crown" viewBox="0 0 120 54" width="116" height="52">
+          <path d="M12 48 Q26 16 18 8 Q36 28 46 6 Q60 30 74 5 Q84 28 102 8 Q94 18 108 48 Z"
+                fill="rgba(220,244,255,0.55)" stroke="rgba(255,255,255,0.8)" stroke-width="1.2"/>
+        </svg>`);
+        sparksEl.appendChild(crown);
+        crown.animate(
+          [
+            { opacity: 0, transform: 'translate(-50%, 6px) scale(0.4, 0.2)' },
+            { opacity: 1, transform: 'translate(-50%, -26px) scale(1.08, 1.15)', offset: 0.36 },
+            { opacity: 0, transform: 'translate(-50%, -6px) scale(1.35, 0.15)' },
+          ],
+          { duration: 540, easing: 'cubic-bezier(.2,.8,.25,1)', fill: 'forwards' },
+        ).finished.then(() => crown.remove());
+
+        for (let r = 0; r < 2; r++) {
+          const ring = h(`<span class="sea-ring"></span>`);
+          sparksEl.appendChild(ring);
+          ring.animate(
+            [
+              { opacity: 0.85, transform: 'translate(-50%, -50%) scale(0.35)' },
+              { opacity: 0, transform: 'translate(-50%, -50%) scale(2.1)' },
+            ],
+            { duration: 760, delay: r * 130, easing: 'ease-out', fill: 'forwards' },
+          ).finished.then(() => ring.remove());
+        }
+
+        for (let i = 0; i < 14; i++) {
           const drop = h(`<i class="sea-drop"></i>`);
-          const spread = (i - 4.5) * 12;
-          const lift = -26 - Math.random() * 26;
+          const spread = (i - 6.5) * 14 + (Math.random() - 0.5) * 8;
+          const lift = -32 - Math.random() * 38;
           sparksEl.appendChild(drop);
           drop.animate(
             [
-              { opacity: 0.95, transform: 'translate(0, 0) scale(0.7)' },
-              { opacity: 0.9, transform: `translate(${spread * 0.6}px, ${lift}px) scale(1.1)`, offset: 0.45 },
-              { opacity: 0, transform: `translate(${spread}px, 14px) scale(0.4)` },
+              { opacity: 1, transform: 'translate(0, 0) scale(0.8)' },
+              { opacity: 0.92, transform: `translate(${spread * 0.58}px, ${lift}px) scale(1.18)`, offset: 0.44 },
+              { opacity: 0, transform: `translate(${spread}px, 18px) scale(0.35)` },
             ],
-            { duration: 600, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'forwards' },
+            { duration: 660, easing: 'cubic-bezier(.2,.72,.28,1)', fill: 'forwards' },
           ).finished.then(() => drop.remove());
         }
-      }, 420);
+      }, 610);
 
-      await castAnim.finished;
+      await hurlAnim.finished;
+
+      // Şişe suyun altından yüzeye çıkıp dalgalara oturur
+      actorEl.style.opacity = '1';
+      await actorEl.animate(
+        [
+          { transform: 'translate3d(0, 26px, 0) rotate(24deg)' },
+          { transform: 'translate3d(0, -9px, 0) rotate(8deg)', offset: 0.55 },
+          { transform: 'translate3d(0, 0px, 0) rotate(13deg)' },
+        ],
+        { duration: 520, easing: 'cubic-bezier(.22,.85,.3,1)', fill: 'forwards' },
+      ).finished;
       actorEl.getAnimations().forEach((a) => a.cancel());
     } finally {
+      actorEl.style.opacity = '1';
+      stage.remove();
       castingAnim = false;
     }
   };
@@ -791,15 +933,18 @@ export function openDiaryJar(): void {
       const text = ta.value.trim();
       if (!text) return;
       sealBtn.disabled = true;
+      const paperEl = $('.v-paper', body);
+      const fromRect = paperEl.getBoundingClientRect();
+      ta.blur();
       try {
-        await saveDiaryEntry({
+        const saveP = saveDiaryEntry({
           title: '',
           text,
           mood: 'heart',
           entryDate: dateIso,
         });
-        await sh.close();
-        await playCastIntoSea(toDbWho(state.me));
+        void sh.close();
+        await Promise.all([playCastIntoSea(toDbWho(state.me), fromRect, text), saveP]);
         await reload(true);
       } catch {
         sealBtn.disabled = false;
