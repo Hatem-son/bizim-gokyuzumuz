@@ -5,6 +5,7 @@ import { state, toDbWho } from '../ui/state';
 import type { Who } from '../types';
 
 export type DiaryMood = 'sun' | 'coffee' | 'moon' | 'rain' | 'heart' | 'spark';
+export type DiaryStickerId = 'plead' | 'kiss' | 'shy' | 'sparkle' | 'hug';
 
 export interface DiaryEntryMeta {
   id: string;
@@ -20,6 +21,42 @@ export interface DiaryEntryContent {
   text: string;
   mood: DiaryMood;
   entryDate: string;
+}
+
+export type DiaryPeekReq = {
+  t: 'dpeek_req';
+  reqId: string;
+  diaryId: string;
+  entryDate: string;
+  message: string;
+  emojis: string[];
+  sticker: DiaryStickerId;
+  at: number;
+};
+
+export type DiaryPeekRes = {
+  t: 'dpeek_res';
+  reqId: string;
+  diaryId: string;
+  approved: boolean;
+  replyText?: string;
+  content?: DiaryEntryContent;
+  at: number;
+};
+
+export type DiaryPeekPacket = DiaryPeekReq | DiaryPeekRes;
+
+export const pendingPeekRequests: DiaryPeekReq[] = [];
+export const grantedPeekEntries = new Map<string, DiaryEntryContent>();
+
+export function recordIncomingDiaryPacket(pkt: DiaryPeekPacket): void {
+  if (pkt.t === 'dpeek_req') {
+    if (!pendingPeekRequests.some((r) => r.reqId === pkt.reqId)) {
+      pendingPeekRequests.unshift(pkt);
+    }
+  } else if (pkt.t === 'dpeek_res' && pkt.approved && pkt.content) {
+    grantedPeekEntries.set(pkt.diaryId, pkt.content);
+  }
 }
 
 type LocalDiaryRecord = DiaryEntryMeta & {

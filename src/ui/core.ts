@@ -8,6 +8,7 @@ import type { SkyWorker } from '../gokyuzu/workerClient';
 import type { Plane } from '../gokyuzu/plane';
 import type { Kind, Star } from './state';
 import type { BoardResult, DrawLivePacket, Stroke } from './draw';
+import type { DiaryPeekPacket } from '../lib/diary';
 
 export const core = {
   engine: null as unknown as Engine,
@@ -41,6 +42,8 @@ export const core = {
   decodeDrawing: async (_bytes: Uint8Array<ArrayBuffer>): Promise<unknown[]> => [],
   sendDrawPacket: (_pkt: DrawLivePacket) => {},
   onDrawPacket: (_cb: (pkt: DrawLivePacket) => void): (() => void) => () => {},
+  sendDiaryPacket: (_pkt: DiaryPeekPacket) => {},
+  onDiaryPacket: (_cb: (pkt: DiaryPeekPacket) => void): (() => void) => () => {},
   requestDraw: () => {},
   setInDrawView: (_v: boolean) => {},
   onCollabFin: (_strokes: Stroke[], _sid?: string, _collab?: boolean) => {},

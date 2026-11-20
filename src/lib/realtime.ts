@@ -5,6 +5,7 @@
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import type { Who as DbWho } from '../types';
 import type { DrawLivePacket, Stroke } from '../ui/draw';
+import type { DiaryPeekPacket } from './diary';
 import { getSupabase, isSupabaseConfigured } from './supabase';
 import { hasActiveKey, sealJSON, openJSON } from './crypto';
 
@@ -79,6 +80,7 @@ export class PairRealtime {
   private drawSending = false;
   private drawQueue: DrawLivePacket[] = [];
   private drawListeners = new Set<(pkt: DrawLivePacket) => void>();
+  private diaryListeners = new Set<(pkt: DiaryPeekPacket) => void>();
   private _inDrawView = false;
 
   live = false;
@@ -267,6 +269,9 @@ export class PairRealtime {
       .on('broadcast', { event: 'draw' }, ({ payload }) => {
         void this.handleIncoming('draw', payload);
       })
+      .on('broadcast', { event: 'diary' }, ({ payload }) => {
+        void this.handleIncoming('diary', payload);
+      })
       .subscribe(async (status) => {
         if (seq !== this.connectSeq) return;
         if (status === 'SUBSCRIBED') {
@@ -292,7 +297,7 @@ export class PairRealtime {
     this.ch = ch;
   }
 
-  private async sendRaw(event: 'act' | 'draw', data: unknown): Promise<void> {
+  private async sendRaw(event: 'act' | 'draw' | 'diary', data: unknown): Promise<void> {
     if (!this.active) return;
     const env = await encryptEnvelope(this.me, data);
     if (this.ch && this.subscribed) {
@@ -345,6 +350,15 @@ export class PairRealtime {
         this.handlers.onPartnerActivity('idle', false);
         this.onActivity?.(null);
       }, 6500);
+      return;
+    }
+
+    if (event === 'diary' || data.t === 'dpeek_req' || data.t === 'dpeek_res') {
+      this.partnerSeenAt = Date.now();
+      this.setOnline(true);
+      this.armPresenceWatchdog();
+      const dp = data as DiaryPeekPacket;
+      this.diaryListeners.forEach((fn) => fn(dp));
       return;
     }
 
@@ -480,6 +494,18 @@ export class PairRealtime {
     this.drawListeners.add(cb);
     return () => {
       this.drawListeners.delete(cb);
+    };
+  }
+
+  async sendDiaryPacket(pkt: DiaryPeekPacket): Promise<void> {
+    if (!this.active) return;
+    await this.sendRaw('diary', pkt);
+  }
+
+  onDiaryPacket(cb: (pkt: DiaryPeekPacket) => void): () => void {
+    this.diaryListeners.add(cb);
+    return () => {
+      this.diaryListeners.delete(cb);
     };
   }
 }

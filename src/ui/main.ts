@@ -28,6 +28,7 @@ import { buildHome, buildForeground, placeForeground, showLive, sendHeart, partn
 import { openCompose, freeSpot, recordDailyStarSent } from './compose';
 import { openBoard, openWatch, renderDrawing, Stroke, DrawLivePacket } from './draw';
 import { encodeDrawingBytes, decodeDrawingBytes } from '../lib/drawCodec';
+import { recordIncomingDiaryPacket, type DiaryPeekPacket } from '../lib/diary';
 // Ayarlar/arşiv/yıldız sayfaları ilk çizimden SONRA, ilk kullanımda yüklenir (ana paket küçülür)
 const lazyPages = () => import('./pages');
 const lazyJar = () => import('./jarView');
@@ -544,6 +545,8 @@ Object.assign(core, {
   decodeDrawing: (bytes: Uint8Array<ArrayBuffer>) => decodeDrawingBytes(bytes),
   sendDrawPacket: (pkt: DrawLivePacket) => void pairRealtime.sendDrawPacket(pkt),
   onDrawPacket: (cb: (pkt: DrawLivePacket) => void) => pairRealtime.onDrawPacket(cb),
+  sendDiaryPacket: (pkt: DiaryPeekPacket) => void pairRealtime.sendDiaryPacket(pkt),
+  onDiaryPacket: (cb: (pkt: DiaryPeekPacket) => void) => pairRealtime.onDiaryPacket(cb),
   requestDraw: () => pairRealtime.requestDraw(),
   setInDrawView: (v: boolean) => {
     pairRealtime.inDrawView = v;
@@ -559,6 +562,34 @@ Object.assign(core, {
   onOutboxChange: () => void syncOfflineAndOutbox(),
   setMyLiveActivity: (act: 'writing' | 'sending' | 'drawing' | 'photo' | 'voice' | 'idle') =>
     pairRealtime.setMyActivity(act),
+});
+
+pairRealtime.onDiaryPacket((pkt) => {
+  recordIncomingDiaryPacket(pkt);
+  const pa = PEOPLE[state.partner];
+  if (pkt.t === 'dpeek_req') {
+    island({
+      avatar: I.heartFill(16),
+      color: pa.color,
+      title: `${pa.name} günlüğüne bakmak istiyor 🥺`,
+      sub: `${pkt.message} ${pkt.emojis.join('')}`.trim(),
+      action: { label: 'Gör', primary: true, onClick: () => openJar() },
+      ms: 9000,
+    });
+  } else if (pkt.t === 'dpeek_res') {
+    if (pkt.approved) {
+      island({
+        avatar: I.heartFill(16),
+        color: pa.color,
+        title: `${pa.name} izin verdi 💌`,
+        sub: 'Sayfayı okumak için dokun',
+        action: { label: 'Oku', primary: true, onClick: () => openJar() },
+        ms: 9000,
+      });
+    } else {
+      toast(`${pa.name}: ${pkt.replyText || 'Şimdilik sır kaldı 🤫🤍'}`, I.lock(14), 3200);
+    }
+  }
 });
 core.scrollX = X0 - W / 2;
 applyPersona();
